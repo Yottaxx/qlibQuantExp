@@ -1,3 +1,5 @@
+# module/architecture/parallel_attention.py
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +12,7 @@ class ParallelAttention(nn.Module):
     """Multi-head self-attention for a sequence.
 
     Used twice:
-      - Time expert: sequence length = T, batch = B*N
+      - Time expert:  sequence length = T, batch = B*N
       - Factor expert: sequence length = N, batch = B*T
     """
 
@@ -25,7 +27,12 @@ class ParallelAttention(nn.Module):
         self.out_proj = nn.Linear(config.d_model, config.d_model, bias=False)
         self.dropout = nn.Dropout(float(config.dropout))
 
-    def forward(self, x: torch.Tensor, attn_bias: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        attn_bias: torch.Tensor | None = None,
+        return_attn: bool = False,
+    ):
         # x: [B, L, D]
         B, L, D = x.shape
         q, k, v = self.qkv(x).chunk(3, dim=-1)
@@ -40,8 +47,12 @@ class ParallelAttention(nn.Module):
             scores = scores + attn_bias
 
         attn = F.softmax(scores, dim=-1)
-        attn = self.dropout(attn)
+        attn = self.dropout(attn)  # [B, H, L, L]
 
         out = torch.einsum("b h i j, b h j d -> b h i d", attn, v)
         out = rearrange(out, "b h l d -> b l (h d)")
-        return self.out_proj(out)
+        out = self.out_proj(out)
+
+        if return_attn:
+            return out, attn  # attn: [B, H, L, L]
+        return out

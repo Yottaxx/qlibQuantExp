@@ -90,6 +90,8 @@ class QuantModelOutput(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
     logits: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+
+    # 每层 router gate 权重: List[num_layers] of [B, 2]
     gate_weights: Optional[List[torch.FloatTensor]] = None
 
     # 详细 Loss 组件 (用于监控)
@@ -99,3 +101,7 @@ class QuantModelOutput(ModelOutput):
     avg_gate_entropy: Optional[float] = None
     avg_time_ratio: Optional[float] = None
     selected_mask: Optional[torch.FloatTensor] = None
+
+    # 新增: 注意力图 (只在需要时填充)
+    # 约定: { "layer_0": {"time": Tensor, "factor": Tensor}, ... }
+    attn_maps: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
