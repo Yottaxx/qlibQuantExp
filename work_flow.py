@@ -81,14 +81,14 @@ model_conf = {
     "kwargs": {
         "model_config": {
             "d_model": 32,
-            "n_layers": 2,
+            "n_layers": 4,
             "use_feature_selection": True,
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
-            "lr": 5e-4,
-            "n_epochs": 20,
-            "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "lr": 5e-5,
+            "n_epochs": 30,
+            "batch_size": 32,  # 对应 FixedDailyBatchSampler 的日度 batch
             "early_stop": 5,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
         },

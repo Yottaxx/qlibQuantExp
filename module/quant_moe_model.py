@@ -38,7 +38,7 @@ class QuantMoEModel(PreTrainedModel):
         self.final_norm = nn.LayerNorm(config.d_model)
 
         # Head
-        self.head = nn.Linear(config.d_model, 1)
+        self.head = nn.Linear(config.d_model * config.num_alphas, 1)
 
     def forward(
         self,
@@ -108,9 +108,9 @@ class QuantMoEModel(PreTrainedModel):
         h = self.final_norm(h)
 
         # Predict per-factor at the last timestep
-        h_last = h[:, -1, :, :]  # [B, N, D]
-        factor_logits = self.head(h_last).squeeze(-1)  # [B, N]
-        stock_score = factor_logits.mean(dim=1)        # [B]
+        h_last = h.sum(dim=1).flatten(start_dim=1)  # [B, N, D]
+        stock_score = self.head(h_last).squeeze(-1)  # [B, N]
+        factor_logits = stock_score.unsqueeze(dim=-1)       # [B]
 
         # 6) Loss
         total_loss = None

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Text, Tuple, Union
 
@@ -258,14 +259,32 @@ class QlibQuantMoE(Model):
         return -float(valid_metrics.get("loss_total", 0.0))
 
     # ---------- epoch loop ----------
+    def _make_pbar(self, it, *, desc: str, total: Optional[int] = None, leave: bool = False):
+        """
+        简单封装 tqdm：
+        - 如果 use_tqdm=False 或 tqdm 不可用，则返回 None
+        - 否则返回一个 tqdm 包裹的 iterator
+        """
+        if not self.use_tqdm or tqdm is None:
+            return None
+        return tqdm(
+            it,
+            desc=desc,
+            total=total,
+            leave=leave,
+            dynamic_ncols=True,
+            mininterval=self.tqdm_mininterval,
+        )
+
+    # ---------- epoch loop ----------
     def _run_epoch(
-        self,
-        loader: DataLoader,
-        f_ids: torch.Tensor,
-        *,
-        optimizer: Optional[torch.optim.Optimizer],
-        train: bool,
-        desc: str,
+            self,
+            loader: DataLoader,
+            f_ids: torch.Tensor,
+            *,
+            optimizer: Optional[torch.optim.Optimizer],
+            train: bool,
+            desc: str,
     ) -> Dict[str, float]:
         assert self.net is not None
 
@@ -274,18 +293,23 @@ class QlibQuantMoE(Model):
         n_batches = 0
 
         # tqdm wrapper (per-epoch)
-        total = None
         try:
             total = len(loader)
         except Exception:
             total = None
-        pbar, _ = self._make_pbar(loader, desc=desc, total=total, leave=False)
+
+        pbar = self._make_pbar(loader, desc=desc, total=total, leave=False)
+        iterator = pbar if pbar is not None else loader
 
         skip_invalid_label = 0
         skip_nan_loss = 0
 
-        iterator = pbar if pbar is not None else loader
         for step, (bx, by) in enumerate(iterator):
+            # 默认诊断指标（防止某些分支 continue 后变量未定义）
+            pred_std = float("nan")
+            total_gn = 0.0
+            nz = 0
+
             bx_t = torch.nan_to_num(bx, 0.0).to(self.device)  # [B,T,F]
             if self.label_dim > 0 and by is None:
                 # If this happens, schema validation should have already raised.
@@ -296,35 +320,50 @@ class QlibQuantMoE(Model):
             # mask invalid labels (loss impls must not see NaN/Inf)
             if by_t is not None:
                 valid = torch.isfinite(by_t)
-                vr = float(valid.float().mean().item())
-                meters["valid_ratio"] += vr
                 if valid.sum().item() < 2:
                     skip_invalid_label += 1
-                    if pbar is not None and (step + 1) % max(1, self.tqdm_update_every) == 0:
-                        pbar.set_postfix({"skip_lbl": skip_invalid_label}, refresh=False)
+                    # 直接跳过这个 batch，不更新 loss 相关指标
                     continue
                 bx_t = bx_t[valid]
                 by_t = by_t[valid]
 
             bd_t = torch.zeros(bx_t.shape[0], dtype=torch.long, device=self.device)  # date_ids placeholder
 
-            if train:
+            if train and optimizer is not None:
                 optimizer.zero_grad(set_to_none=True)
 
             with torch.set_grad_enabled(train):
                 out = self.net(bx_t, f_ids, bd_t, labels=by_t)
                 loss = getattr(out, "loss", None)
 
-                if train and loss is not None:
+                # pred_std（不参与梯度）
+                pred = out.logits.squeeze(-1)
+                pred_std = float(pred.detach().std().item())
+
+                if train and optimizer is not None and loss is not None:
                     if not torch.isfinite(loss):
                         skip_nan_loss += 1
+                        # 这个 batch 不更新参数 / 统计
                         continue
+
                     loss.backward()
-                    torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
+
+                    # 总梯度范数
+                    total_gn = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
+
+                    # # 有非零梯度的参数个数
+                    # for p in self.net.parameters():
+                    #     if p.grad is None:
+                    #         continue
+                    #     g = p.grad.detach()
+                    #     if torch.isfinite(g).all() and g.abs().sum().item() > 0:
+                    #         nz += 1
+
                     optimizer.step()
 
             n_batches += 1
 
+            # 累加各种 metric
             if getattr(out, "metrics", None):
                 for k, v in out.metrics.items():
                     meters[k] += float(v)
@@ -336,24 +375,45 @@ class QlibQuantMoE(Model):
             if getattr(out, "selected_mask", None) is not None:
                 meters["active_feat_ratio"] += float(out.selected_mask.mean().item())
 
-            if pbar is not None and ((step + 1) % max(1, self.tqdm_update_every) == 0):
-                avg = {k: meters[k] / max(1, n_batches) for k in ("loss_total", "loss_ic", "loss_rank", "loss_huber") if k in meters}
-                avg.update({k: meters[k] / max(1, n_batches) for k in ("gate_entropy", "time_ratio", "active_feat_ratio") if k in meters})
-                if "valid_ratio" in meters:
-                    avg["valid"] = meters["valid_ratio"] / max(1, n_batches)
-                if train and optimizer is not None:
-                    avg["lr"] = optimizer.param_groups[0]["lr"]
-                if skip_invalid_label:
-                    avg["skip_lbl"] = skip_invalid_label
-                if skip_nan_loss:
-                    avg["skip_nan"] = skip_nan_loss
-                pbar.set_postfix(avg, refresh=False)
+            # 统一在这里更新 tqdm 的 postfix（只更新一次）
+            if pbar is not None:
+                # 第一个 step / 每 N 个 step / 最后一个 step 更新
+                should_update = (
+                        step == 0
+                        or ((step + 1) % max(1, self.tqdm_update_every) == 0)
+                        or (total is not None and (step + 1) == total)
+                )
+                if should_update:
+                    avg = {
+                        k: meters[k] / max(1, n_batches)
+                        for k in ("loss_total", "loss_ic", "loss_rank", "loss_huber")
+                        if k in meters
+                    }
+                    avg.update({
+                        k: meters[k] / max(1, n_batches)
+                        for k in ("gate_entropy", "time_ratio", "active_feat_ratio")
+                        if k in meters
+                    })
+                    if "valid_ratio" in meters:
+                        avg["valid"] = meters["valid_ratio"] / max(1, n_batches)
+
+                    # 加上诊断指标
+                    avg["pred_std"] = pred_std
+                    avg["gn"] = total_gn
+                    avg["nz"] = nz
+                    if train and optimizer is not None:
+                        avg["lr"] = optimizer.param_groups[0]["lr"]
+                    if skip_invalid_label:
+                        avg["skip_lbl"] = skip_invalid_label
+                    if skip_nan_loss:
+                        avg["skip_nan"] = skip_nan_loss
+
+                    pbar.set_postfix(avg, refresh=False)
 
         if pbar is not None:
             pbar.close()
 
         return self._avg(meters, n_batches)
-
     # ---------- Qlib API ----------
     def fit(self, dataset: DatasetH, evals_result=dict()):
         # 1) Train schema validation + TSDS

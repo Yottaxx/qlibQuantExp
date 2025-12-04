@@ -69,11 +69,11 @@ class QuantMoEConfig(PretrainedConfig):
         self.selection_noise_std = selection_noise_std
         # 默认 Loss 权重
         self.loss_weights = loss_weights if loss_weights is not None else {
-            "ic": 1.0,
-            "huber": 0.1,
-            "rank": 0.1,
-            "aux": 1.0,  # Z-Loss
-            "reg": 1.0  # Feature Selection L1
+            "ic": 1,
+            "huber": 0.01,
+            "rank": 0.01,
+            "aux": 1e-3,  # Z-Loss
+            "reg":1e-3  # Feature Selection L1
         }
         self.rank_topk = rank_topk
         self.huber_delta = huber_delta
