@@ -14,39 +14,32 @@ class QuantMoEConfig(PretrainedConfig):
 
     def __init__(
             self,
-            d_model: int = 256,
+            d_model: int = 64,
             n_heads: int = 4,
             n_layers: int = 4,
-            d_ff: int = 1024,
+            d_ff: int = 128,
             dropout: float = 0.1,
-            num_alphas: int = 50,  # 因子数量 (N)
-            context_len: int = 100,  # 时间窗口 (T)
-            num_dates: int = 5000,  # 最大日期ID (用于 Regime Gating)
-
-            # MoE & Routing
-            router_noise: float = 0.1,  # Noisy Gating 标准差
-            router_z_loss_coef: float = 1e-3,  # Z-Loss 系数 (防坍塌)
-
-            # Attention
-            use_alibi: bool = True,  # 是否使用 ALiBi
-
-            # Feature Selection (STG)
+            num_alphas: int = 64,
+            context_len: int = 32,
+            num_dates: int = 4096,
+            router_noise: float = 0.1,
+            router_z_loss_coef: float = 1e-3,
+            use_alibi: bool = True,
             use_feature_selection: bool = True,
-            selection_reg_lambda: float = 0.01,  # L1 正则系数 (稀疏度控制)
-            selection_temperature: float = 0.1,  # Gumbel Softmax 温度
-
-            selection_noise_std: float = 0.5,  # STG noise std (feature gate)
-            # Loss Weights & Params
+            selection_reg_lambda: float = 1e-3,
+            selection_temperature: float = 0.1,
+            selection_noise_std: float = 0.5,
+            # Loss & ranking
             loss_weights: Optional[Dict[str, float]] = None,
-            rank_topk: int = 5,  # RankNet 关注头部 K 只股票
-            huber_delta: float = 1.0,  # Huber Loss 阈值
-
-            #context encoder
+            rank_topk: int = 5,
+            huber_delta: float = 1.0,
+            listmle_tau: float = 1.0,  # ★ 新增：ListMLE 温度
+            # context encoder
             use_external_macro: bool = False,
-            d_macro_input: int = 0,  # 外部宏观数据的维度
-
+            d_macro_input: int = 0,
             **kwargs
     ):
+
         super().__init__(**kwargs)
 
         self.d_model = d_model
@@ -69,12 +62,15 @@ class QuantMoEConfig(PretrainedConfig):
         self.selection_noise_std = selection_noise_std
         # 默认 Loss 权重
         self.loss_weights = loss_weights if loss_weights is not None else {
-            "ic": 1.0,
-            "huber": 0.1,
-            "rank": 0.1,
-            "aux": 1.0,  # Z-Loss
-            "reg": 1.0  # Feature Selection L1
+            "listmle": 1.0,
+            "ic": 0.0,     # 不进入 total_loss，仅做监控
+            "rank": 0.0,
+            "huber": 0.0,
+            "aux": 1.0,    # Z-Loss
+            "reg": 1.0,    # Feature Selection L1
         }
+
+        self.listmle_tau = listmle_tau
         self.rank_topk = rank_topk
         self.huber_delta = huber_delta
 

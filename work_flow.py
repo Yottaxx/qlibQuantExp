@@ -14,6 +14,7 @@ RST-MoE + Qlib Official Workflow (Paper-Ready Version)
    - gate 曲线统计（均值 / std / 分位数）
    - attention map 的局部性指标
 5. 自动生成一份 Markdown 版「论文级实验报告」：kdd_report.md
+   - 增加“训练过程诊断”：train/listmle vs valid/rank_ic 曲线 + 文本总结
 """
 
 import numpy as np
@@ -26,6 +27,8 @@ from qlib.constant import REG_CN
 from qlib.utils import init_instance_by_config, flatten_dict
 from qlib.workflow import R
 from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
+
+import matplotlib.pyplot as plt
 
 # =============================================================================
 # 0. Qlib Init (与官方 yaml 对齐)
@@ -59,8 +62,13 @@ data_conf = {
                     {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
                 ],
                 # 深度模型：防止 Dropna 打断时间序列
-                "learn_processors": [],
-                # Label: 下一日收益
+                # 这里的 DropnaLabel 只会在截面上丢掉没有 label 的样本，不破坏时间窗口；
+                # CSRankNorm 对 label 做日内截面 rank 标准化，相当于 rank-label。
+                "learn_processors": [
+                    {"class": "DropnaLabel"},
+                    {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
+                ],
+                # Label: 下一日收益（在 learn_processors 中会被做成 rank-label）
                 "label": ["Ref($close, -1) / $close - 1"],
             },
         },
@@ -91,6 +99,10 @@ model_conf = {
             "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
             "early_stop": 5,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
+            # Warmup 配置（与 adapter 中的默认值一致）：
+            # "use_warmup": True,
+            # "warmup_ratio": 0.1,
+            # "warmup_steps": 0,
         },
     },
 }
@@ -139,9 +151,93 @@ def _safe_get_perf_value(perf: pd.DataFrame, key_candidates):
     return np.nan
 
 
+def _load_train_curves(rec):
+    """
+    从 Recorder 中读取训练曲线对象 train_curve（如果存在），并生成：
+    - df_tc: DataFrame(epoch, train_listmle, train_ic, valid_listmle, valid_rank_ic, valid_ic)
+    - train_summary_lines: 文本总结
+    - fig_name: 图片文件名（相对路径），用于 Markdown 引用
+    """
+    local_dir: Path = rec.get_local_dir()
+    fig_name = "train_curves_listmle_rankic.png"
+    fig_path = local_dir / fig_name
+
+    train_curve = None
+    try:
+        train_curve = rec.load_object("train_curve")
+    except Exception:
+        train_curve = None
+
+    train_summary_lines: List[str] = []
+    df_tc: Optional[pd.DataFrame] = None
+
+    if isinstance(train_curve, dict) and len(train_curve) > 0:
+        try:
+            df_tc = pd.DataFrame(train_curve)
+            if "epoch" not in df_tc.columns:
+                df_tc["epoch"] = np.arange(1, len(df_tc) + 1)
+
+            # --- plot curves ---
+            try:
+                fig, ax1 = plt.subplots(figsize=(6, 3))
+                ax1.plot(
+                    df_tc["epoch"],
+                    df_tc.get("train_listmle", np.nan),
+                    label="train ListMLE loss",
+                )
+                ax1.set_xlabel("epoch")
+                ax1.set_ylabel("train ListMLE loss")
+
+                ax2 = ax1.twinx()
+                ax2.plot(
+                    df_tc["epoch"],
+                    df_tc.get("valid_rank_ic", np.nan),
+                    linestyle="--",
+                    label="valid RankIC",
+                )
+                ax2.set_ylabel("valid RankIC")
+
+                lines1, labels1 = ax1.get_legend_handles_labels()
+                lines2, labels2 = ax2.get_legend_handles_labels()
+                ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+
+                fig.tight_layout()
+                fig.savefig(fig_path, dpi=150, bbox_inches="tight")
+                plt.close(fig)
+            except Exception as e:
+                print(f"[Report] Failed to plot training curves: {e}")
+
+            # --- textual summary ---
+            if "valid_rank_ic" in df_tc.columns and df_tc["valid_rank_ic"].notna().any():
+                best_idx = df_tc["valid_rank_ic"].idxmax()
+                best_epoch = int(df_tc.loc[best_idx, "epoch"])
+                best_ric = float(df_tc.loc[best_idx, "valid_rank_ic"])
+                train_summary_lines.append(
+                    f"- Peak valid RankIC ≈ {best_ric:.4f} at epoch {best_epoch}"
+                )
+
+            if "train_listmle" in df_tc.columns and "valid_rank_ic" in df_tc.columns:
+                x = -df_tc["train_listmle"]
+                y = df_tc["valid_rank_ic"]
+                mask = np.isfinite(x) & np.isfinite(y)
+                if mask.sum() > 2 and np.std(x[mask]) > 0 and np.std(y[mask]) > 0:
+                    corr = np.corrcoef(x[mask], y[mask])[0, 1]
+                    train_summary_lines.append(
+                        f"- Corr(-train ListMLE, valid RankIC) ≈ {corr:.3f}"
+                    )
+        except Exception as e:
+            print(f"[Report] Failed to summarize training curves: {e}")
+
+    if not train_summary_lines:
+        train_summary_lines = ["- (no training curves found; check 'train_curve' in Recorder)"]
+
+    return df_tc, train_summary_lines, (fig_name if fig_path.exists() else None)
+
+
 def generate_paper_report(rec, model_name: str = "RST-MoE"):
     """
     汇总当前 Recorder 中的：
+      - 训练过程诊断：ListMLE 收敛 vs RankIC
       - IC / RankIC 序列
       - 回测关键指标
       - gate time_ratio 序列统计
@@ -230,6 +326,7 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
         gate_stats_str = (
             f"mean={g_mean:.3f}, std={g_std:.3f}, p10={g_p10:.3f}, p90={g_p90:.3f}"
         )
+
     # attention 局部性指标：看时间注意力在 |i-j|<=1 对角带上的质量
     attn_summary_lines = []
     if isinstance(attn_maps, dict) and len(attn_maps) > 0:
@@ -253,7 +350,10 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     if not attn_summary_lines:
         attn_summary_lines = ["- (no attention maps found; check export_visuals call)"]
 
-    # ---------- 4. 汇总成表格（方便 VS baseline 比较） ----------
+    # ---------- 4. 训练过程诊断（ListMLE vs RankIC） ----------
+    df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec)
+
+    # ---------- 5. 汇总成表格（方便 VS baseline 比较） ----------
     df_res = pd.DataFrame(
         [
             {
@@ -273,8 +373,8 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
         ]
     )
 
-    # ---------- 5. 生成 Markdown 报告 ----------
-    lines = []
+    # ---------- 6. 生成 Markdown 报告 ----------
+    lines: List[str] = []
     lines.append(f"# {model_name} on Alpha158 / CSI300\n")
     lines.append("## 1. Experimental Setup\n")
     setup_txt = f"""
@@ -282,7 +382,7 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
       - Train: 2008-01-01 ~ 2014-12-31
       - Valid: 2015-01-01 ~ 2016-12-31
       - Test: 2017-01-01 ~ 2020-08-01
-    - **Label**: next-day return `Ref($close, -1) / $close - 1`
+    - **Label**: next-day return `Ref($close, -1) / $close - 1` (经过 CSRankNorm → rank-label)
     - **Model**: RST-MoE (Regime-aware Spatio-Temporal Mixture-of-Experts)
       - d_model = 32, n_layers = 2
       - Feature selector: differentiable sparse gate over Alpha158 factors
@@ -305,7 +405,21 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     """
     lines.append(textwrap.dedent(perf_txt).strip() + "\n")
 
-    lines.append("## 3. Portfolio Backtest (2017-2020, CSI300 universe)\n")
+    lines.append("## 3. Training Dynamics & Portfolio Backtest\n")
+
+    # 3.1 训练过程诊断
+    lines.append("### 3.1 Training Dynamics (ListMLE vs. RankIC)\n")
+    lines.append(
+        "训练阶段采用 **ListMLE 主 loss**（基于 rank-label 的 list-wise 排序），"
+        "这里展示 train/listmle 与 valid/rank_ic 随 epoch 的演化，并粗略量化二者的相关性：\n"
+    )
+    lines.extend(train_summary_lines)
+    lines.append("")
+    if train_fig_name is not None:
+        lines.append(f"![Training dynamics (ListMLE vs RankIC)]({train_fig_name})\n")
+
+    # 3.2 组合回测
+    lines.append("### 3.2 Portfolio Backtest (2017-2020, CSI300 universe)\n")
     bt_txt = f"""
     - 年化收益 (excess return with cost): {ann_ret:.2%} (如果为 nan 请检查 indicator_analysis_1day.pkl)
     - 信息比 (Information Ratio): {info_ratio:.2f}
@@ -344,7 +458,9 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     lines.append("## 5. Summary\n")
     lines.append(
         "RST-MoE 在官方 Alpha158 / CSI300 框架下，兼顾了稳健的日频预测性能 "
-        "（IC / RankIC / 信息比）和可解释的时空解耦结构（gate 曲线 + attention 局部性）。\n"
+        "（IC / RankIC / 信息比）和可解释的时空解耦结构（gate 曲线 + attention 局部性），"
+        "同时通过 ListMLE 训练曲线与 RankIC 的联动，展示了从 rank-label → list-wise 优化 → "
+        "截面预测 → 组合收益的一条清晰传导链。\n"
     )
 
     # 写入 Markdown 文件
