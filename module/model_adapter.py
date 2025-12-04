@@ -328,8 +328,6 @@ class QlibQuantMoE(Model):
             # 屏蔽非法 label
             if by_t is not None:
                 valid = torch.isfinite(by_t)
-                vr = float(valid.float().mean().item())
-                meters["valid_ratio"] += vr
                 if valid.sum().item() < 2:
                     skip_invalid_label += 1
                     if pbar is not None and (step + 1) % max(1, self.tqdm_update_every) == 0:

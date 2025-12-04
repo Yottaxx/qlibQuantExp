@@ -66,8 +66,8 @@ class QuantMoEConfig(PretrainedConfig):
             "ic": 0.0,     # 不进入 total_loss，仅做监控
             "rank": 0.0,
             "huber": 0.0,
-            "aux": 1.0,    # Z-Loss
-            "reg": 1.0,    # Feature Selection L1
+            "aux": 0.01,    # Z-Loss
+            "reg": 0.001,    # Feature Selection L1
         }
 
         self.listmle_tau = listmle_tau

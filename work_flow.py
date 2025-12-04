@@ -25,12 +25,12 @@ import textwrap
 
 import qlib
 from qlib.constant import REG_CN
+from qlib.data.dataset import TSDatasetH
 from qlib.utils import init_instance_by_config, flatten_dict
 from qlib.workflow import R
 from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
 
 import matplotlib.pyplot as plt
-
 # =============================================================================
 # 0. Qlib Init (与官方 yaml 对齐)
 # =============================================================================
@@ -44,7 +44,7 @@ data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 8,  # 时序窗口，对应模型 context_len
+        "step_len": 2,  # 时序窗口，对应模型 context_len
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
@@ -70,7 +70,7 @@ data_conf = {
                     {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
                 ],
                 # Label: 下一日收益（在 learn_processors 中会被做成 rank-label）
-                "label": ["Ref($close, -1) / $close - 1"],
+                "label": ["Ref($close, -5) / Ref($close, -1) - 1"],
             },
         },
         "segments": {
@@ -89,21 +89,21 @@ model_conf = {
     "module_path": "module.model_adapter",
     "kwargs": {
         "model_config": {
-            "d_model": 32,
+            "d_model": 8,
             "n_layers": 2,
-            "use_feature_selection": True,
+            "use_feature_selection": False,
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
             "lr": 5e-4,
             "n_epochs": 20,
-            "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "batch_size": 16,  # 对应 FixedDailyBatchSampler 的日度 batch
             "early_stop": 5,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Warmup 配置（与 adapter 中的默认值一致）：
-            # "use_warmup": True,
-            # "warmup_ratio": 0.1,
-            # "warmup_steps": 0,
+            "use_warmup": True,
+            "warmup_ratio": 0.05,
+            "warmup_steps": 0,
         },
     },
 }

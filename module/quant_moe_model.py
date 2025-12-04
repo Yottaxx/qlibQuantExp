@@ -55,7 +55,7 @@ class QuantMoEModel(PreTrainedModel):
 
         # 5) 因子 head，最后对因子取均值得到股票打分
         self.head = nn.Linear(d_model, 1)
-
+        self.pool_proj= nn.Linear(d_model, 1)
         # HF 标准初始化
         self.post_init()
 
@@ -122,9 +122,7 @@ class QuantMoEModel(PreTrainedModel):
                 h,
                 regime_embedding=regime,
                 attn_bias=attn_bias,
-                return_attn=need_attn,
-                collect_time_attn=need_attn,
-                collect_factor_attn=need_attn,
+                return_attn=need_attn
             )
             z_losses.append(diag["z_loss"])
             entropies.append(diag["entropy"])
@@ -138,13 +136,20 @@ class QuantMoEModel(PreTrainedModel):
 
         # 6) 因子预测 & 股票打分
         h_last = h[:, -1, :, :]  # [B, N, D]
-        factor_logits = self.head(h_last).squeeze(-1)  # [B, N]
-        stock_score = factor_logits.mean(dim=1)        # [B]
+        # factor_logits = self.head(h_last).squeeze(-1)  # [B, N]
+        # stock_score = factor_logits.mean(dim=1)        # [B]
+
+        factor_logits = torch.softmax(self.pool_proj(h_last).squeeze(-1), dim=1)  # [B, N]
+        h_pool = (h_last * factor_logits.unsqueeze(-1)).sum(dim=1)  # [B, D]
+        stock_score = self.head(h_pool).squeeze(-1)  # [B]
 
         # 7) Loss & metrics
         total_loss: torch.Tensor | None = None
         metrics: dict[str, float] = {}
         valid_ratio = 0.0
+
+        print("factor_logits std:", factor_logits.std().item(),
+              "stock_score std:", stock_score.std().item())
 
         if labels is not None:
             labels = labels.squeeze()
