@@ -11,6 +11,26 @@ from module.architecture.moe_block import RegimeAdaptiveMoEBlock
 from module.architecture.regime_encoder import RegimeContextEncoder
 
 
+def csrank01(y: torch.Tensor) -> torch.Tensor:
+    # y: [N] or [N, 1]
+    y = y.view(-1)
+    mask = torch.isfinite(y)
+    out = torch.full_like(y, float("nan"))
+
+    v = y[mask]
+    n = v.numel()
+    if n <= 1:
+        out[mask] = 0.0
+        return out.view(-1, 1)
+
+    order = torch.argsort(v, dim=0)
+    inv = torch.empty_like(order)
+    inv[order] = torch.arange(n, device=y.device)
+    r01 = inv.float() / (n - 1)  # 0..1
+    out[mask] = r01 - 0.5  # 可选：中心化到 [-0.5, 0.5]
+    return out.view(-1, 1)
+
+
 class QuantMoEModel(PreTrainedModel):
     config_class = QuantMoEConfig
 
@@ -122,13 +142,13 @@ class QuantMoEModel(PreTrainedModel):
             valid_ratio = valid.float().mean().item()
 
             if valid.sum().item() >= 2:
-                y = labels[valid]
+                y = csrank01(labels[valid])
                 p = stock_score[valid]
 
                 w = self.config.loss_weights
                 l_ic = QuantLossFunctions.cs_ic_loss(p, y)
                 l_rank = QuantLossFunctions.ranknet_topbottom_loss(p, y, self.config.rank_topk)
-                l_huber = QuantLossFunctions.cs_huber_loss(p, y, self.config.huber_delta)
+                l_huber = QuantLossFunctions.cs_huber_loss(p, labels[valid], self.config.huber_delta)
 
                 l_aux = (
                     torch.stack(z_losses).mean() * self.config.router_z_loss_coef if z_losses else torch.tensor(0.0, device=device)
