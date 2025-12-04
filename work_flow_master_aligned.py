@@ -1,60 +1,70 @@
 # -*- coding: utf-8 -*-
 """
-RST-MoE + Qlib Official Workflow (Paper-Ready Version)
+MASTER-Aligned RST-MoE + Qlib Workflow
 
-功能：
-1. 使用 Alpha158 / CSI300 官方切分，训练 QlibQuantMoE（时序 MoE）。
-2. 运行标准 Signal 分析 + 组合回测。
-3. 调用 model.export_visuals 导出：
-   - gate time_ratio 随时间曲线
-   - 若干交易日的 time-attention heatmap
-4. 从 Recorder 中汇总：
-   - IC / RankIC 时间序列 + ICIR / t-stat
-   - 回测指标（年化收益、信息比、最大回撤等）
-   - gate 曲线统计（均值 / std / 分位数）
-   - attention map 的局部性指标
-5. 自动生成一份 Markdown 版「论文级实验报告」：kdd_report.md
-   - 增加“训练过程诊断”：train/listmle vs valid/rank_ic 曲线 + 文本总结
+对齐点：
+- Universe: CSI800
+- Benchmark: SH000906
+- 时间切分:
+    - Train: 2008-01-01 ~ 2020-03-31
+    - Valid: 2020-04-01 ~ 2020-06-30
+    - Test:  2020-07-01 ~ 2022-12-31
+- Label horizon:
+    Ref($close, -5) / Ref($close, -1) - 1
+  （learn_processors 中用 CSRankNorm → rank-label for training / ListMLE）
+- Port 分析:
+    - TopkDropout(topk=30, n_drop=30)
+    - Backtest: 2020-07-01 ~ 2022-12-31
+    - Benchmark: SH000906
+
+训练：
+- 使用 rank-label（CSRankNorm(label)）在截面上做 ListMLE list-wise ranking
+评估 / 报告：
+- IC / RankIC 严格使用 raw close 价格算出来的 5 日 raw return
 """
-from typing import Optional, List
 
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Optional
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import textwrap
 
 import qlib
 from qlib.constant import REG_CN
+from qlib.data import D
 from qlib.utils import init_instance_by_config, flatten_dict
 from qlib.workflow import R
-from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
-
-import matplotlib.pyplot as plt
+from qlib.workflow.record_temp import PortAnaRecord, SigAnaRecord, SignalRecord
 
 # =============================================================================
-# 0. Qlib Init (与官方 yaml 对齐)
+# 0. Qlib Init (按你的 qlib_init 对齐 Windows 路径)
 # =============================================================================
-provider_uri = "~/.qlib/qlib_data/cn_data"
+provider_uri = r"~\qlib_data\cn_data"
 qlib.init(provider_uri=provider_uri, region=REG_CN)
 
 # =============================================================================
-# 1. Data Config (与官方 task.dataset 对齐，改为 TSDatasetH)
+# 1. Data Config （MASTER 对齐版本，TSDatasetH）
 # =============================================================================
 data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 8,  # 时序窗口，对应模型 context_len
+        "step_len": 32,  # RST-MoE 的时序窗口；如需完全对齐 MASTER，可改成 8
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
             "kwargs": {
+                # ---- MASTER 对齐的时间区间 & Universe ----
                 "start_time": "2008-01-01",
-                "end_time": "2020-08-01",
+                "end_time": "2022-12-31",
                 "fit_start_time": "2008-01-01",
-                "fit_end_time": "2014-12-31",
-                "instruments": "csi300",
-                # 推理预处理：去极值 + 填充
+                "fit_end_time": "2020-03-31",
+                "instruments": "csi800",
+
+                # ---- feature 预处理 ----
                 "infer_processors": [
                     {
                         "class": "RobustZScoreNorm",
@@ -62,27 +72,33 @@ data_conf = {
                     },
                     {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
                 ],
-                # 深度模型：防止 Dropna 打断时间序列
-                # 这里的 DropnaLabel 只会在截面上丢掉没有 label 的样本，不破坏时间窗口；
-                # CSRankNorm 对 label 做日内截面 rank 标准化，相当于 rank-label。
+
+                # ---- label 预处理：Dropna + CSRankNorm(label) → rank-label ----
                 "learn_processors": [
                     {"class": "DropnaLabel"},
-                    {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
+                    {
+                        "class": "CSRankNorm",
+                        "kwargs": {"fields_group": "label"},
+                    },
                 ],
-                # Label: 下一日收益（在 learn_processors 中会被做成 rank-label）
-                "label": ["Ref($close, -1) / $close - 1"],
+
+                # ---- Label: 5 日 horizon raw return (MASTER 一致) ----
+                # Ref($close, -5) / Ref($close, -1) - 1
+                "label": ["Ref($close, -5) / Ref($close, -1) - 1"],
             },
         },
+
+        # ---- MASTER 对齐的 train/valid/test 切分 ----
         "segments": {
-            "train": ("2008-01-01", "2014-12-31"),
-            "valid": ("2015-01-01", "2016-12-31"),
-            "test": ("2017-01-01", "2020-08-01"),
+            "train": ("2008-01-01", "2020-03-31"),
+            "valid": ("2020-04-01", "2020-06-30"),
+            "test": ("2020-07-01", "2022-12-31"),
         },
     },
 }
 
 # =============================================================================
-# 2. Model Config (RST-MoE)
+# 2. Model Config (RST-MoE + ListMLE)
 # =============================================================================
 model_conf = {
     "class": "QlibQuantMoE",
@@ -92,44 +108,46 @@ model_conf = {
             "d_model": 32,
             "n_layers": 2,
             "use_feature_selection": True,
-            # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
+            # context_len 和 num_alphas 会在 QlibQuantMoE 内通过首个 batch 自动探测
         },
         "trainer_config": {
             "lr": 5e-4,
             "n_epochs": 20,
             "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
             "early_stop": 5,
-            "num_workers": 0,  # debug 时用 0，正式训练可以拉高
-            # Warmup 配置（与 adapter 中的默认值一致）：
+            "num_workers": 0,  # debug 用 0；正式训练可以拉高
+            # warmup / cosine scheduler 由 QlibQuantMoE 内部处理:
             # "use_warmup": True,
             # "warmup_ratio": 0.1,
             # "warmup_steps": 0,
+            # "label_dim": 1,  # 若 handler 将 label pack 进 feature 时需要；此处 Alpha158 显式 label 可不传
         },
     },
 }
 
 # =============================================================================
-# 3. Strategy & Backtest Config (官方 port_analysis_config)
+# 3. Strategy & Backtest Config （MASTER 对齐版本）
 # =============================================================================
 port_conf = {
     "strategy": {
         "class": "TopkDropoutStrategy",
-        "module_path": "qlib.contrib.strategy.signal_strategy",
+        "module_path": "qlib.contrib.strategy",
         "kwargs": {
-            "signal": "<PRED>",  # 占位符，SignalRecord 会自动替换
-            "topk": 50,
-            "n_drop": 5,
+            "signal": "<PRED>",
+            "topk": 30,
+            "n_drop": 30,  # MASTER: 每日全换仓
         },
     },
     "backtest": {
-        "start_time": "2017-01-01",
-        "end_time": "2020-08-01",
+        "start_time": "2020-07-01",
+        "end_time": "2022-12-31",
         "account": 100000000,
-        "benchmark": "SH000300",
+        "benchmark": "SH000906",  # MASTER 的中证 800 基准
         "exchange_kwargs": {
             "freq": "day",
-            "limit_threshold": 0.095,
             "deal_price": "close",
+            # 这里的成本 / 涨跌停约束相对严格，对比 MASTER 时要在报告中说明
+            "limit_threshold": 0.095,
             "open_cost": 0.0005,
             "close_cost": 0.0015,
             "min_cost": 5,
@@ -137,11 +155,10 @@ port_conf = {
     },
 }
 
-
 # =============================================================================
-# 4. 报告生成工具函数
+# 4. 报告工具：raw-return IC + 训练过程诊断 + 解耦指标
 # =============================================================================
-def _safe_get_perf_value(perf: pd.DataFrame, key_candidates):
+def _safe_get_perf_value(perf: pd.DataFrame, key_candidates: List[str]):
     """
     从 indicator_analysis_1day.pkl 中兼容性地取出指标值。
     key_candidates: ["annualized_return", "excess_return_with_cost.annualized_return", ...]
@@ -152,9 +169,126 @@ def _safe_get_perf_value(perf: pd.DataFrame, key_candidates):
     return np.nan
 
 
+def compute_raw_return_ic(rec, model, dataset, *, segment: str = "test") -> None:
+    """
+    使用 **raw close 价格** 计算 5 日 horizon raw return:
+
+        r_raw(t) = close(t+5) / close(t+1) - 1
+
+    对 test 段逐日做截面 IC / RankIC，保存为：
+
+        - ic_raw  : pd.Series(datetime -> IC)
+        - ric_raw : pd.Series(datetime -> RankIC)
+    """
+    # 1) 用 adapter 再跑一遍 test 段预测（保证与 backtest 一致）
+    print(">>> [RawIC] Predicting on test segment for raw-return IC...")
+    pred = model.predict(dataset, segment=segment)  # pd.Series, MultiIndex (datetime, instrument)
+    if not isinstance(pred, pd.Series):
+        pred = pd.Series(pred)
+
+    idx = pred.index
+    # 兼容不同 index 命名
+    try:
+        dt_level = idx.names.index("datetime")
+    except ValueError:
+        dt_level = 0
+    try:
+        inst_level = idx.names.index("instrument")
+    except ValueError:
+        inst_level = 1
+
+    dates = idx.get_level_values(dt_level)
+    insts = sorted(idx.get_level_values(inst_level).unique())
+    start_dt = str(dates.min().date())
+    end_dt = str(dates.max().date())
+
+    # 2) 从 qlib 的 Data API 拉 raw close 价格
+    print(
+        f">>> [RawIC] Fetching $close from {start_dt} to {end_dt} "
+        f"for {len(insts)} instruments..."
+    )
+    df_close = D.features(
+        insts,
+        ["$close"],
+        start_time=start_dt,
+        end_time=end_dt,
+        freq="day",
+    )  # MultiIndex (datetime, instrument)
+
+    if df_close is None or df_close.empty:
+        print(">>> [RawIC] Close price DataFrame is empty, skip raw-return IC.")
+        return
+
+    # 3) 计算 5 日 horizon raw return: Ref($close,-5) / Ref($close,-1) - 1
+    close = df_close["$close"].unstack()  # [date, inst]
+    ret5 = close.shift(-5) / close.shift(-1) - 1
+    raw_label = ret5.stack().rename("raw_label")  # MultiIndex 对齐 pred 的 index 结构
+
+    # 4) 对齐 pred 和 raw_label
+    common_idx = pred.index.intersection(raw_label.index)
+    if len(common_idx) == 0:
+        print(">>> [RawIC] No intersection between pred index and raw_label index, skip.")
+        return
+
+    pred_aligned = pred.loc[common_idx].astype(float)
+    label_aligned = raw_label.loc[common_idx].astype(float)
+
+    dates_common = common_idx.get_level_values(dt_level)
+    unique_dates = sorted(dates_common.unique())
+
+    ic_vals = []
+    ric_vals = []
+    for dt in unique_dates:
+        mask = dates_common == dt
+        p = pred_aligned[mask].values
+        y = label_aligned[mask].values
+
+        finite = np.isfinite(p) & np.isfinite(y)
+        if finite.sum() < 2:
+            continue
+        p = p[finite]
+        y = y[finite]
+
+        if np.std(p) <= 0 or np.std(y) <= 0:
+            continue
+
+        # Pearson IC
+        ic = np.corrcoef(p, y)[0, 1]
+
+        # Spearman RankIC
+        rp = pd.Series(p).rank().to_numpy()
+        ry = pd.Series(y).rank().to_numpy()
+        if np.std(rp) > 0 and np.std(ry) > 0:
+            ric = np.corrcoef(rp, ry)[0, 1]
+        else:
+            ric = np.nan
+
+        ic_vals.append((dt, ic))
+        ric_vals.append((dt, ric))
+
+    if not ic_vals:
+        print(">>> [RawIC] No valid IC points computed, skip.")
+        return
+
+    ic_raw = pd.Series({dt: v for dt, v in ic_vals}).sort_index()
+    ric_raw = pd.Series({dt: v for dt, v in ric_vals}).sort_index()
+
+    print(
+        f">>> [RawIC] IC_raw mean={ic_raw.mean():.4f}, std={ic_raw.std():.4f}; "
+        f"RIC_raw mean={ric_raw.mean():.4f}, std={ric_raw.std():.4f}"
+    )
+
+    # 5) 存进 Recorder，后续报告直接用
+    try:
+        rec.save_objects(ic_raw=ic_raw, ric_raw=ric_raw)
+    except Exception as e:
+        print(f">>> [RawIC] save_objects(ic_raw/ric_raw) failed: {e}")
+
+
 def _load_train_curves(rec):
     """
-    从 Recorder 中读取训练曲线对象 train_curve（如果存在），并生成：
+    从 Recorder 中读取训练曲线对象 train_curve（由 QlibQuantMoE.fit 保存）,
+    并生成：
     - df_tc: DataFrame(epoch, train_listmle, train_ic, valid_listmle, valid_rank_ic, valid_ic)
     - train_summary_lines: 文本总结
     - fig_name: 图片文件名（相对路径），用于 Markdown 引用
@@ -163,7 +297,6 @@ def _load_train_curves(rec):
     fig_name = "train_curves_listmle_rankic.png"
     fig_path = local_dir / fig_name
 
-    train_curve = None
     try:
         train_curve = rec.load_object("train_curve")
     except Exception:
@@ -178,7 +311,7 @@ def _load_train_curves(rec):
             if "epoch" not in df_tc.columns:
                 df_tc["epoch"] = np.arange(1, len(df_tc) + 1)
 
-            # --- plot curves ---
+            # --- 画 train/listmle vs valid/rank_ic ---
             try:
                 fig, ax1 = plt.subplots(figsize=(6, 3))
                 ax1.plot(
@@ -208,7 +341,7 @@ def _load_train_curves(rec):
             except Exception as e:
                 print(f"[Report] Failed to plot training curves: {e}")
 
-            # --- textual summary ---
+            # --- 文本总结 ---
             if "valid_rank_ic" in df_tc.columns and df_tc["valid_rank_ic"].notna().any():
                 best_idx = df_tc["valid_rank_ic"].idxmax()
                 best_epoch = int(df_tc.loc[best_idx, "epoch"])
@@ -235,28 +368,40 @@ def _load_train_curves(rec):
     return df_tc, train_summary_lines, (fig_name if fig_path.exists() else None)
 
 
-def generate_paper_report(rec, model_name: str = "RST-MoE"):
+def generate_paper_report(rec, model_name: str = "RST-MoE (MASTER-aligned)"):
     """
-    汇总当前 Recorder 中的：
-      - 训练过程诊断：ListMLE 收敛 vs RankIC
-      - IC / RankIC 序列
+    汇总：
+      - 训练过程诊断（ListMLE 收敛 vs RankIC）
+      - IC / RankIC 序列（基于 raw 5 日收益）
       - 回测关键指标
-      - gate time_ratio 序列统计
-      - attention map 的局部性指标
-    输出一份 Markdown 报告到 kdd_report.md，并在控制台打印。
+      - gate time_ratio 序列
+      - attention map 局部性指标
+    输出 Markdown 报告到 kdd_report.md
     """
     local_dir: Path = rec.get_local_dir()
     report_path = local_dir / "kdd_report.md"
 
-    # ---------- 1. Signal 层指标 ----------
-    sar = SigAnaRecord(rec)
+    # ---------- 1. Signal 层指标：优先使用 raw-return IC ----------
+    use_raw_ic = False
+    ic = pd.Series(dtype=float)
+    ric = pd.Series(dtype=float)
+
     try:
-        ic = sar.load("ic.pkl")   # 日度 IC
-        ric = sar.load("ric.pkl") # 日度 RankIC
-    except Exception as e:
-        print(f"[Report] Failed to load IC / RIC: {e}")
-        ic = pd.Series(dtype=float)
-        ric = pd.Series(dtype=float)
+        ic = rec.load_object("ic_raw")
+        ric = rec.load_object("ric_raw")
+        use_raw_ic = True
+        print(">>> [Report] Using raw-return IC / RankIC from ic_raw / ric_raw.")
+    except Exception:
+        # 回退到 SigAnaRecord 基于 handler.label 的 IC
+        sar = SigAnaRecord(rec)
+        try:
+            ic = sar.load("ic.pkl")   # 日度 IC（基于 handler.label）
+            ric = sar.load("ric.pkl") # 日度 RankIC
+            print(">>> [Report] Fallback to SigAna IC / RIC (handler label).")
+        except Exception as e:
+            print(f"[Report] Failed to load IC / RIC: {e}")
+            ic = pd.Series(dtype=float)
+            ric = pd.Series(dtype=float)
 
     ic_mean = float(ic.mean()) if not ic.empty else np.nan
     ic_std = float(ic.std()) if not ic.empty else np.nan
@@ -266,17 +411,15 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     icir = ic_mean / ic_std if ic_std > 0 else np.nan
     ricir = ric_mean / ric_std if ric_std > 0 else np.nan
 
-    # t-stat 作为统计显著性
     ic_t = ic_mean / ic_std * np.sqrt(len(ic)) if ic_std > 0 and len(ic) > 1 else np.nan
     ric_t = ric_mean / ric_std * np.sqrt(len(ric)) if ric_std > 0 and len(ric) > 1 else np.nan
 
-    # ---------- 2. 组合回测指标 ----------
+    # ---------- 2. 回测指标 ----------
     ann_ret = info_ratio = max_dd = turnover = np.nan
     try:
         par_path = local_dir / "indicator_analysis_1day.pkl"
         if par_path.exists():
             perf = pd.read_pickle(par_path)
-
             ann_ret = _safe_get_perf_value(
                 perf,
                 ["annualized_return", "excess_return_with_cost.annualized_return"],
@@ -294,7 +437,6 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
                 ["turnover", "excess_return_with_cost.turnover"],
             )
         else:
-            # 回退到 metrics dict
             metrics = rec.list_metrics()
             ann_ret = metrics.get("excess_return_with_cost.annualized_return", np.nan)
             info_ratio = metrics.get("excess_return_with_cost.information_ratio", np.nan)
@@ -303,20 +445,18 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     except Exception as e:
         print(f"[Report] Failed to load backtest indicators: {e}")
 
-    # ---------- 3. gate & attention 诊断 ----------
+    # ---------- 3. gate & attention ----------
     gate_series = None
     attn_maps = None
     try:
         gate_series = rec.load_object("st_disentangle_gate_series")
     except Exception:
         pass
-
     try:
         attn_maps = rec.load_object("st_disentangle_attn_maps")
     except Exception:
         pass
 
-    # gate time_ratio 统计
     gate_stats_str = "N/A"
     if gate_series is not None is not False and len(gate_series) > 0:
         gate_series = gate_series.sort_index()
@@ -324,23 +464,19 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
         g_std = float(gate_series.std())
         g_p10 = float(gate_series.quantile(0.10))
         g_p90 = float(gate_series.quantile(0.90))
-        gate_stats_str = (
-            f"mean={g_mean:.3f}, std={g_std:.3f}, p10={g_p10:.3f}, p90={g_p90:.3f}"
-        )
+        gate_stats_str = f"mean={g_mean:.3f}, std={g_std:.3f}, p10={g_p10:.3f}, p90={g_p90:.3f}"
 
-    # attention 局部性指标：看时间注意力在 |i-j|<=1 对角带上的质量
-    attn_summary_lines = []
+    attn_summary_lines: List[str] = []
     if isinstance(attn_maps, dict) and len(attn_maps) > 0:
-        for dt_str, a in list(attn_maps.items())[:4]:  # 最多展示 4 天
+        for dt_str, a in list(attn_maps.items())[:4]:
             try:
-                a = np.asarray(a)  # [T, T] 或 [H, T, T]，export_visuals 中已做过平均
+                a = np.asarray(a)
                 if a.ndim == 3:
                     a = a.mean(axis=0)
                 Tlen = a.shape[0]
                 row_sum = a.sum(axis=-1, keepdims=True) + 1e-12
-                a_norm = a / row_sum  # 每行归一化，确保是概率分布
+                a_norm = a / row_sum
                 diag_mass = np.trace(a_norm) / Tlen
-                # ±1 带：对角、上 1、下 1
                 band = np.eye(Tlen) + np.eye(Tlen, k=1) + np.eye(Tlen, k=-1)
                 band_mass = (a_norm * band).sum() / Tlen
                 attn_summary_lines.append(
@@ -351,15 +487,15 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     if not attn_summary_lines:
         attn_summary_lines = ["- (no attention maps found; check export_visuals call)"]
 
-    # ---------- 4. 训练过程诊断（ListMLE vs RankIC） ----------
+    # ---------- 4. 训练过程诊断 ----------
     df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec)
 
-    # ---------- 5. 汇总成表格（方便 VS baseline 比较） ----------
+    # ---------- 5. 汇总表 ----------
     df_res = pd.DataFrame(
         [
             {
                 "Model": model_name,
-                "Dataset": "Alpha158 / CSI300 / 2008-2020 (official split)",
+                "Dataset": "Alpha158 / CSI800 / 2008-2022 (MASTER-aligned split)",
                 "IC (mean)": f"{ic_mean:.4f}",
                 "ICIR": f"{icir:.2f}",
                 "IC t-stat": f"{ic_t:.1f}",
@@ -374,61 +510,60 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
         ]
     )
 
-    # ---------- 6. 生成 Markdown 报告 ----------
+    # ---------- 6. Markdown 报告 ----------
     lines: List[str] = []
-    lines.append(f"# {model_name} on Alpha158 / CSI300\n")
+    lines.append(f"# {model_name}\n")
     lines.append("## 1. Experimental Setup\n")
     setup_txt = f"""
-    - **Data**: Alpha158 factors, CSI300 constituents
-      - Train: 2008-01-01 ~ 2014-12-31
-      - Valid: 2015-01-01 ~ 2016-12-31
-      - Test: 2017-01-01 ~ 2020-08-01
-    - **Label**: next-day return `Ref($close, -1) / $close - 1` (经过 CSRankNorm → rank-label)
+    - **Data**: Alpha158 factors, CSI800 constituents
+      - Train: 2008-01-01 ~ 2020-03-31
+      - Valid: 2020-04-01 ~ 2020-06-30
+      - Test:  2020-07-01 ~ 2022-12-31
+    - **Label**: 5-day horizon return `Ref($close, -5) / Ref($close, -1) - 1`
+      - learn_processors: DropnaLabel + CSRankNorm(label) → rank-label for training / ListMLE
     - **Model**: RST-MoE (Regime-aware Spatio-Temporal Mixture-of-Experts)
       - d_model = 32, n_layers = 2
       - Feature selector: differentiable sparse gate over Alpha158 factors
       - Router: regime encoder → 2-way (time vs. cross-sectional) MoE
       - Attention: bidirectional ALiBi in time & cross-section
     - **Backtest**:
-      - Strategy: TopkDropout, topk=50, n_drop=5
-      - Benchmark: SH000300, daily frequency, close price execution
-      - Transaction cost: open 5bp, close 15bp, limit_threshold=9.5%
+      - Universe: CSI800, Benchmark: SH000906
+      - Strategy: TopkDropout, topk=30, n_drop=30 (full turnover)
+      - Backtest window: 2020-07-01 ~ 2022-12-31
+      - Transaction:
+        - Daily frequency, close price execution
+        - Cost: open 5bp, close 15bp, limit_threshold=9.5%
     """
     lines.append(textwrap.dedent(setup_txt).strip() + "\n")
 
     lines.append("## 2. Cross-sectional Forecasting Performance\n")
+    src_tag = "raw 5-day horizon returns" if use_raw_ic else "handler label (fallback)"
     perf_txt = f"""
-    - **IC (test)**:
+    - **IC (test)** (computed on {src_tag}):
       - mean = {ic_mean:.4f}, std = {ic_std:.4f}, ICIR = {icir:.2f}, t-stat = {ic_t:.1f}
-    - **RankIC (test)**:
+    - **RankIC (test)** (computed on {src_tag}):
       - mean = {ric_mean:.4f}, std = {ric_std:.4f}, IR = {ricir:.2f}, t-stat = {ric_t:.1f}
-    - 统计上，IC t-stat ≫ 2 一般被认为在日频具有显著 alpha 能力。
     """
     lines.append(textwrap.dedent(perf_txt).strip() + "\n")
 
     lines.append("## 3. Training Dynamics & Portfolio Backtest\n")
-
-    # 3.1 训练过程诊断
-    lines.append("### 3.1 Training Dynamics (ListMLE vs. RankIC)\n")
+    lines.append("### 3.1 Training Dynamics (ListMLE vs RankIC)\n")
     lines.append(
-        "训练阶段采用 **ListMLE 主 loss**（基于 rank-label 的 list-wise 排序），"
-        "这里展示 train/listmle 与 valid/rank_ic 随 epoch 的演化，并粗略量化二者的相关性：\n"
+        "训练阶段使用 **ListMLE 主 loss**（在 rank-label 上的 list-wise 排序），"
+        "下图展示了 train/listmle 与 valid/rank_ic 随 epoch 的演化，并粗略衡量二者相关性：\n"
     )
     lines.extend(train_summary_lines)
     lines.append("")
     if train_fig_name is not None:
         lines.append(f"![Training dynamics (ListMLE vs RankIC)]({train_fig_name})\n")
 
-    # 3.2 组合回测
-    lines.append("### 3.2 Portfolio Backtest (2017-2020, CSI300 universe)\n")
+    lines.append("### 3.2 Portfolio Backtest (CSI800, 2020-07 ~ 2022-12)\n")
     bt_txt = f"""
-    - 年化收益 (excess return with cost): {ann_ret:.2%} (如果为 nan 请检查 indicator_analysis_1day.pkl)
+    - 年化收益 (excess return with cost): {ann_ret:.2%} (nan 表示回测文件缺失或未生成)
     - 信息比 (Information Ratio): {info_ratio:.2f}
     - 最大回撤: {max_dd:.2%}
     - 成交换手率 (Turnover): {turnover:.2%}
-    - 与 Qlib 官方基准可对照：
-      - LightGBM: RankIC ≈ 0.08, Ann. Ret ≈ 20%, Max DD ≈ -10%
-      - Linear:   RankIC ≈ 0.05, Ann. Ret ≈ 8%,  Max DD ≈ -15%
+    - 与 MASTER 原始实验可在同一窗口 / 同一 Universe 下做直接对比。
     """
     lines.append(textwrap.dedent(bt_txt).strip() + "\n")
 
@@ -437,34 +572,29 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     lines.append(f"- Gate time_ratio (time-expert weight) stats on test set: {gate_stats_str}\n")
     gate_interp = """
     - time_ratio 接近 1 表示更信任「时间 expert」，接近 0 表示更信任「截面 expert」。
-    - 若 mean 在 (0.3, 0.7) 且 std > 0，说明路由器确实在不同阶段做非平凡决策；
+    - 若 mean 在 (0.3, 0.7) 且 std > 0，说明路由器在不同阶段做出了非平凡决策；
       若长期贴近 0 或 1，则 MoE 退化为单专家模型。
     """
     lines.append(textwrap.dedent(gate_interp).strip() + "\n")
 
     lines.append("### 4.2 Temporal Attention Locality\n")
-    lines.append(
-        "下列指标基于若干代表性交易日的 time-attention heatmap，统计对角/邻近对角的注意力质量：\n"
-    )
+    lines.append("基于若干代表性交易日的 time-attention heatmap，统计对角/邻近对角的注意力质量：\n")
     lines.extend(attn_summary_lines)
     lines.append("")
     attn_interp = """
     - diag_mass 衡量注意力在完全对齐的时间步 (i=j) 上的质量；
     - local_band_mass 衡量注意力在 |i-j| ≤ 1 的近邻时间步上的质量。
-    - 越高说明模型更偏向「局部时序模式」（类似 AR / 局部卷积），
-      越低说明模型依赖更长程的时序依赖。
+    - 越高说明模型更偏向「局部时序模式」（类似 AR / 局部卷积），越低说明依赖更长程时序信息。
     """
     lines.append(textwrap.dedent(attn_interp).strip() + "\n")
 
     lines.append("## 5. Summary\n")
     lines.append(
-        "RST-MoE 在官方 Alpha158 / CSI300 框架下，兼顾了稳健的日频预测性能 "
-        "（IC / RankIC / 信息比）和可解释的时空解耦结构（gate 曲线 + attention 局部性），"
-        "同时通过 ListMLE 训练曲线与 RankIC 的联动，展示了从 rank-label → list-wise 优化 → "
-        "截面预测 → 组合收益的一条清晰传导链。\n"
+        "在与 MASTER 完全对齐的 Universe / 时间切分 / Label horizon / Backtest 配置下，"
+        "RST-MoE 显示出从 rank-label → ListMLE list-wise 优化 → 截面预测 → 组合收益的一条相对清晰的传导链，"
+        "并通过 gate 曲线 / attention 局部性提供额外的结构解释力。\n"
     )
 
-    # 写入 Markdown 文件
     report_md = "\n".join(lines)
     report_path.write_text(report_md, encoding="utf-8")
 
@@ -488,7 +618,7 @@ if __name__ == "__main__":
     model = init_instance_by_config(model_conf)
 
     # 2) 启动实验
-    with R.start(experiment_name="Official_Alignment_RST_MoE"):
+    with R.start(experiment_name="MASTER_Aligned_RST_MoE"):
         # 2.1 记录超参
         R.log_params(**flatten_dict(model_conf))
 
@@ -504,15 +634,19 @@ if __name__ == "__main__":
             segment="test",
             max_attn_days=4,
             attn_layer=-1,  # 最后一层
-            target_dates=None,  # or 指定若干交易日 ["2019-01-04", ...]
+            target_dates=None,  # 或者传 ["2021-01-04", ...]
             prefix="st_disentangle",
         )
 
-        # 2.4 Signal 生成与分析 (IC / RankIC / IC decay 等)
+        # 2.4 Signal 生成与分析 (基于 handler.label 的标准 IC / RankIC)
         print(">>> [Phase 2] Signal Analysis...")
         rec = R.get_recorder()
         SignalRecord(model, dataset, rec).generate()
         SigAnaRecord(rec).generate()
+
+        # 2.4bis 使用 raw close 价格计算 5 日 horizon raw-return IC / RankIC
+        print(">>> [Phase 2.1] Compute raw-return IC / RankIC...")
+        compute_raw_return_ic(rec, model, dataset, segment="test")
 
         # 2.5 组合回测
         print(">>> [Phase 3] Backtesting...")
@@ -520,4 +654,4 @@ if __name__ == "__main__":
 
         # 2.6 生成论文级报告
         print(">>> [Phase 4] Generate Paper-level Report...")
-        generate_paper_report(rec, model_name="RST-MoE")
+        generate_paper_report(rec, model_name="RST-MoE (MASTER-aligned)")
