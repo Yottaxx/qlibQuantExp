@@ -60,6 +60,13 @@ class QuantMoEModel(PreTrainedModel):
         # Head
         self.head = nn.Linear(config.d_model * config.num_alphas, 1)
 
+        self.head = nn.Sequential(
+            nn.Linear(config.d_model * config.num_alphas, config.num_alphas),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(config.num_alphas, 1),
+        )
+
     def forward(
         self,
         x,
@@ -142,13 +149,13 @@ class QuantMoEModel(PreTrainedModel):
             valid_ratio = valid.float().mean().item()
 
             if valid.sum().item() >= 2:
-                y = csrank01(labels[valid])
+                y = labels[valid]
                 p = stock_score[valid]
 
                 w = self.config.loss_weights
                 l_ic = QuantLossFunctions.cs_ic_loss(p, y)
                 l_rank = QuantLossFunctions.ranknet_topbottom_loss(p, y, self.config.rank_topk)
-                l_huber = QuantLossFunctions.cs_huber_loss(p, labels[valid], self.config.huber_delta)
+                l_huber = QuantLossFunctions.cs_huber_loss(p, y, self.config.huber_delta)
 
                 l_aux = (
                     torch.stack(z_losses).mean() * self.config.router_z_loss_coef if z_losses else torch.tensor(0.0, device=device)

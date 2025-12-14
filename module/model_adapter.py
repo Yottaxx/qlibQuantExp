@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import logging
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Text, Tuple, Union
 
 import numpy as np
@@ -386,8 +387,7 @@ class QlibQuantMoE(Model):
                 if should_update:
                     avg = {
                         k: meters[k] / max(1, n_batches)
-                        for k in ("loss_total", "loss_ic", "loss_rank", "loss_huber")
-                        if k in meters
+                        for k in meters.keys()
                     }
                     avg.update({
                         k: meters[k] / max(1, n_batches)
@@ -521,102 +521,136 @@ class QlibQuantMoE(Model):
             return pd.Series(mu)
         return None
 
-    def _collect_gate_series(self, dataset: DatasetH, segment: str = "test") -> pd.Series:
+    @staticmethod
+    def _tsds_datetime_array(tsds) -> np.ndarray:
         """
-        收集指定 segment 上的日度 gate time_ratio 序列:
-        - 对每个样本 i 计算: time_ratio_i = mean_layer( gate_weights[layer][i, 0] )
-        - 然后对同一交易日的样本取平均, 得到 gate_t
+        返回 np.datetime64[ns] 数组，长度 = len(tsds)
+        兼容 MultiIndex / Index / 其它实现。
+        """
+        idx = tsds.get_index()
+        if hasattr(idx, "get_level_values"):
+            # Qlib 通常是 MultiIndex(levels=["datetime","instrument"])
+            if getattr(idx, "names", None) and ("datetime" in idx.names):
+                dt = idx.get_level_values("datetime")
+            else:
+                dt = idx.get_level_values(0)
+        else:
+            dt = idx
+        return pd.to_datetime(dt).to_numpy(dtype="datetime64[ns]")
+    
+    def _collect_gate_series(self, dataset, segment: str = "test") -> pd.Series:
+        """
+        日度 gate time_ratio 序列（按 datetime 聚合平均）：
+        - 顺序遍历 tsds（不 shuffle）
+        - 对每个样本得到 time_ratio
+        - groupby(datetime).mean()
         """
         assert self.net is not None
 
         tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
-        idx = tsds.get_index()
-        dates = pd.to_datetime(idx.get_level_values("datetime"))
+        date_arr = self._tsds_datetime_array(tsds)
+
+        loader = DataLoader(
+            dataset=tsds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=(self.device.type == "cuda"),
+            collate_fn=self._collate_feat,   # 你已有：返回 [B,T,F]
+        )
 
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
+        all_tr = np.full((len(tsds),), np.nan, dtype=np.float32)
 
-        all_dates: list[pd.Timestamp] = []
-        all_time_ratio: list[float] = []
+        pos = 0
+        self.net.eval()
+        with torch.no_grad():
+            for bx in loader:
+                bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
+                B = bx_t.shape[0]
+                bd_t = torch.zeros(B, dtype=torch.long, device=self.device)
 
-        batch_x: list[torch.Tensor] = []
-        batch_dates: list[pd.Timestamp] = []
+                out = self.net(bx_t, f_ids, bd_t)
+                tr = self._infer_time_ratio_batch(out)  # [B] or None
+                if tr is not None:
+                    all_tr[pos:pos + B] = tr[:B]
+                pos += B
 
-        for i in range(len(tsds)):
-            raw_x, _ = self._extract_sample(tsds[i])
-            x_np = self._as_numpy(raw_x)
-            batch_x.append(torch.from_numpy(np.asarray(x_np)).float())
-            batch_dates.append(dates[i])
-
-            if len(batch_x) == self.batch_size or i == len(tsds) - 1:
-                bx = torch.stack(batch_x, dim=0).to(self.device)
-                bd = torch.zeros(bx.shape[0], dtype=torch.long, device=self.device)
-
-                with torch.no_grad():
-                    out = self.net(bx, f_ids, bd)  # 不需要 attn
-
-                if out.gate_weights:
-                    # gate_weights: List[num_layers] of [B, 2]
-                    gw = torch.stack(out.gate_weights, dim=0)  # [L, B, 2]
-                    tr = gw[:, :, 0].mean(dim=0).detach().cpu().numpy()  # [B]
-                    all_time_ratio.extend(tr.tolist())
-                    all_dates.extend(batch_dates)
-
-                batch_x.clear()
-                batch_dates.clear()
-
-        df = pd.DataFrame({"datetime": all_dates, "time_ratio": all_time_ratio})
+        df = pd.DataFrame({"datetime": date_arr[:pos], "time_ratio": all_tr[:pos]})
         gate_series = df.groupby("datetime")["time_ratio"].mean().sort_index()
         return gate_series
 
+    def _infer_time_ratio_batch(self, out) -> np.ndarray:
+        """
+        从 out.gate_weights 推导 time_ratio（时间专家权重），返回 shape [B]
+        约定：out.gate_weights = list[L] of [B, 2]
+        """
+        gw = getattr(out, "gate_weights", None)
+        if not gw:
+            return None
+        gw = torch.stack(gw, dim=0)          # [L, B, 2]
+        tr = gw[:, :, 0].mean(dim=0)         # [B]
+        return tr.detach().cpu().numpy()
+
+
     def _collect_attention_maps(
             self,
-            dataset: DatasetH,
+            dataset,
             segment: str = "test",
-            target_dates: list[str] | list[pd.Timestamp] | None = None,
+            target_dates=None,
             *,
             max_dates: int = 5,
             attn_layer: int = -1,
     ) -> dict[str, np.ndarray]:
         """
-        抽若干交易日, 提取最后一层 time-attention:
-        - 对该日所有样本组成一个 batch, 调用 return_attn=True
-        - 对 batch & heads 取平均, 得到 [T, T] 的时间注意力图
+        抽若干交易日提取 time-attention heatmap：
+        - 对每个 dt：取该日的若干样本（<=batch_size）
+        - return_attn=True + attn_layers 指定层
+        - 对 batch & heads 取平均 -> [T,T]
         """
         assert self.net is not None
 
         tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
-        idx = tsds.get_index()
-        date_series = pd.to_datetime(idx.get_level_values("datetime"))
-        unique_dates = date_series.drop_duplicates().sort_values()
+        date_arr = self._tsds_datetime_array(tsds)  # np.datetime64[ns], len = len(tsds)
+
+        # unique dates
+        unique_dates = pd.Index(date_arr).drop_duplicates().sort_values()
 
         if target_dates is None:
-            chosen_dates = list(unique_dates[-max_dates:])
+            chosen = unique_dates[-max_dates:].to_list()
         else:
-            chosen_dates = [pd.to_datetime(d) for d in target_dates]
-            if len(chosen_dates) > max_dates:
-                chosen_dates = chosen_dates[:max_dates]
+            chosen = [np.datetime64(pd.Timestamp(d).to_datetime64(), "ns") for d in target_dates]
+            if len(chosen) > max_dates:
+                chosen = chosen[:max_dates]
 
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
-        attn_maps: dict[str, np.ndarray] = {}
 
-        for dt in chosen_dates:
-            mask = (date_series == dt)
-            row_idx = np.where(mask.values)[0]
-            if len(row_idx) == 0:
+        # resolve layer index
+        layer_idx = attn_layer
+        if layer_idx < 0:
+            layer_idx = len(getattr(self.net, "layers", [])) - 1
+
+        attn_maps: dict[str, np.ndarray] = {}
+        self.net.eval()
+
+        for dt64 in chosen:
+            # 关键修复：mask 可能是 ndarray，不要用 mask.values
+            mask = (date_arr == np.datetime64(dt64, "ns"))
+            row_idx = np.flatnonzero(mask)  # <- robust
+
+            if row_idx.size == 0:
                 continue
 
+            # 采样该日最多 batch_size 个样本
             xs = []
-            for i in row_idx[: self.batch_size]:
+            take = row_idx[: self.batch_size]
+            for i in take:
                 raw_x, _ = self._extract_sample(tsds[int(i)])
                 x_np = self._as_numpy(raw_x)
                 xs.append(torch.from_numpy(np.asarray(x_np)).float())
 
-            bx = torch.stack(xs, dim=0).to(self.device)
+            bx = torch.stack(xs, dim=0).to(self.device)  # [B,T,F]
             bd = torch.zeros(bx.shape[0], dtype=torch.long, device=self.device)
-
-            layer_idx = attn_layer
-            if layer_idx < 0:
-                layer_idx = len(self.net.layers) - 1
 
             with torch.no_grad():
                 out = self.net(
@@ -627,19 +661,26 @@ class QlibQuantMoE(Model):
                     attn_layers=[layer_idx],
                 )
 
-            if not out.attn_maps:
+            attn_dict = getattr(out, "attn_maps", None)
+            if not attn_dict:
                 continue
 
             key = f"layer_{layer_idx}"
-            layer_attn = out.attn_maps.get(key, None)
-            if not layer_attn or "time" not in layer_attn:
+            layer_attn = attn_dict.get(key, None)
+            if not layer_attn or ("time" not in layer_attn):
                 continue
 
-            # layer_attn["time"]: [B*N, H, T, T] (见 moe_block 的约定)
-            time_attn = layer_attn["time"]  # Tensor
-            # 对 batch & heads 取平均 -> [T, T]
-            a = time_attn.mean(dim=0).mean(dim=0).detach().cpu().numpy()
-            attn_maps[dt.strftime("%Y-%m-%d")] = a
+            time_attn = layer_attn["time"]
+            # 期望：[..., H, T, T]，把 “样本维” 和 “head 维” 都平均掉 -> [T,T]
+            # 兼容两种常见 shape：
+            # 1) [B, H, T, T]
+            # 2) [B*N, H, T, T]
+            if time_attn.ndim != 4:
+                continue
+            a = time_attn.mean(dim=0).mean(dim=0).detach().cpu().numpy()  # [T,T]
+
+            dt_str = pd.Timestamp(dt64).strftime("%Y-%m-%d")
+            attn_maps[dt_str] = a
 
         return attn_maps
 
@@ -665,31 +706,34 @@ class QlibQuantMoE(Model):
         fig.tight_layout()
         return fig
 
+    # ---------------------------------------------------------------------
+    # Export visuals (raw objects + PNG artifacts)
+    # ---------------------------------------------------------------------
     def export_visuals(
-            self,
-            dataset: DatasetH,
-            segment: str = "test",
-            *,
-            max_attn_days: int = 4,
-            attn_layer: int = -1,
-            target_dates: list[str] | list[pd.Timestamp] | None = None,
-            prefix: str = "diagnostic",
+        self,
+        dataset,
+        segment: str = "test",
+        *,
+        max_attn_days: int = 4,
+        attn_layer: int = -1,
+        target_dates=None,
+        prefix: str = "diagnostic",
     ):
         """
-        在当前 Qlib Recorder 中导出:
-        1) gate time_ratio 日度序列 (Series + PNG)
-        2) 若干日期的 time-attention heatmap (dict + 多张 PNG)
+        在当前 Recorder 中导出：
+        1) gate_series (pd.Series) + gate png
+        2) attn_maps (dict[str,np.ndarray]) + attn pngs
         """
-        from qlib.workflow import R
-
         recorder = R.get_recorder()
         if recorder is None:
             print(">>> [Visual] No active recorder, skip export_visuals.")
             return
 
+        # 1) raw gate series
         print(f">>> [Visual] collecting gate series on segment='{segment}' ...")
         gate_series = self._collect_gate_series(dataset, segment=segment)
 
+        # 2) raw attention maps
         print(f">>> [Visual] collecting attention maps (max_days={max_attn_days}) ...")
         attn_maps = self._collect_attention_maps(
             dataset,
@@ -699,7 +743,7 @@ class QlibQuantMoE(Model):
             attn_layer=attn_layer,
         )
 
-        # 原始对象
+        # 3) save raw objects (pickle)
         try:
             recorder.save_objects(
                 **{
@@ -710,20 +754,40 @@ class QlibQuantMoE(Model):
         except Exception as e:
             print(f">>> [Visual] save_objects(raw) failed: {e}")
 
-        # gate 曲线图
+        # 4) save figures as PNG to local_dir (稳定、可读、可复现)
+        fig_paths = {}
+
+        # gate fig
         try:
             fig_gate = self._plot_gate_series(gate_series, title=f"Gate Time Ratio ({segment})")
-            recorder.save_objects(**{f"{prefix}_gate_series_fig": fig_gate})
+            p = self._save_fig_png(recorder, fig_gate, f"{prefix}_gate_series_{segment}")
+            fig_paths[f"{prefix}_gate_series_png"] = p
             plt.close(fig_gate)
         except Exception as e:
-            print(f">>> [Visual] save gate fig failed: {e}")
+            print(f">>> [Visual] save gate png failed: {e}")
 
-        # attention heatmaps
+        # attn figs
         try:
             for dt_str, attn in attn_maps.items():
                 fig_attn = self._plot_attention_map(attn, title=f"Time Attention ({dt_str})")
-                key = f"{prefix}_attn_{dt_str}"
-                recorder.save_objects(**{key: fig_attn})
+                p = self._save_fig_png(recorder, fig_attn, f"{prefix}_attn_{dt_str}")
+                fig_paths[f"{prefix}_attn_{dt_str}_png"] = p
                 plt.close(fig_attn)
         except Exception as e:
-            print(f">>> [Visual] save attn figs failed: {e}")
+            print(f">>> [Visual] save attn pngs failed: {e}")
+
+        # 5) save png paths (so report can reference them)
+        try:
+            recorder.save_objects(**{f"{prefix}_figure_paths": fig_paths})
+        except Exception as e:
+            print(f">>> [Visual] save_objects(fig_paths) failed: {e}")
+
+    def _save_fig_png(self, recorder, fig, name: str, dpi: int = 150) -> str:
+        """
+        将 matplotlib figure 保存为 PNG 到 recorder local_dir，并返回相对路径字符串。
+        """
+        local_dir = Path(recorder.get_local_dir())
+        local_dir.mkdir(parents=True, exist_ok=True)
+        out_path = local_dir / f"{name}.png"
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+        return str(out_path)
