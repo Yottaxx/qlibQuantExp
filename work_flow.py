@@ -45,7 +45,7 @@ data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 2,  # 时序窗口，对应模型 context_len
+        "step_len": 8,  # 时序窗口，对应模型 context_len
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
@@ -92,7 +92,7 @@ model_conf = {
         "model_config": {
             "d_model": 8,
             "n_layers": 2,
-            "use_feature_selection": False,
+            "use_feature_selection": True,
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
