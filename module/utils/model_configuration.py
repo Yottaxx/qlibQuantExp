@@ -101,3 +101,6 @@ class QuantModelOutput(ModelOutput):
     # 新增: 注意力图 (只在需要时填充)
     # 约定: { "layer_0": {"time": Tensor, "factor": Tensor}, ... }
     attn_maps: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+
+    # scores 用于predict
+    scores :  Optional[Tuple[torch.FloatTensor]] = None

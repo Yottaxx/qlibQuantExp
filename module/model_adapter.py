@@ -579,7 +579,7 @@ class QlibQuantMoE(Model):
                 bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
                 bd_t = torch.zeros(bx_t.shape[0], dtype=torch.long, device=self.device)
                 out = self.net(bx_t, f_ids, bd_t)
-                score = out.logits.mean(dim=1).detach().cpu().numpy()
+                score = out.scores.detach().cpu().numpy()
                 preds.append(score)
 
         pred = np.concatenate(preds, axis=0)

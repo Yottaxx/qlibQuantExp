@@ -225,4 +225,5 @@ class QuantMoEModel(PreTrainedModel):
             avg_time_ratio=avg_time_ratio,
             selected_mask=mask,
             attn_maps=attn_maps if return_attn else None,
+            scores=stock_score,
         )
