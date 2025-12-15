@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import textwrap
+import copy
 
 import qlib
 from qlib.constant import REG_CN
@@ -141,6 +142,48 @@ port_conf = {
 # =============================================================================
 # 4. 报告生成工具函数
 # =============================================================================
+def _as_float(x):
+    try:
+        return float(x)
+    except Exception:
+        return np.nan
+
+
+def _newey_west_tstat(x: pd.Series | np.ndarray, lags: int | None = None) -> Tuple[float, float, int]:
+    """
+    Newey–West (HAC) t-stat for mean.
+
+    Returns
+    -------
+    (t_stat, se_mean, lags_used)
+    """
+    arr = np.asarray(x, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    n = int(arr.size)
+    if n < 3:
+        return np.nan, np.nan, int(lags or 0)
+
+    if lags is None:
+        # Common automatic choice: floor(4*(n/100)^(2/9))
+        lags = int(np.floor(4.0 * (n / 100.0) ** (2.0 / 9.0)))
+    lags = int(max(0, min(lags, n - 2)))
+
+    mu = float(arr.mean())
+    u = arr - mu
+
+    gamma0 = float(np.dot(u, u) / n)
+    lrv = gamma0
+    for k in range(1, lags + 1):
+        w = 1.0 - k / (lags + 1.0)  # Bartlett
+        gamma_k = float(np.dot(u[k:], u[:-k]) / n)
+        lrv += 2.0 * w * gamma_k
+
+    lrv = max(lrv, 1e-12)
+    se_mean = float(np.sqrt(lrv / n))
+    t_stat = float(mu / se_mean) if se_mean > 0 else np.nan
+    return t_stat, se_mean, lags
+
+
 def _safe_get_perf_value(perf: pd.DataFrame, key_candidates):
     """
     从 indicator_analysis_1day.pkl 中兼容性地取出指标值。
@@ -235,7 +278,264 @@ def _load_train_curves(rec):
     return df_tc, train_summary_lines, (fig_name if fig_path.exists() else None)
 
 
-def generate_paper_report(rec, model_name: str = "RST-MoE"):
+def _load_run_conf(rec) -> Dict:
+    """
+    Load run configuration saved during training. Fallback to current module globals.
+    """
+    try:
+        conf = rec.load_object("run_conf")
+        if isinstance(conf, dict) and conf:
+            return conf
+    except Exception:
+        pass
+    return {"data_conf": data_conf, "model_conf": model_conf, "port_conf": port_conf}
+
+
+def _try_prepare_label_df(dataset: Optional[TSDatasetH], segment: str) -> Optional[pd.DataFrame]:
+    if dataset is None:
+        return None
+    for kwargs in (
+        {"segment": segment, "col_set": "label"},
+        {"segment": segment, "col_set": ["label"]},
+    ):
+        try:
+            df = dataset.prepare(**kwargs)
+            if isinstance(df, pd.DataFrame) and df.shape[1] >= 1:
+                df = df.copy()
+                df.columns = ["label"]
+                return df
+        except Exception:
+            continue
+    return None
+
+
+def _save_new_figures(
+    *,
+    local_dir: Path,
+    prefix: str,
+    draw_fn,
+    dpi: int = 150,
+) -> List[str]:
+    before = set(plt.get_fignums())
+    draw_fn()
+    after = set(plt.get_fignums())
+    new_nums = sorted(after - before)
+    out: List[str] = []
+    for i, num in enumerate(new_nums):
+        fig = plt.figure(num)
+        fn = f"{prefix}.png" if len(new_nums) == 1 else f"{prefix}_{i+1}.png"
+        fig.savefig(local_dir / fn, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        out.append(fn)
+    return out
+
+
+def export_qlib_official_graphs(
+    rec,
+    *,
+    dataset: Optional[TSDatasetH] = None,
+    segment: str = "test",
+    prefix: str = "qlib",
+    strict: bool = True,
+) -> Dict[str, List[str]]:
+    """
+    Generate and save Qlib official analysis graphs into recorder local_dir.
+
+    Graphs (if inputs exist):
+    - analysis_position.report_graph
+    - analysis_position.risk_analysis_graph
+    - analysis_position.score_ic_graph
+    - analysis_model.model_performance_graph
+    """
+    try:
+        import qlib.contrib.report as qcr
+    except Exception as e:
+        if strict:
+            raise RuntimeError(f"Failed to import qlib.contrib.report: {e}") from e
+        return {}
+    import inspect
+
+    local_dir: Path = rec.get_local_dir()
+    out: Dict[str, List[str]] = {}
+
+    # Inputs from recorder (created by PortAnaRecord / SignalRecord)
+    report_normal_df = None
+    analysis_df = None
+    try:
+        report_normal_df = rec.load_object("portfolio_analysis/report_normal_1day.pkl")
+    except Exception:
+        report_normal_df = None
+    try:
+        analysis_df = rec.load_object("portfolio_analysis/port_analysis_1day.pkl")
+    except Exception:
+        analysis_df = None
+
+    pred_df = None
+    try:
+        pred_df = rec.load_object("pred.pkl")
+    except Exception:
+        pred_df = None
+
+    label_df = _try_prepare_label_df(dataset, segment)
+    if label_df is None:
+        # fallback: some workflows may save label as an object
+        for key in ("label.pkl", "label_df.pkl"):
+            try:
+                label_df = rec.load_object(key)
+                if isinstance(label_df, pd.DataFrame) and label_df.shape[1] >= 1:
+                    label_df = label_df.copy()
+                    label_df.columns = ["label"]
+                    break
+            except Exception:
+                continue
+
+    pred_label = None
+    if isinstance(label_df, pd.DataFrame) and isinstance(pred_df, pd.DataFrame):
+        pred_label = pd.concat([label_df, pred_df], axis=1, sort=True).reindex(label_df.index)
+
+    positions = None
+    try:
+        positions = rec.load_object("portfolio_analysis/positions_normal_1day.pkl")
+    except Exception:
+        positions = None
+
+    available = {
+        "report_normal_df": report_normal_df,
+        "analysis_df": analysis_df,
+        "pred_label": pred_label,
+        "positions": positions,
+    }
+
+    def _auto_call(fn):
+        sig = inspect.signature(fn)
+        kwargs = {}
+        for name, p in sig.parameters.items():
+            if name in available and available[name] is not None:
+                kwargs[name] = available[name]
+            elif p.default is inspect._empty and p.kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            ):
+                raise TypeError(f"Missing required arg: {name}")
+        return fn(**kwargs)
+
+    def _resolve_graph_fn(graph_name: str):
+        # e.g. "analysis_position.report_graph"
+        obj = qcr
+        for part in graph_name.split("."):
+            obj = getattr(obj, part)
+        return obj
+
+    graph_names = []
+    try:
+        graph_names = list(getattr(qcr, "GRAPH_NAME_LIST"))
+    except Exception:
+        graph_names = []
+
+    # Fall back to documented list if GRAPH_NAME_LIST is missing in this qlib version.
+    if not graph_names:
+        graph_names = [
+            "analysis_position.report_graph",
+            "analysis_position.score_ic_graph",
+            "analysis_position.cumulative_return_graph",
+            "analysis_position.risk_analysis_graph",
+            "analysis_position.rank_label_graph",
+            "analysis_model.model_performance_graph",
+        ]
+
+    required_inputs = {
+        "report_normal_df": report_normal_df,
+        "analysis_df": analysis_df,
+        "positions": positions,
+        "pred_df": pred_df,
+        "label_df": label_df,
+        "pred_label": pred_label,
+        "dataset": dataset,
+    }
+
+    missing = [k for k, v in required_inputs.items() if v is None]
+    if missing:
+        raise RuntimeError(
+            "Missing required inputs for Qlib official graphs: "
+            + ", ".join(missing)
+            + ". Ensure SignalRecord/SigAnaRecord/PortAnaRecord have run and pass dataset into generate_paper_report()."
+        )
+
+    for gname in graph_names:
+        fn = _resolve_graph_fn(gname)
+        file_prefix = f"{prefix}_{gname.replace('.', '_')}"
+        fns = _save_new_figures(
+            local_dir=local_dir,
+            prefix=file_prefix,
+            draw_fn=lambda fn=fn: _auto_call(fn),
+        )
+        if not fns:
+            raise RuntimeError(f"Qlib graph '{gname}' produced no matplotlib figures.")
+        out[gname] = fns
+
+    if out:
+        try:
+            rec.save_objects(qlib_official_graphs=out)
+        except Exception:
+            pass
+    return out
+
+
+def _format_setup_from_conf(run_conf: Dict) -> str:
+    dc = (run_conf or {}).get("data_conf", {}) or {}
+    mc = (run_conf or {}).get("model_conf", {}) or {}
+    pc = (run_conf or {}).get("port_conf", {}) or {}
+
+    # data
+    handler_kwargs = (((dc.get("kwargs") or {}).get("handler") or {}).get("kwargs") or {})
+    segments = (dc.get("kwargs") or {}).get("segments", {}) or {}
+    label_expr = handler_kwargs.get("label", None)
+    instruments = handler_kwargs.get("instruments", None)
+
+    # model/trainer
+    mk = (mc.get("kwargs") or {})
+    model_k = mk.get("model_config", {}) or {}
+    trainer_k = mk.get("trainer_config", {}) or {}
+
+    # backtest
+    strat_k = ((pc.get("strategy") or {}).get("kwargs") or {})
+    bt_k = (pc.get("backtest") or {}) or {}
+    ex_k = (bt_k.get("exchange_kwargs") or {}) or {}
+
+    def _seg(name: str):
+        v = segments.get(name, None)
+        return f"{v[0]} ~ {v[1]}" if isinstance(v, (tuple, list)) and len(v) == 2 else str(v)
+
+    setup_txt = f"""
+    - **Data**:
+      - Handler: {((dc.get("kwargs") or {}).get("handler") or {}).get("class", "N/A")}
+      - Instruments: {instruments}
+      - Train: {_seg("train")}
+      - Valid: {_seg("valid")}
+      - Test: {_seg("test")}
+    - **Label**: {label_expr}
+    - **Model**:
+      - class: {mc.get("class")}
+      - d_model={model_k.get("d_model")}, n_layers={model_k.get("n_layers")}, n_heads={model_k.get("n_heads")}
+      - use_feature_selection={model_k.get("use_feature_selection")}
+      - use_alibi={model_k.get("use_alibi")}
+    - **Training**:
+      - lr={trainer_k.get("lr")}, epochs={trainer_k.get("n_epochs")}, batch_size={trainer_k.get("batch_size")}
+      - seed={trainer_k.get("seed", None)}
+    - **Backtest**:
+      - strategy: {((pc.get("strategy") or {}).get("class"))}, topk={strat_k.get("topk")}, n_drop={strat_k.get("n_drop")}
+      - benchmark={bt_k.get("benchmark")}, deal_price={ex_k.get("deal_price")}, cost(open/close)={ex_k.get("open_cost")}/{ex_k.get("close_cost")}
+    """
+    return textwrap.dedent(setup_txt).strip()
+
+
+def generate_paper_report(
+    rec,
+    model_name: str = "RST-MoE",
+    *,
+    dataset: Optional[TSDatasetH] = None,
+    segment: str = "test",
+):
     """
     汇总当前 Recorder 中的：
       - 训练过程诊断：ListMLE 收敛 vs RankIC
@@ -247,6 +547,8 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     """
     local_dir: Path = rec.get_local_dir()
     report_path = local_dir / "kdd_report.md"
+
+    run_conf = _load_run_conf(rec)
 
     # ---------- 1. Signal 层指标 ----------
     sar = SigAnaRecord(rec)
@@ -266,9 +568,9 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     icir = ic_mean / ic_std if ic_std > 0 else np.nan
     ricir = ric_mean / ric_std if ric_std > 0 else np.nan
 
-    # t-stat 作为统计显著性
-    ic_t = ic_mean / ic_std * np.sqrt(len(ic)) if ic_std > 0 and len(ic) > 1 else np.nan
-    ric_t = ric_mean / ric_std * np.sqrt(len(ric)) if ric_std > 0 and len(ric) > 1 else np.nan
+    # HAC t-stat (Newey–West) for mean significance under autocorrelation/heteroskedasticity
+    ic_t_hac, _, ic_lags = _newey_west_tstat(ic)
+    ric_t_hac, _, ric_lags = _newey_west_tstat(ric)
 
     # ---------- 2. 组合回测指标 ----------
     ann_ret = info_ratio = max_dd = turnover = np.nan
@@ -302,6 +604,31 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
             turnover = metrics.get("excess_return_with_cost.turnover", np.nan)
     except Exception as e:
         print(f"[Report] Failed to load backtest indicators: {e}")
+
+    # Save a compact summary for later aggregation (e.g., ablation sweeps)
+    try:
+        rec.save_objects(
+            run_summary={
+                "ic_mean": _as_float(ic_mean),
+                "ic_std": _as_float(ic_std),
+                "icir": _as_float(icir),
+                "ic_hac_t": _as_float(ic_t_hac),
+                "ic_hac_lags": int(ic_lags),
+                "ric_mean": _as_float(ric_mean),
+                "ric_std": _as_float(ric_std),
+                "ricir": _as_float(ricir),
+                "ric_hac_t": _as_float(ric_t_hac),
+                "ric_hac_lags": int(ric_lags),
+                "ann_ret": _as_float(ann_ret),
+                "info_ratio": _as_float(info_ratio),
+                "max_dd": _as_float(max_dd),
+                "turnover": _as_float(turnover),
+                "n_ic_days": int(len(ic)) if ic is not None else 0,
+                "n_ric_days": int(len(ric)) if ric is not None else 0,
+            }
+        )
+    except Exception:
+        pass
 
     # ---------- 3. gate & attention 诊断 ----------
     gate_series = None
@@ -416,6 +743,9 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     # ---------- 4. 训练过程诊断（ListMLE vs RankIC） ----------
     df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec)
 
+    # ---------- 4.5 Qlib 官方分析图（必须生成，缺输入直接报错） ----------
+    qlib_graphs = export_qlib_official_graphs(rec, dataset=dataset, segment=segment, prefix="qlib", strict=True)
+
     # ---------- 5. 汇总成表格（方便 VS baseline 比较） ----------
     df_res = pd.DataFrame(
         [
@@ -424,9 +754,10 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
                 "Dataset": "Alpha158 / CSI300 / 2008-2020 (official split)",
                 "IC (mean)": f"{ic_mean:.4f}",
                 "ICIR": f"{icir:.2f}",
-                "IC t-stat": f"{ic_t:.1f}",
+                "IC HAC t-stat": f"{ic_t_hac:.1f}" if pd.notna(ic_t_hac) else "nan",
                 "RankIC (mean)": f"{ric_mean:.4f}",
                 "RankIC IR": f"{ricir:.2f}",
+                "RankIC HAC t-stat": f"{ric_t_hac:.1f}" if pd.notna(ric_t_hac) else "nan",
                 "Ann. Return": f"{ann_ret:.2%}" if pd.notna(ann_ret) else "nan",
                 "Info Ratio": f"{info_ratio:.2f}" if pd.notna(info_ratio) else "nan",
                 "Max Drawdown": f"{max_dd:.2%}" if pd.notna(max_dd) else "nan",
@@ -440,31 +771,15 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     lines: List[str] = []
     lines.append(f"# {model_name} on Alpha158 / CSI300\n")
     lines.append("## 1. Experimental Setup\n")
-    setup_txt = f"""
-    - **Data**: Alpha158 factors, CSI300 constituents
-      - Train: 2008-01-01 ~ 2014-12-31
-      - Valid: 2015-01-01 ~ 2016-12-31
-      - Test: 2017-01-01 ~ 2020-08-01
-    - **Label**: next-day return `Ref($close, -1) / $close - 1` (经过 CSRankNorm → rank-label)
-    - **Model**: RST-MoE (Regime-aware Spatio-Temporal Mixture-of-Experts)
-      - d_model = 32, n_layers = 2
-      - Feature selector: differentiable sparse gate over Alpha158 factors
-      - Router: regime encoder → 2-way (time vs. cross-sectional) MoE
-      - Attention: bidirectional ALiBi in time & cross-section
-    - **Backtest**:
-      - Strategy: TopkDropout, topk=50, n_drop=5
-      - Benchmark: SH000300, daily frequency, close price execution
-      - Transaction cost: open 5bp, close 15bp, limit_threshold=9.5%
-    """
-    lines.append(textwrap.dedent(setup_txt).strip() + "\n")
+    lines.append(_format_setup_from_conf(run_conf) + "\n")
 
     lines.append("## 2. Cross-sectional Forecasting Performance\n")
     perf_txt = f"""
     - **IC (test)**:
-      - mean = {ic_mean:.4f}, std = {ic_std:.4f}, ICIR = {icir:.2f}, t-stat = {ic_t:.1f}
+      - mean = {ic_mean:.4f}, std = {ic_std:.4f}, ICIR = {icir:.2f}, HAC t-stat = {ic_t_hac:.1f} (lags={int(ic_lags)})
     - **RankIC (test)**:
-      - mean = {ric_mean:.4f}, std = {ric_std:.4f}, IR = {ricir:.2f}, t-stat = {ric_t:.1f}
-    - 统计上，IC t-stat ≫ 2 一般被认为在日频具有显著 alpha 能力。
+      - mean = {ric_mean:.4f}, std = {ric_std:.4f}, IR = {ricir:.2f}, HAC t-stat = {ric_t_hac:.1f} (lags={int(ric_lags)})
+    - 注：采用 Newey–West(HAC) t-stat 以处理日度序列的自相关/异方差。
     """
     lines.append(textwrap.dedent(perf_txt).strip() + "\n")
 
@@ -488,11 +803,26 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     - 信息比 (Information Ratio): {info_ratio:.2f}
     - 最大回撤: {max_dd:.2%}
     - 成交换手率 (Turnover): {turnover:.2%}
-    - 与 Qlib 官方基准可对照：
-      - LightGBM: RankIC ≈ 0.08, Ann. Ret ≈ 20%, Max DD ≈ -10%
-      - Linear:   RankIC ≈ 0.05, Ann. Ret ≈ 8%,  Max DD ≈ -15%
     """
     lines.append(textwrap.dedent(bt_txt).strip() + "\n")
+
+    if isinstance(qlib_graphs, dict) and qlib_graphs:
+        lines.append("## 3.3 Qlib Official Graphs\n")
+        lines.append("使用 Qlib 官方 report 模块生成的图表：\n")
+        preferred = [
+            "analysis_position.report_graph",
+            "analysis_position.risk_analysis_graph",
+            "analysis_position.score_ic_graph",
+            "analysis_model.model_performance_graph",
+        ]
+        ordered = preferred + sorted([k for k in qlib_graphs.keys() if k not in set(preferred)])
+        for k in ordered:
+            fns = qlib_graphs.get(k, None)
+            if not fns:
+                continue
+            lines.append(f"### {k}\n")
+            for fn in fns:
+                lines.append(f"![{k}]({fn})\n")
 
     lines.append("## 4. Spatio-Temporal Disentanglement Diagnostics\n")
     lines.append("### 4.1 Router Gate over Time (time vs. cross-sectional experts)\n")
@@ -577,6 +907,14 @@ if __name__ == "__main__":
     with R.start(experiment_name="Official_Alignment_RST_MoE"):
         # 2.1 记录超参
         R.log_params(**flatten_dict(model_conf))
+        # 2.1.1 Save full run configuration for report reproducibility
+        R.save_objects(
+            run_conf={
+                "data_conf": copy.deepcopy(data_conf),
+                "model_conf": copy.deepcopy(model_conf),
+                "port_conf": copy.deepcopy(port_conf),
+            }
+        )
 
         # 2.2 训练
         print(">>> [Phase 1] Training Model...")
@@ -606,4 +944,4 @@ if __name__ == "__main__":
 
         # 2.6 生成论文级报告
         print(">>> [Phase 4] Generate Paper-level Report...")
-        generate_paper_report(rec, model_name="RST-MoE")
+        generate_paper_report(rec, model_name="RST-MoE", dataset=dataset, segment="test")
