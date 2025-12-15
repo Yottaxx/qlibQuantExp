@@ -9,6 +9,7 @@ from module.utils.losses import QuantLossFunctions
 from module.utils.model_configuration import QuantMoEConfig, QuantModelOutput
 from module.architecture.moe_block import RegimeAdaptiveMoEBlock
 from module.architecture.regime_encoder import RegimeContextEncoder
+from module.architecture.attention_pooling import AdaptivePooling
 from module.utils.utils import build_bidirectional_alibi_bias
 
 
@@ -53,9 +54,19 @@ class QuantMoEModel(PreTrainedModel):
         self.layers = nn.ModuleList([RegimeAdaptiveMoEBlock(config) for _ in range(config.n_layers)])
         self.final_norm = nn.LayerNorm(d_model)
 
-        # 5) 因子 head，最后对因子取均值得到股票打分
+        # 5) Attention-based pooling for factor aggregation
+        # 使用自适应 attention pooling 替代简单的 softmax pooling
+        # 结合 attention 和 mean pooling，提供更稳健的因子聚合
+        self.factor_pooling = AdaptivePooling(
+            d_model=d_model,
+            n_heads=1,
+            dropout=config.dropout,
+            alpha=config.pooling_alpha,
+        )
+        
+        # 6) Stock score head
         self.head = nn.Linear(d_model, 1)
-        self.pool_proj= nn.Linear(d_model, 1)
+        
         # HF 标准初始化
         self.post_init()
 
@@ -63,7 +74,6 @@ class QuantMoEModel(PreTrainedModel):
         self,
         x: torch.Tensor,
         factor_ids: torch.Tensor,
-        date_ids: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         macro_features: torch.Tensor | None = None,
         *,
@@ -75,6 +85,12 @@ class QuantMoEModel(PreTrainedModel):
             x: [B, T, N]  (时间窗口 × 因子)
             factor_ids: [N] long
             labels: [B] (一个样本一个 label; 已是 CSRankNorm 后的值)
+            macro_features: [B, d_macro] optional external macro features
+            
+        Note:
+            Regime signal is computed from internal statistics of x (via RegimeContextEncoder),
+            not from external date IDs. This allows the model to adaptively learn market regimes
+            from factor patterns rather than relying on calendar dates.
         """
         device = x.device
         B, T, N = x.shape
@@ -134,22 +150,23 @@ class QuantMoEModel(PreTrainedModel):
 
         h = self.final_norm(h)
 
-        # 6) 因子预测 & 股票打分
+        # 6) Factor aggregation & stock scoring
+        # 使用最后一时间步的因子表示 [B, N, D]
         h_last = h[:, -1, :, :]  # [B, N, D]
-        # factor_logits = self.head(h_last).squeeze(-1)  # [B, N]
-        # stock_score = factor_logits.mean(dim=1)        # [B]
-
-        factor_logits = torch.softmax(self.pool_proj(h_last).squeeze(-1), dim=1)  # [B, N]
-        h_pool = (h_last * factor_logits.unsqueeze(-1)).sum(dim=1)  # [B, D]
-        stock_score = self.head(h_pool).squeeze(-1)  # [B]
+        
+        # Attention-based pooling: 自适应加权聚合因子表示
+        h_pooled, factor_attention_weights = self.factor_pooling(h_last)  # [B, D], [B, N]
+        
+        # Stock score prediction
+        stock_score = self.head(h_pooled).squeeze(-1)  # [B]
+        
+        # factor_attention_weights 用于返回（可用于可解释性分析）
+        factor_logits = factor_attention_weights  # [B, N]
 
         # 7) Loss & metrics
         total_loss: torch.Tensor | None = None
         metrics: dict[str, float] = {}
         valid_ratio = 0.0
-
-        print("factor_logits std:", factor_logits.std().item(),
-              "stock_score std:", stock_score.std().item())
 
         if labels is not None:
             labels = labels.squeeze()

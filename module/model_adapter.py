@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Text, Tuple, Union
 
 import numpy as np
@@ -336,13 +337,12 @@ class QlibQuantMoE(Model):
                 bx_t = bx_t[valid]
                 by_t = by_t[valid]
 
-            bd_t = torch.zeros(bx_t.shape[0], dtype=torch.long, device=self.device)  # date_ids placeholder
-
             if train and optimizer is not None:
                 optimizer.zero_grad(set_to_none=True)
 
             with torch.set_grad_enabled(train):
-                out = self.net(bx_t, f_ids, bd_t, labels=by_t)
+                # Note: date_ids removed - regime signal is computed from internal statistics
+                out = self.net(bx_t, f_ids, labels=by_t)
                 loss = getattr(out, "loss", None)
 
                 if train and optimizer is not None and loss is not None:
@@ -577,8 +577,8 @@ class QlibQuantMoE(Model):
         with torch.no_grad():
             for bx in loader:
                 bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
-                bd_t = torch.zeros(bx_t.shape[0], dtype=torch.long, device=self.device)
-                out = self.net(bx_t, f_ids, bd_t)
+                # Note: date_ids removed - regime signal is computed from internal statistics
+                out = self.net(bx_t, f_ids)
                 score = out.scores.detach().cpu().numpy()
                 preds.append(score)
 
@@ -623,10 +623,10 @@ class QlibQuantMoE(Model):
 
             if len(batch_x) == self.batch_size or i == len(tsds) - 1:
                 bx = torch.stack(batch_x, dim=0).to(self.device)
-                bd = torch.zeros(bx.shape[0], dtype=torch.long, device=self.device)
-
+                
                 with torch.no_grad():
-                    out = self.net(bx, f_ids, bd)
+                    # Note: date_ids removed - regime signal is computed from internal statistics
+                    out = self.net(bx, f_ids)
 
                 if out.gate_weights:
                     # gate_weights: List[num_layers] of [B, 2]
@@ -653,28 +653,118 @@ class QlibQuantMoE(Model):
         *,
         max_dates: int = 5,
         attn_layer: int = -1,
-    ) -> Dict[str, np.ndarray]:
+        factor_use_last_time: bool = True,
+    ) -> Dict[str, Dict[str, np.ndarray]]:
         """
-        抽若干交易日, 提取最后一层 time-attention:
-        - 对该日所有样本组成一个 batch, 调用 return_attn=True
-        - 对 batch & heads 取平均, 得到 [T,T] 的时间注意力图
+        抽若干交易日, 提取最后一层 attention maps（time & factor）:
+
+        Returns
+        -------
+        Dict[date_str, Dict[str, np.ndarray]]
+            - date_str: "YYYY-MM-DD"
+            - "time":   [T, T]  (avg over batch × factor × heads)
+            - "factor": [N, N]  (avg over batch × heads, default uses last time step of window)
+
+        Notes
+        -----
+        - time expert attention is computed on shape [B*N, H, T, T] (or compatible variants)
+        - factor expert attention is computed on shape [B*T, H, N, N] (or compatible variants)
         """
-        assert self.net is not None
+        tsds = dataset.prepare(segment, col_set=["feature", "label"])
+        if not hasattr(tsds, "data"):
+            return {}
 
-        tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
-        idx = tsds.get_index()
-        date_series = pd.to_datetime(idx.get_level_values("datetime"))
-        unique_dates = date_series.drop_duplicates().sort_values()
+        # 1) choose dates
+        try:
+            idx_df = tsds.data.index.to_frame(index=False)
+            date_series = pd.to_datetime(idx_df["datetime"])
+        except Exception:
+            # fallback: cannot resolve date index
+            return {}
 
-        if target_dates is None:
-            chosen_dates = list(unique_dates[-max_dates:])
+        if target_dates:
+            chosen_dates = []
+            for d in target_dates:
+                d = pd.to_datetime(d)
+                chosen_dates.append(d.normalize())
         else:
-            chosen_dates = [pd.to_datetime(d) for d in target_dates]
-            if len(chosen_dates) > max_dates:
-                chosen_dates = chosen_dates[:max_dates]
+            chosen_dates = sorted(date_series.unique())
 
-        f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
-        attn_maps: Dict[str, np.ndarray] = {}
+        if not chosen_dates:
+            return {}
+
+        if max_dates is not None and max_dates > 0:
+            chosen_dates = chosen_dates[-max_dates:]
+
+        # 2) prepare factor ids
+        num_alphas = int(self.model_config["num_alphas"])
+        f_ids = torch.arange(num_alphas, device=self.device)
+
+        def _reduce_time_attn(time_attn: torch.Tensor, *, B: int, T: int, N: int) -> np.ndarray:
+            """Return [T,T]."""
+            if time_attn is None:
+                raise ValueError("time_attn is None")
+            a = time_attn
+            # [BN, H, T, T] or [B, H, T, T]
+            if a.dim() == 4:
+                bn, H, t1, t2 = a.shape
+                if bn == B * N:
+                    a = a.view(B, N, H, t1, t2).mean(dim=(0, 1, 2))
+                elif bn == B:
+                    a = a.mean(dim=(0, 1))
+                else:
+                    a = a.mean(dim=0).mean(dim=0)
+            # [BN, T, T] or [B, T, T]
+            elif a.dim() == 3:
+                bn, t1, t2 = a.shape
+                if bn == B * N:
+                    a = a.view(B, N, t1, t2).mean(dim=(0, 1))
+                elif bn == B:
+                    a = a.mean(dim=0)
+                else:
+                    a = a.mean(dim=0)
+            else:
+                raise ValueError(f"Unexpected time_attn ndim={a.dim()}")
+            return a.detach().cpu().numpy()
+
+        def _reduce_factor_attn(factor_attn: torch.Tensor, *, B: int, T: int, N: int, use_last_time: bool) -> np.ndarray:
+            """Return [N,N]."""
+            if factor_attn is None:
+                raise ValueError("factor_attn is None")
+            a = factor_attn
+            # [B*T, H, N, N] or [B, H, N, N]
+            if a.dim() == 4:
+                bth, H, n1, n2 = a.shape
+                if bth == B * T:
+                    a = a.view(B, T, H, n1, n2)
+                    if use_last_time:
+                        a = a[:, -1]  # [B, H, N, N]
+                        a = a.mean(dim=(0, 1))
+                    else:
+                        a = a.mean(dim=(0, 1, 2))
+                elif bth == B:
+                    a = a.mean(dim=(0, 1))
+                else:
+                    a = a.mean(dim=0).mean(dim=0)
+            # [B*T, N, N] or [B, N, N]
+            elif a.dim() == 3:
+                bth, n1, n2 = a.shape
+                if bth == B * T:
+                    a = a.view(B, T, n1, n2)
+                    if use_last_time:
+                        a = a[:, -1].mean(dim=0)
+                    else:
+                        a = a.mean(dim=(0, 1))
+                elif bth == B:
+                    a = a.mean(dim=0)
+                else:
+                    a = a.mean(dim=0)
+            else:
+                raise ValueError(f"Unexpected factor_attn ndim={a.dim()}")
+            return a.detach().cpu().numpy()
+
+        # 3) collect
+        attn_maps: Dict[str, Dict[str, np.ndarray]] = {}
 
         for dt in chosen_dates:
             mask = date_series == dt
@@ -688,33 +778,48 @@ class QlibQuantMoE(Model):
                 x_np = self._as_numpy(raw_x)
                 xs.append(torch.from_numpy(np.asarray(x_np)).float())
 
-            bx = torch.stack(xs, dim=0).to(self.device)
-            bd = torch.zeros(bx.shape[0], dtype=torch.long, device=self.device)
+            if not xs:
+                continue
 
-            layer_idx = attn_layer
-            if layer_idx < 0:
-                layer_idx = len(self.net.layers) - 1
+            bx = torch.stack(xs, dim=0).to(self.device)  # [B, T, N]
+            B = int(bx.shape[0])
+            T = int(bx.shape[1])
+
+            layer_idx = attn_layer if attn_layer >= 0 else (len(self.net.layers) - 1)
 
             with torch.no_grad():
+                # Note: date_ids removed - regime signal is computed from internal statistics
                 out = self.net(
                     bx,
                     f_ids,
-                    bd,
                     return_attn=True,
                     attn_layers=[layer_idx],
                 )
 
-            if not out.attn_maps:
+            if not getattr(out, "attn_maps", None):
                 continue
 
             key = f"layer_{layer_idx}"
             layer_attn = out.attn_maps.get(key, None)
-            if not layer_attn or "time" not in layer_attn:
+            if not isinstance(layer_attn, dict) or len(layer_attn) == 0:
                 continue
 
-            time_attn = layer_attn["time"]  # [B*N, H, T, T] or [B,H,T,T] depending on impl
-            a = time_attn.mean(dim=0).mean(dim=0).detach().cpu().numpy()  # [T,T]
-            attn_maps[dt.strftime("%Y-%m-%d")] = a
+            maps_one: Dict[str, np.ndarray] = {}
+            if "time" in layer_attn and layer_attn["time"] is not None:
+                try:
+                    maps_one["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=num_alphas)
+                except Exception:
+                    pass
+            if "factor" in layer_attn and layer_attn["factor"] is not None:
+                try:
+                    maps_one["factor"] = _reduce_factor_attn(
+                        layer_attn["factor"], B=B, T=T, N=num_alphas, use_last_time=factor_use_last_time
+                    )
+                except Exception:
+                    pass
+
+            if maps_one:
+                attn_maps[dt.strftime("%Y-%m-%d")] = maps_one
 
         return attn_maps
 
@@ -730,12 +835,19 @@ class QlibQuantMoE(Model):
         return fig
 
     @staticmethod
-    def _plot_attention_map(attn: np.ndarray, title: str = "Time Attention"):
-        fig, ax = plt.subplots(figsize=(4, 4))
+    def _plot_attention_map(
+        attn: np.ndarray,
+        *,
+        title: str,
+        x_label: str,
+        y_label: str,
+        figsize: Tuple[float, float] = (4, 4),
+    ):
+        fig, ax = plt.subplots(figsize=figsize)
         im = ax.imshow(attn, aspect="auto")
         ax.set_title(title)
-        ax.set_xlabel("time (j)")
-        ax.set_ylabel("time (i)")
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         fig.tight_layout()
         return fig
@@ -749,34 +861,39 @@ class QlibQuantMoE(Model):
         attn_layer: int = -1,
         target_dates: List[Union[str, pd.Timestamp]] | None = None,
         prefix: str = "st_disentangle",
+        factor_use_last_time: bool = True,
+        save_png: bool = True,
     ):
         """
         在当前 Qlib Recorder 中导出:
-        1) gate time_ratio 日度序列 (Series + PNG)
-        2) 若干日期的 time-attention heatmap (dict + 多张 PNG)
+        1) gate time_ratio 日度序列 (Series + Fig + optional PNG)
+        2) 若干日期的 attention heatmaps (raw dict + figs + optional PNGs)
 
-        prefix 需与 workflow 中 generate_paper_report 使用的 key 对齐：
-        - gate_series:   f"{prefix}_gate_series"
-        - attn_maps:     f"{prefix}_attn_maps"
+        - raw attention stored as:   f"{prefix}_attn_maps"
+          format: {date_str: {"time": [T,T], "factor": [N,N]}}
+        - optional PNG filenames stored as: f"{prefix}_attn_pngs"
+          format: {date_str: {"time": "...png", "factor": "...png"}}
         """
         recorder = R.get_recorder()
-        if recorder is None:
-            print(">>> [Visual] No active recorder, skip export_visuals.")
-            return
+        local_dir = None
+        if save_png:
+            try:
+                local_dir = Path(recorder.get_local_dir())
+                local_dir.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                local_dir = None
 
-        print(f">>> [Visual] collecting gate series on segment='{segment}' ...")
         gate_series = self._collect_gate_series(dataset, segment=segment)
-
-        print(f">>> [Visual] collecting attention maps (max_days={max_attn_days}) ...")
         attn_maps = self._collect_attention_maps(
             dataset,
             segment=segment,
             target_dates=target_dates,
             max_dates=max_attn_days,
             attn_layer=attn_layer,
+            factor_use_last_time=factor_use_last_time,
         )
 
-        # 原始对象 (供后续统计分析使用)
+        # save raw objects first (so report can still work even if fig saving fails)
         try:
             recorder.save_objects(
                 **{
@@ -787,20 +904,66 @@ class QlibQuantMoE(Model):
         except Exception as e:
             print(f">>> [Visual] save_objects(raw) failed: {e}")
 
-        # gate 曲线图
+        # gate curve: fig + png
         try:
             fig_gate = self._plot_gate_series(gate_series, title=f"Gate Time Ratio ({segment})")
             recorder.save_objects(**{f"{prefix}_gate_series_fig": fig_gate})
+            if local_dir is not None:
+                gate_png = f"{prefix}_gate_series_{segment}.png"
+                fig_gate.savefig(local_dir / gate_png, dpi=150, bbox_inches="tight")
+                recorder.save_objects(**{f"{prefix}_gate_png": gate_png})
             plt.close(fig_gate)
         except Exception as e:
             print(f">>> [Visual] save gate fig failed: {e}")
 
-        # attention heatmaps
+        # attention heatmaps: figs + pngs
+        attn_pngs: Dict[str, Dict[str, str]] = {}
         try:
-            for dt_str, attn in attn_maps.items():
-                fig_attn = self._plot_attention_map(attn, title=f"Time Attention ({dt_str})")
-                key = f"{prefix}_attn_{dt_str}"
-                recorder.save_objects(**{key: fig_attn})
-                plt.close(fig_attn)
+            for dt_str, maps in attn_maps.items():
+                # backward compatibility: maps might be [T,T]
+                if isinstance(maps, dict):
+                    time_attn = maps.get("time", None)
+                    factor_attn = maps.get("factor", None)
+                else:
+                    time_attn = maps
+                    factor_attn = None
+
+                if time_attn is not None:
+                    fig_t = self._plot_attention_map(
+                        np.asarray(time_attn),
+                        title=f"Time Attention ({dt_str})",
+                        x_label="time (j)",
+                        y_label="time (i)",
+                        figsize=(4, 4),
+                    )
+                    key_t = f"{prefix}_attn_time_{dt_str}"
+                    recorder.save_objects(**{key_t: fig_t})
+                    if local_dir is not None:
+                        fn_t = f"{prefix}_attn_time_{dt_str}.png"
+                        fig_t.savefig(local_dir / fn_t, dpi=150, bbox_inches="tight")
+                        attn_pngs.setdefault(dt_str, {})["time"] = fn_t
+                    plt.close(fig_t)
+
+                if factor_attn is not None:
+                    fig_f = self._plot_attention_map(
+                        np.asarray(factor_attn),
+                        title=f"Factor Attention ({dt_str})",
+                        x_label="factor (j)",
+                        y_label="factor (i)",
+                        figsize=(6, 6),
+                    )
+                    key_f = f"{prefix}_attn_factor_{dt_str}"
+                    recorder.save_objects(**{key_f: fig_f})
+                    if local_dir is not None:
+                        fn_f = f"{prefix}_attn_factor_{dt_str}.png"
+                        fig_f.savefig(local_dir / fn_f, dpi=150, bbox_inches="tight")
+                        attn_pngs.setdefault(dt_str, {})["factor"] = fn_f
+                    plt.close(fig_f)
         except Exception as e:
             print(f">>> [Visual] save attn figs failed: {e}")
+
+        if attn_pngs:
+            try:
+                recorder.save_objects(**{f"{prefix}_attn_pngs": attn_pngs})
+            except Exception:
+                pass

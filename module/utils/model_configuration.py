@@ -37,6 +37,8 @@ class QuantMoEConfig(PretrainedConfig):
             # context encoder
             use_external_macro: bool = False,
             d_macro_input: int = 0,
+            # pooling
+            pooling_alpha: float = 0.7,  # Weight for attention vs mean pooling
             **kwargs
     ):
 
@@ -76,6 +78,8 @@ class QuantMoEConfig(PretrainedConfig):
 
         self.use_external_macro = use_external_macro
         self.d_macro_input = d_macro_input
+        
+        self.pooling_alpha = pooling_alpha
 
 
 # ==========================================

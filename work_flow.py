@@ -7,7 +7,7 @@ RST-MoE + Qlib Official Workflow (Paper-Ready Version)
 2. 运行标准 Signal 分析 + 组合回测。
 3. 调用 model.export_visuals 导出：
    - gate time_ratio 随时间曲线
-   - 若干交易日的 time-attention heatmap
+   - 若干交易日的 time & factor-attention heatmap
 4. 从 Recorder 中汇总：
    - IC / RankIC 时间序列 + ICIR / t-stat
    - 回测指标（年化收益、信息比、最大回撤等）
@@ -16,7 +16,7 @@ RST-MoE + Qlib Official Workflow (Paper-Ready Version)
 5. 自动生成一份 Markdown 版「论文级实验报告」：kdd_report.md
    - 增加“训练过程诊断”：train/listmle vs valid/rank_ic 曲线 + 文本总结
 """
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -306,6 +306,8 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     # ---------- 3. gate & attention 诊断 ----------
     gate_series = None
     attn_maps = None
+    attn_pngs = None
+
     try:
         gate_series = rec.load_object("st_disentangle_gate_series")
     except Exception:
@@ -316,40 +318,100 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     except Exception:
         pass
 
+    # optional: png filenames saved by model.export_visuals(save_png=True)
+    try:
+        attn_pngs = rec.load_object("st_disentangle_attn_pngs")
+    except Exception:
+        attn_pngs = None
+
     # gate time_ratio 统计
     gate_stats_str = "N/A"
-    if gate_series is not None is not False and len(gate_series) > 0:
+    if gate_series is not None and len(gate_series) > 0:
         gate_series = gate_series.sort_index()
         g_mean = float(gate_series.mean())
         g_std = float(gate_series.std())
         g_p10 = float(gate_series.quantile(0.10))
         g_p90 = float(gate_series.quantile(0.90))
-        gate_stats_str = (
-            f"mean={g_mean:.3f}, std={g_std:.3f}, p10={g_p10:.3f}, p90={g_p90:.3f}"
-        )
+        gate_stats_str = f"mean={g_mean:.3f}, std={g_std:.3f}, p10={g_p10:.3f}, p90={g_p90:.3f}"
 
-    # attention 局部性指标：看时间注意力在 |i-j|<=1 对角带上的质量
-    attn_summary_lines = []
+    def _row_normalize(a: np.ndarray) -> np.ndarray:
+        a = np.asarray(a, dtype=float)
+        if a.ndim == 3:
+            a = a.mean(axis=0)
+        row_sum = a.sum(axis=-1, keepdims=True) + 1e-12
+        return a / row_sum
+
+    def _time_locality(a: np.ndarray) -> Tuple[float, float]:
+        a_norm = _row_normalize(a)
+        Tlen = int(a_norm.shape[0])
+        diag_mass = float(np.trace(a_norm) / max(Tlen, 1))
+        band = np.eye(Tlen) + np.eye(Tlen, k=1) + np.eye(Tlen, k=-1)
+        band_mass = float((a_norm * band).sum() / max(Tlen, 1))
+        return diag_mass, band_mass
+
+    def _factor_concentration(a: np.ndarray, k: int = 5) -> Tuple[float, float, float]:
+        a_norm = _row_normalize(a)
+        N = int(a_norm.shape[0])
+        diag_mass = float(np.trace(a_norm) / max(N, 1))
+        # average mass of top-k entries per row (incl. self)
+        topk = np.sort(a_norm, axis=-1)[:, -min(k, a_norm.shape[-1]) :]
+        topk_mass = float(topk.sum(axis=-1).mean())
+        # normalized entropy in [0,1] (lower => more peaky)
+        p = np.clip(a_norm, 1e-12, 1.0)
+        ent = -(p * np.log(p)).sum(axis=-1) / np.log(p.shape[-1])
+        ent_mean = float(ent.mean())
+        return diag_mass, topk_mass, ent_mean
+
+    # attention 摘要 + (可选)图片
+    shown_dates: List[str] = []
+    time_attn_summary_lines: List[str] = []
+    factor_attn_summary_lines: List[str] = []
+    attn_media: Dict[str, Dict[str, str]] = {}
+
     if isinstance(attn_maps, dict) and len(attn_maps) > 0:
-        for dt_str, a in list(attn_maps.items())[:4]:  # 最多展示 4 天
-            try:
-                a = np.asarray(a)  # [T, T] 或 [H, T, T]，export_visuals 中已做过平均
-                if a.ndim == 3:
-                    a = a.mean(axis=0)
-                Tlen = a.shape[0]
-                row_sum = a.sum(axis=-1, keepdims=True) + 1e-12
-                a_norm = a / row_sum  # 每行归一化，确保是概率分布
-                diag_mass = np.trace(a_norm) / Tlen
-                # ±1 带：对角、上 1、下 1
-                band = np.eye(Tlen) + np.eye(Tlen, k=1) + np.eye(Tlen, k=-1)
-                band_mass = (a_norm * band).sum() / Tlen
-                attn_summary_lines.append(
-                    f"- {dt_str}: diag_mass={diag_mass:.3f}, local_band_mass={band_mass:.3f}"
-                )
-            except Exception:
-                continue
-    if not attn_summary_lines:
-        attn_summary_lines = ["- (no attention maps found; check export_visuals call)"]
+        for dt_str, v in list(attn_maps.items())[:4]:  # 最多展示 4 天
+            shown_dates.append(dt_str)
+
+            if isinstance(v, dict):
+                t_map = v.get("time", None)
+                f_map = v.get("factor", None)
+            else:
+                # backward compatibility: old format => time only
+                t_map = v
+                f_map = None
+
+            if t_map is not None:
+                try:
+                    dm, bm = _time_locality(t_map)
+                    time_attn_summary_lines.append(f"- {dt_str}: diag_mass={dm:.3f}, local_band_mass={bm:.3f}")
+                except Exception:
+                    pass
+
+            if f_map is not None:
+                try:
+                    dm, top5, ent = _factor_concentration(f_map, k=5)
+                    factor_attn_summary_lines.append(f"- {dt_str}: diag_mass={dm:.3f}, top5_mass={top5:.3f}, entropy={ent:.3f}")
+                except Exception:
+                    pass
+
+            # resolve png filenames (prefer recorder object, else default naming)
+            if isinstance(attn_pngs, dict) and dt_str in attn_pngs:
+                attn_media[dt_str] = dict(attn_pngs.get(dt_str, {}))
+            else:
+                # model_adapter export_visuals default naming
+                cand = {
+                    "time": f"st_disentangle_attn_time_{dt_str}.png",
+                    "factor": f"st_disentangle_attn_factor_{dt_str}.png",
+                }
+                # only keep those that actually exist
+                for k, fn in list(cand.items()):
+                    if (local_dir / fn).exists():
+                        attn_media.setdefault(dt_str, {})[k] = fn
+
+    if not time_attn_summary_lines:
+        time_attn_summary_lines = ["- (no time-attention maps found; check export_visuals call)"]
+    if not factor_attn_summary_lines:
+        factor_attn_summary_lines = ["- (no factor-attention maps found; check export_visuals call)"]
 
     # ---------- 4. 训练过程诊断（ListMLE vs RankIC） ----------
     df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec)
@@ -442,19 +504,43 @@ def generate_paper_report(rec, model_name: str = "RST-MoE"):
     """
     lines.append(textwrap.dedent(gate_interp).strip() + "\n")
 
-    lines.append("### 4.2 Temporal Attention Locality\n")
+    lines.append("### 4.2 Temporal Attention (Heatmap + Locality)\n")
     lines.append(
-        "下列指标基于若干代表性交易日的 time-attention heatmap，统计对角/邻近对角的注意力质量：\n"
+        "基于若干代表性交易日的 **time-attention heatmap**，统计对角/邻近对角的注意力质量：\n"
     )
-    lines.extend(attn_summary_lines)
+    lines.extend(time_attn_summary_lines)
     lines.append("")
-    attn_interp = """
+    for dt_str in shown_dates:
+        fn = attn_media.get(dt_str, {}).get("time", None)
+        if fn:
+            lines.append(f"![Time attention ({dt_str})]({fn})\n")
+
+    attn_interp_t = """
     - diag_mass 衡量注意力在完全对齐的时间步 (i=j) 上的质量；
     - local_band_mass 衡量注意力在 |i-j| ≤ 1 的近邻时间步上的质量。
     - 越高说明模型更偏向「局部时序模式」（类似 AR / 局部卷积），
       越低说明模型依赖更长程的时序依赖。
     """
-    lines.append(textwrap.dedent(attn_interp).strip() + "\n")
+    lines.append(textwrap.dedent(attn_interp_t).strip() + "\n")
+
+    lines.append("### 4.3 Factor Attention (Heatmap + Concentration)\n")
+    lines.append(
+        "基于同一批交易日的 **factor-attention heatmap**（默认取窗口最后一个时间步），统计注意力的集中度：\n"
+    )
+    lines.extend(factor_attn_summary_lines)
+    lines.append("")
+    for dt_str in shown_dates:
+        fn = attn_media.get(dt_str, {}).get("factor", None)
+        if fn:
+            lines.append(f"![Factor attention ({dt_str})]({fn})\n")
+
+    attn_interp_f = """
+    - diag_mass：因子对自身的注意力质量（越高说明更“自回归/自保留”）；
+    - top5_mass：每个因子行向量中 Top-5 权重质量的均值（越高说明更稀疏、更“专家化”）；
+    - entropy：归一化熵 (0~1)，越低越尖锐，越高越均匀。
+    - 注意：因子维度没有天然顺序，因此不像时间维那样用“邻近对角带”解释；我们更关心“是否稀疏/是否可解释地集中在少数因子交互上”。
+    """
+    lines.append(textwrap.dedent(attn_interp_f).strip() + "\n")
 
     lines.append("## 5. Summary\n")
     lines.append(
