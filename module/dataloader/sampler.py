@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from torch.utils.data import Sampler
+from typing import Optional
 
 
 class FixedDailyBatchSampler(Sampler):
@@ -13,10 +14,11 @@ class FixedDailyBatchSampler(Sampler):
        - If daily_count < batch_size: Upsample (Padding to ensure tensor shape stability)
     """
 
-    def __init__(self, data_source, batch_size, shuffle=True):
+    def __init__(self, data_source, batch_size, shuffle=True, seed: Optional[int] = None):
         self.data_source = data_source
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.rng = np.random.default_rng(seed)
 
         # Optimize: Access index directly without loading full data
         try:
@@ -38,7 +40,7 @@ class FixedDailyBatchSampler(Sampler):
     def __iter__(self):
         indices = np.arange(self.num_batches)
         if self.shuffle:
-            np.random.shuffle(indices)
+            indices = self.rng.permutation(indices)
 
         for day_i in indices:
             daily_indices = self.daily_groups[day_i]
@@ -46,10 +48,10 @@ class FixedDailyBatchSampler(Sampler):
 
             if n_samples >= self.batch_size:
                 # Downsample: Randomly pick subset
-                batch_indices = np.random.choice(daily_indices, self.batch_size, replace=False)
+                batch_indices = self.rng.choice(daily_indices, self.batch_size, replace=False)
             else:
                 # Upsample: Randomly pick with replacement to fill batch
-                batch_indices = np.random.choice(daily_indices, self.batch_size, replace=True)
+                batch_indices = self.rng.choice(daily_indices, self.batch_size, replace=True)
 
             yield batch_indices
 

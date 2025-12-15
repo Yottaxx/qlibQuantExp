@@ -19,8 +19,8 @@ class DifferentiableFeatureSelector(nn.Module):
         else:
             z = torch.sigmoid(self.mu)
 
-        # 正则化 Loss (L1 Norm)
-        reg_loss = torch.mean(z)
+        # 正则化 Loss (L1 Norm)，与激活的特征数量成正比
+        reg_loss = z.mean()
 
         # Apply Gate
         z_broadcast = z.view(1, 1, -1, 1)

@@ -56,6 +56,7 @@ class QlibQuantMoE(Model):
         self.epochs = int(self.trainer_config.get("n_epochs", 20))
         self.batch_size = int(self.trainer_config.get("batch_size", 1024))
         self.num_workers = int(self.trainer_config.get("num_workers", 4))
+        self.random_seed = self.trainer_config.get("seed", 42)
 
         self.early_stop = int(self.trainer_config.get("early_stop", 0) or 0)
         self.min_delta = float(self.trainer_config.get("min_delta", 1e-6))
@@ -243,7 +244,7 @@ class QlibQuantMoE(Model):
         使用 FixedDailyBatchSampler 做日度截面 batch.
         - train=True/False: 都用 _collate_train（valid 也需要 label 做监控）。
         """
-        sampler = FixedDailyBatchSampler(tsds, self.batch_size, shuffle=shuffle)
+        sampler = FixedDailyBatchSampler(tsds, self.batch_size, shuffle=shuffle, seed=self.random_seed)
         return DataLoader(
             dataset=tsds,
             batch_sampler=sampler,
@@ -275,7 +276,8 @@ class QlibQuantMoE(Model):
         if "loss_listmle" in m:
             m.setdefault("listmle", m["loss_listmle"])
         if "loss_ic" in m:
-            m.setdefault("ic", 1.0 - float(m["loss_ic"]))
+            # loss_ic = -IC, so monitored IC should be -loss_ic within [-1, 1]
+            m.setdefault("ic", -float(m["loss_ic"]))
 
         try:
             R.log_metrics(step=step, **{f"{prefix}/{k}": float(v) for k, v in m.items()})
@@ -287,7 +289,7 @@ class QlibQuantMoE(Model):
         if "rank_ic" in valid_metrics:
             return float(valid_metrics["rank_ic"])
         if "loss_ic" in valid_metrics:
-            return 1.0 - float(valid_metrics["loss_ic"])
+            return -float(valid_metrics["loss_ic"])
         return -float(valid_metrics.get("loss_total", 0.0))
 
     # ---------- epoch loop ----------
@@ -364,22 +366,21 @@ class QlibQuantMoE(Model):
                     meters[k] += float(v)
 
             # 适配器侧计算 IC / RankIC（基于当前 label）
-            if by_t is not None and getattr(out, "logits", None) is not None:
-                factor_logits = out.logits  # [B,N]
-                if factor_logits.dim() == 2:
-                    p_vec = factor_logits.mean(dim=1).detach().cpu().numpy()
-                    y_vec = by_t.view(-1).detach().cpu().numpy()
+            if by_t is not None and getattr(out, "scores", None) is not None:
+                stock_scores = out.scores
+                p_vec = stock_scores.view(-1).detach().cpu().numpy()
+                y_vec = by_t.view(-1).detach().cpu().numpy()
 
-                    if p_vec.size >= 2 and y_vec.size >= 2:
-                        if np.std(p_vec) > 0 and np.std(y_vec) > 0:
-                            ic = np.corrcoef(p_vec, y_vec)[0, 1]
-                            meters["ic_raw"] += float(ic)
+                if p_vec.size >= 2 and y_vec.size >= 2:
+                    if np.std(p_vec) > 0 and np.std(y_vec) > 0:
+                        ic = np.corrcoef(p_vec, y_vec)[0, 1]
+                        meters["ic_raw"] += float(ic)
 
-                        rank_p = pd.Series(p_vec).rank().to_numpy()
-                        rank_y = pd.Series(y_vec).rank().to_numpy()
-                        if np.std(rank_p) > 0 and np.std(rank_y) > 0:
-                            ric = np.corrcoef(rank_p, rank_y)[0, 1]
-                            meters["rank_ic"] += float(ric)
+                    rank_p = pd.Series(p_vec).rank().to_numpy()
+                    rank_y = pd.Series(y_vec).rank().to_numpy()
+                    if np.std(rank_p) > 0 and np.std(rank_y) > 0:
+                        ric = np.corrcoef(rank_p, rank_y)[0, 1]
+                        meters["rank_ic"] += float(ric)
 
             if getattr(out, "avg_gate_entropy", None) is not None:
                 meters["gate_entropy"] += float(out.avg_gate_entropy)
@@ -670,7 +671,10 @@ class QlibQuantMoE(Model):
         - time expert attention is computed on shape [B*N, H, T, T] (or compatible variants)
         - factor expert attention is computed on shape [B*T, H, N, N] (or compatible variants)
         """
-        tsds = dataset.prepare(segment, col_set=["feature", "label"])
+        try:
+            tsds = dataset.prepare(segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
+        except Exception:
+            tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
         if not hasattr(tsds, "data"):
             return {}
 

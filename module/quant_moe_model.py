@@ -169,7 +169,18 @@ class QuantMoEModel(PreTrainedModel):
         valid_ratio = 0.0
 
         if labels is not None:
-            labels = labels.squeeze()
+            if labels.ndim == 0:
+                labels = labels.view(1, 1)
+            elif labels.ndim == 1:
+                labels = labels.unsqueeze(-1)
+            else:
+                labels = labels.reshape(labels.shape[0], -1)
+
+            if labels.shape[-1] != 1:
+                raise RuntimeError(
+                    f"QuantMoEModel expects a single label per sample; got shape {tuple(labels.shape)}"
+                )
+            labels = labels.squeeze(-1)
             valid = torch.isfinite(labels)
             valid_ratio = float(valid.float().mean().item())
 
@@ -212,6 +223,10 @@ class QuantMoEModel(PreTrainedModel):
                     + w.get("aux", 1.0) * l_aux
                     + w.get("reg", 1.0) * l_reg
                 )
+                if l_rank is not None:
+                    total_loss = total_loss + w.get("rank", 0.0) * l_rank
+                if l_huber is not None:
+                    total_loss = total_loss + w.get("huber", 0.0) * l_huber
 
                 metrics = {
                     "loss_total": float(total_loss.detach().item()),
