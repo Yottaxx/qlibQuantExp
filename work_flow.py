@@ -45,7 +45,7 @@ data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 8,  # 时序窗口，对应模型 context_len
+        "step_len": 2,  # 时序窗口，对应模型 context_len
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
@@ -98,9 +98,13 @@ model_conf = {
         "trainer_config": {
             "lr": 5e-4,
             "n_epochs": 20,
-            "batch_size": 16,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "batch_size": 4,  # 对应 FixedDailyBatchSampler 的日度 batch
             "early_stop": 5,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
+            # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
+            # "market_state_path": "market_state_csi300.pkl",
+            # "market_state_shift": 0,
+            # "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
             "use_warmup": True,
             "warmup_ratio": 0.05,
@@ -915,10 +919,20 @@ if __name__ == "__main__":
                 "port_conf": copy.deepcopy(port_conf),
             }
         )
-
+        print(">>> [Phase 0] Planned Model Config (before auto-detect)...")
+        try:
+            print(model_conf["kwargs"]["model_config"])
+        except Exception:
+            print(model_conf)
         # 2.2 训练
         print(">>> [Phase 1] Training Model...")
         model.fit(dataset)
+        # After fit(), the adapter has initialized `model.net` with auto-detected dims.
+        try:
+            print(">>> [Phase 1] Resolved Model Config (after auto-detect)...")
+            print(model.net.config.to_dict())
+        except Exception:
+            pass
         R.save_objects(model=model)
 
         # 2.3 导出 gate / attention 可视化诊断

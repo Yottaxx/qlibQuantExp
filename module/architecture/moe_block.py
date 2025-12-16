@@ -23,11 +23,21 @@ class RegimeAdaptiveMoEBlock(nn.Module):
     def __init__(self, config: QuantMoEConfig):
         super().__init__()
         self.config = config
+        self.use_layer_summary = bool(getattr(config, "router_use_layer_summary", False))
+
+        d_model = int(config.d_model)
+        router_in = d_model * (2 if self.use_layer_summary else 1)
+
+        # Optional: per-layer market summary (same for the daily cross-section batch)
+        # summary = proj([mean(stock_repr), std(stock_repr)]) where stock_repr = mean over factor tokens
+        self.layer_summary_proj = None
+        if self.use_layer_summary:
+            self.layer_summary_proj = nn.Linear(2 * d_model, d_model, bias=False)
 
         self.router = nn.Sequential(
-            nn.Linear(config.d_model, config.d_model // 2),
+            nn.Linear(router_in, d_model // 2),
             nn.GELU(),
-            nn.Linear(config.d_model // 2, 2),
+            nn.Linear(d_model // 2, 2),
         )
 
         self.time_expert = ParallelAttention(config)
@@ -55,11 +65,37 @@ class RegimeAdaptiveMoEBlock(nn.Module):
 
         x = self.norm1(x)
 
-        router_logits = self.router(regime_embedding)  # [B, 2]
-        gate_weights = F.softmax(router_logits, dim=-1)  # [B, 2]
+        # Build router input
+        router_input = regime_embedding
+        if self.use_layer_summary:
+            # x: [B,T,N,D] after norm; summarize market state at this layer
+            # - last time step -> [B,N,D]
+            # - per-stock factor pooling -> [B,D]
+            # - market mean/std over stocks -> [D],[D] (broadcast back to [B,D])
+            h_last = x[:, -1, :, :]  # [B,N,D]
+            per_stock = h_last.mean(dim=1)  # [B,D]
+            m_mean = per_stock.mean(dim=0)
+            m_std = per_stock.std(dim=0, unbiased=False)
+            summary = torch.cat([m_mean, m_std], dim=-1)  # [2D]
+            summary = self.layer_summary_proj(summary).unsqueeze(0).expand(B, -1)  # [B,D]
+            router_input = torch.cat([regime_embedding, summary], dim=-1)  # [B,2D]
+
+        # Router exploration: optional logit noise + temperature scaling
+        # - noise encourages exploration early in training
+        # - temperature controls sharpness (lower => sharper)
+        router_logits_raw = self.router(router_input)  # [B, 2]
+        router_logits = router_logits_raw
+        noise_std = float(getattr(self.config, "router_noise", 0.0) or 0.0)
+        if self.training and noise_std > 0:
+            router_logits = router_logits + torch.randn_like(router_logits) * noise_std
+
+        temperature = float(getattr(self.config, "router_temperature", 1.0) or 1.0)
+        temperature = max(temperature, 1e-3)
+        gate_weights = F.softmax(router_logits / temperature, dim=-1)  # [B, 2]
 
         # diagnostics
-        z_loss = (torch.logsumexp(router_logits, dim=-1) ** 2).mean()
+        # z-loss is computed on raw (un-noised, un-tempered) logits for stability
+        z_loss = (torch.logsumexp(router_logits_raw, dim=-1) ** 2).mean()
         entropy = -(gate_weights * torch.log(gate_weights + 1e-9)).sum(-1).mean()
         time_ratio = gate_weights[:, 0].mean()
 

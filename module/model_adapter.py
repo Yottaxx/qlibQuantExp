@@ -22,9 +22,15 @@ from qlib.data.dataset.handler import DataHandlerLP
 from qlib.model.base import Model
 from qlib.workflow import R
 
-from module.dataloader.sampler import FixedDailyBatchSampler
+from module.dataloader.sampler import FixedDailyBatchSampler, DailyChunkBatchSampler
 from module.quant_moe_model import QuantMoEModel
 from module.utils.model_configuration import QuantMoEConfig
+from module.utils.market_state import (
+    MarketStateLookup,
+    load_market_state_df,
+    lookup_market_state,
+    make_market_state_lookup,
+)
 
 
 class QlibQuantMoE(Model):
@@ -41,7 +47,9 @@ class QlibQuantMoE(Model):
     - Recorder logs:
         * train/* & valid/*：
             - loss_total / loss_listmle / loss_ic / loss_aux / loss_sparsity
-            - ic_raw / rank_ic (adapter 侧现算)
+            - ic_pearson_batch / rank_ic_batch（训练：batch 内现算）
+            - ic_pearson_daily / rank_ic_daily（验证：按日全截面聚合后现算）
+            - ic_raw / rank_ic（兼容旧名字：训练时=*_batch，验证时=*_daily）
             - gate_entropy / time_ratio / active_feat_ratio
         * train_curve 对象：
             - epoch, train_listmle, train_ic, valid_listmle, valid_rank_ic, valid_ic
@@ -60,6 +68,14 @@ class QlibQuantMoE(Model):
 
         self.early_stop = int(self.trainer_config.get("early_stop", 0) or 0)
         self.min_delta = float(self.trainer_config.get("min_delta", 1e-6))
+
+        # Optional: precomputed market daily state as macro_features
+        # - market_state_path: path to DataFrame(index=datetime, columns=state_dims)
+        # - shift: optionally shift state by k days (within provided index) to avoid look-ahead
+        self.market_state_path = self.trainer_config.get("market_state_path", None)
+        self.market_state_shift = int(self.trainer_config.get("market_state_shift", 0) or 0)
+        self.market_state_strict = bool(self.trainer_config.get("market_state_strict", True))
+        self._market_state: Optional[MarketStateLookup] = None
 
         # If TSDataSampler packs label into x: last `label_dim` channels are labels.
         # 对 Alpha158 + 单一 label，一般 label_dim=1。
@@ -81,6 +97,74 @@ class QlibQuantMoE(Model):
         # global step for scheduler
         self.global_step: int = 0
 
+    @staticmethod
+    def _extract_datetime(s: Any) -> Optional[pd.Timestamp]:
+        if isinstance(s, dict):
+            dt = s.get("_datetime", None)
+            return None if dt is None else pd.Timestamp(dt)
+        return None
+
+    @staticmethod
+    def _extract_pos(s: Any) -> Optional[int]:
+        if isinstance(s, dict):
+            p = s.get("_pos", None)
+            return None if p is None else int(p)
+        return None
+
+    @staticmethod
+    def _wrap_with_datetime(tsds):
+        """
+        Wrap Qlib TS dataset so each sample carries its own datetime (for macro_features lookup).
+        """
+        idx = tsds.get_index()
+        dates = pd.to_datetime(idx.get_level_values("datetime")).to_numpy()
+
+        class _Wrapped:
+            def __init__(self, base, dates_arr):
+                self._base = base
+                self._dates = dates_arr
+
+            def __len__(self):
+                return len(self._base)
+
+            def __getitem__(self, i: int):
+                s = self._base[int(i)]
+                dt = self._dates[int(i)]
+                if isinstance(s, dict):
+                    d = dict(s)
+                    d.setdefault("_datetime", dt)
+                    d.setdefault("_pos", int(i))
+                    return d
+                if isinstance(s, (tuple, list)):
+                    x = s[0] if len(s) > 0 else None
+                    y = s[1] if len(s) > 1 else None
+                    return {"x": x, "y": y, "_datetime": dt, "_pos": int(i)}
+                return {"x": s, "_datetime": dt, "_pos": int(i)}
+
+            def get_index(self):
+                return self._base.get_index()
+
+            @property
+            def data(self):
+                return getattr(self._base, "data", None)
+
+        return _Wrapped(tsds, dates)
+
+    def _ensure_market_state(self) -> None:
+        if self._market_state is not None or not self.market_state_path:
+            return
+        df = load_market_state_df(self.market_state_path)
+        self._market_state = make_market_state_lookup(df, shift=self.market_state_shift)
+        # auto-config model to accept macro features
+        self.model_config["use_external_macro"] = True
+        self.model_config["d_macro_input"] = int(self._market_state.dim)
+
+    def _macro_from_dates(self, dates: List[pd.Timestamp]) -> Optional[torch.Tensor]:
+        if self._market_state is None:
+            return None
+        arr = lookup_market_state(self._market_state, dates, strict=self.market_state_strict)
+        return torch.from_numpy(arr).float()
+
     # ---------- helpers ----------
     def _make_pbar(self, it, *, desc: str, total: Optional[int] = None, leave: bool = False):
         if not self.use_tqdm:
@@ -96,6 +180,10 @@ class QlibQuantMoE(Model):
         if torch.is_tensor(x):
             return x.detach().cpu().numpy()
         return np.asarray(x)
+
+    def _maybe_warn_market_state(self):
+        if self.market_state_path and self._market_state is None:
+            print(">>> [MarketState] market_state_path is set but not loaded yet; call fit/predict will load it.")
 
     @staticmethod
     def _extract_sample(s: Any) -> Tuple[Any, Optional[Any]]:
@@ -210,47 +298,171 @@ class QlibQuantMoE(Model):
         return ts
 
     # ---------- collate ----------
-    def _collate_train(self, samples: List[Any]):
+    @staticmethod
+    def _stack_labels_or_none(ys: List[Optional[torch.Tensor]] | None) -> Optional[torch.Tensor]:
+        if not ys:
+            return None
+        if any(t is None for t in ys):
+            if all(t is None for t in ys):
+                return None
+            raise RuntimeError(
+                "Mixed None and tensor labels inside a batch. "
+                "Check handler DropnaLabel / schema / packed-label settings."
+            )
+        by = torch.stack([t.view(-1) for t in ys], dim=0)  # [B,label_dim]
+        if by.ndim == 2 and by.shape[1] == 1:
+            by = by.squeeze(1)  # [B]
+        return by
+
+    def _collect_batch_fields(
+        self,
+        samples: List[Any],
+        *,
+        with_label: bool,
+        require_datetime: bool,
+        require_pos: bool,
+    ) -> Tuple[torch.Tensor, List[Optional[torch.Tensor]] | None, List[pd.Timestamp] | None, List[int] | None]:
         xs: List[torch.Tensor] = []
-        ys: List[Optional[torch.Tensor]] = []
+        ys: List[Optional[torch.Tensor]] | None = [] if with_label else None
+        dts: List[pd.Timestamp] | None = [] if require_datetime else None
+        pos: List[int] | None = [] if require_pos else None
 
         for s in samples:
             raw_x, raw_y = self._extract_sample(s)
             x_np = self._as_numpy(raw_x)
-            y_np = None if raw_y is None else self._as_numpy(raw_y)
-            x_np, y_np = self._split_packed_label(x_np, y_np)
+
+            if with_label:
+                y_np = None if raw_y is None else self._as_numpy(raw_y)
+                x_np, y_np = self._split_packed_label(x_np, y_np)
+                assert ys is not None
+                ys.append(None if y_np is None else torch.from_numpy(np.asarray(y_np)).float())
 
             xs.append(torch.from_numpy(np.asarray(x_np)).float())
-            ys.append(None if y_np is None else torch.from_numpy(np.asarray(y_np)).float())
 
-        bx = torch.stack(xs, dim=0)  # [B,T,F]
-        by = None
-        if ys and ys[0] is not None:
-            by = torch.stack([t.view(-1) for t in ys], dim=0)  # [B,label_dim]
-            if by.shape[1] == 1:
-                by = by.squeeze(1)  # [B]
-        return bx, by
+            if require_datetime:
+                dt = self._extract_datetime(s)
+                if dt is None:
+                    raise RuntimeError("Daily loader requires _datetime; wrap dataset via _wrap_with_datetime.")
+                assert dts is not None
+                dts.append(dt)
+
+            if require_pos:
+                p = self._extract_pos(s)
+                if p is None:
+                    raise RuntimeError("Daily loader requires _pos; wrap dataset via _wrap_with_datetime.")
+                assert pos is not None
+                pos.append(p)
+
+        bx = torch.stack(xs, dim=0)
+        return bx, ys, dts, pos
+
+    def _collate_train(self, samples: List[Any]):
+        need_dt = self._market_state is not None
+        bx, ys, dts, _ = self._collect_batch_fields(
+            samples,
+            with_label=True,
+            require_datetime=need_dt,
+            require_pos=False,
+        )
+
+        bx = bx  # [B,T,F]
+        by = self._stack_labels_or_none(ys)
+        if self._market_state is None:
+            return bx, by
+        assert dts is not None
+        bmacro = self._macro_from_dates(dts)
+        return bx, by, bmacro
+
+    def _collate_eval_daily(self, samples: List[Any]):
+        """
+        Eval/predict collate for daily samplers that guarantee single-day batches.
+        Returns a normalized day key so evaluation can aggregate across chunks of the same day.
+        """
+        bx, ys, dts, _ = self._collect_batch_fields(
+            samples,
+            with_label=True,
+            require_datetime=True,
+            require_pos=False,
+        )
+        assert dts is not None
+        day = pd.to_datetime(dts[0]).normalize()
+        if any(pd.to_datetime(dt).normalize() != day for dt in dts[1:]):
+            raise RuntimeError("Eval daily sampler produced a batch with mixed dates; expected a single day per batch.")
+
+        bx = bx  # [B,T,F]
+        by = self._stack_labels_or_none(ys)
+
+        # macro is optional; if enabled, we look up per-sample datetime then return it alongside day key
+        bmacro = None
+        if self._market_state is not None:
+            bmacro = self._macro_from_dates(dts)
+
+        return bx, by, bmacro, day
 
     def _collate_feat(self, samples: List[Any]):
-        xs: List[torch.Tensor] = []
-        for s in samples:
-            raw_x, _ = self._extract_sample(s)
-            x_np = self._as_numpy(raw_x)
-            xs.append(torch.from_numpy(np.asarray(x_np)).float())
-        return torch.stack(xs, dim=0)
+        need_dt = self._market_state is not None
+        bx, _, dts, _ = self._collect_batch_fields(
+            samples,
+            with_label=False,
+            require_datetime=need_dt,
+            require_pos=False,
+        )
+        if self._market_state is None:
+            return bx
+        assert dts is not None
+        bmacro = self._macro_from_dates(dts)
+        return bx, bmacro
+
+    def _collate_feat_with_pos(self, samples: List[Any]):
+        """
+        Predict-only collate that returns positional indices so we can scatter predictions
+        back to `tsds.get_index()` order when using a `batch_sampler` that reorders samples.
+        """
+        need_dt = self._market_state is not None
+        bx, _, dts, pos = self._collect_batch_fields(
+            samples,
+            with_label=False,
+            require_datetime=need_dt,
+            require_pos=True,
+        )
+        assert pos is not None
+        pos_t = torch.tensor(pos, dtype=torch.long)
+        if self._market_state is None:
+            return bx, pos_t
+        assert dts is not None
+        bmacro = self._macro_from_dates(dts)
+        return bx, bmacro, pos_t
 
     def _make_daily_loader(self, tsds, *, shuffle: bool, train: bool) -> DataLoader:
         """
         使用 FixedDailyBatchSampler 做日度截面 batch.
         - train=True/False: 都用 _collate_train（valid 也需要 label 做监控）。
         """
+        if self._market_state is not None:
+            tsds = self._wrap_with_datetime(tsds)
         sampler = FixedDailyBatchSampler(tsds, self.batch_size, shuffle=shuffle, seed=self.random_seed)
         return DataLoader(
             dataset=tsds,
             batch_sampler=sampler,
             num_workers=self.num_workers,
             pin_memory=(self.device.type == "cuda"),
-            collate_fn=self._collate_train if train else self._collate_train,
+            collate_fn=self._collate_train,
+        )
+
+    def _make_daily_chunk_loader(self, tsds, *, with_label: bool) -> DataLoader:
+        """
+        Deterministic daily loader without sampling:
+        - each day is fully covered (split into chunks if needed)
+        - no up/down-sampling
+        """
+        tsds = self._wrap_with_datetime(tsds)
+        sampler = DailyChunkBatchSampler(tsds, max_batch_size=self.batch_size)
+        return DataLoader(
+            dataset=tsds,
+            batch_sampler=sampler,
+            num_workers=self.num_workers,
+            pin_memory=(self.device.type == "cuda"),
+            collate_fn=self._collate_eval_daily if with_label else self._collate_feat,
         )
 
     # ---------- net init & metrics ----------
@@ -286,6 +498,9 @@ class QlibQuantMoE(Model):
 
     def _monitor(self, valid_metrics: Dict[str, float]) -> float:
         """用于 early stopping 的单一 score（越大越好）."""
+        # Prefer daily full-cross-section RankIC when available (valid uses daily-chunk loader).
+        if "rank_ic_daily" in valid_metrics:
+            return float(valid_metrics["rank_ic_daily"])
         if "rank_ic" in valid_metrics:
             return float(valid_metrics["rank_ic"])
         if "loss_ic" in valid_metrics:
@@ -317,9 +532,18 @@ class QlibQuantMoE(Model):
 
         skip_invalid_label = 0
         skip_nan_loss = 0
+        daily_buffer = defaultdict(lambda: {"p": [], "y": []}) if not train else None
 
         iterator = pbar if pbar is not None else loader
-        for step, (bx, by) in enumerate(iterator):
+        for step, batch in enumerate(iterator):
+            day_key = None
+            if isinstance(batch, (tuple, list)) and len(batch) == 4:
+                bx, by, bmacro, day_key = batch
+            elif isinstance(batch, (tuple, list)) and len(batch) == 3:
+                bx, by, bmacro = batch
+            else:
+                bx, by = batch
+                bmacro = None
             bx_t = torch.nan_to_num(bx, 0.0).to(self.device)  # [B,T,F]
             if self.label_dim > 0 and by is None:
                 raise RuntimeError(
@@ -327,6 +551,7 @@ class QlibQuantMoE(Model):
                     "check schema validation and label_dim."
                 )
             by_t = None if by is None else by.to(self.device).float()
+            macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
 
             # 屏蔽非法 label
             if by_t is not None:
@@ -338,13 +563,15 @@ class QlibQuantMoE(Model):
                     continue
                 bx_t = bx_t[valid]
                 by_t = by_t[valid]
+                if macro_t is not None:
+                    macro_t = macro_t[valid]
 
             if train and optimizer is not None:
                 optimizer.zero_grad(set_to_none=True)
 
             with torch.set_grad_enabled(train):
                 # Note: date_ids removed - regime signal is computed from internal statistics
-                out = self.net(bx_t, f_ids, labels=by_t)
+                out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
                 loss = getattr(out, "loss", None)
 
                 if train and optimizer is not None and loss is not None:
@@ -371,16 +598,25 @@ class QlibQuantMoE(Model):
                 p_vec = stock_scores.view(-1).detach().cpu().numpy()
                 y_vec = by_t.view(-1).detach().cpu().numpy()
 
-                if p_vec.size >= 2 and y_vec.size >= 2:
-                    if np.std(p_vec) > 0 and np.std(y_vec) > 0:
-                        ic = np.corrcoef(p_vec, y_vec)[0, 1]
-                        meters["ic_raw"] += float(ic)
+                # For eval loaders that split a day into chunks, aggregate (p,y) by date first,
+                # then compute IC / RankIC on the full daily cross-section.
+                if not train and day_key is not None and daily_buffer is not None:
+                    buf = daily_buffer[pd.to_datetime(day_key).normalize()]
+                    buf["p"].append(p_vec)
+                    buf["y"].append(y_vec)
+                else:
+                    if p_vec.size >= 2 and y_vec.size >= 2:
+                        if np.std(p_vec) > 0 and np.std(y_vec) > 0:
+                            ic = np.corrcoef(p_vec, y_vec)[0, 1]
+                            meters["ic_pearson_batch"] += float(ic)
+                            meters["ic_raw"] += float(ic)  # backward-compatible alias (batch-level)
 
-                    rank_p = pd.Series(p_vec).rank().to_numpy()
-                    rank_y = pd.Series(y_vec).rank().to_numpy()
-                    if np.std(rank_p) > 0 and np.std(rank_y) > 0:
-                        ric = np.corrcoef(rank_p, rank_y)[0, 1]
-                        meters["rank_ic"] += float(ric)
+                        rank_p = pd.Series(p_vec).rank().to_numpy()
+                        rank_y = pd.Series(y_vec).rank().to_numpy()
+                        if np.std(rank_p) > 0 and np.std(rank_y) > 0:
+                            ric = np.corrcoef(rank_p, rank_y)[0, 1]
+                            meters["rank_ic_batch"] += float(ric)
+                            meters["rank_ic"] += float(ric)  # backward-compatible alias (batch-level)
 
             if getattr(out, "avg_gate_entropy", None) is not None:
                 meters["gate_entropy"] += float(out.avg_gate_entropy)
@@ -400,10 +636,39 @@ class QlibQuantMoE(Model):
         if pbar is not None:
             pbar.close()
 
-        return self._avg(meters, n_batches)
+        avg = self._avg(meters, n_batches)
+
+        # If we buffered daily chunks, compute daily IC / RankIC on the full cross-section per day.
+        # Expose explicit names to avoid confusion with batch-level metrics.
+        if not train and daily_buffer:
+            ics = []
+            rics = []
+            for _, v in daily_buffer.items():
+                p = np.concatenate(v["p"], axis=0) if v["p"] else None
+                y = np.concatenate(v["y"], axis=0) if v["y"] else None
+                if p is None or y is None or p.size < 2 or y.size < 2:
+                    continue
+                if np.std(p) > 0 and np.std(y) > 0:
+                    ics.append(float(np.corrcoef(p, y)[0, 1]))
+                rp = pd.Series(p).rank().to_numpy()
+                ry = pd.Series(y).rank().to_numpy()
+                if np.std(rp) > 0 and np.std(ry) > 0:
+                    rics.append(float(np.corrcoef(rp, ry)[0, 1]))
+
+            ic_daily = float(np.mean(ics)) if ics else float("nan")
+            ric_daily = float(np.mean(rics)) if rics else float("nan")
+            avg["ic_pearson_daily"] = ic_daily
+            avg["rank_ic_daily"] = ric_daily
+
+            # Backward-compatible aliases (these are daily-level on valid/test with chunk loader)
+            avg["ic_raw"] = ic_daily
+            avg["rank_ic"] = ric_daily
+
+        return avg
 
     # ---------- Qlib API ----------
     def fit(self, dataset: DatasetH, evals_result=dict()):
+        self._ensure_market_state()
         # 1) Train schema & TSDS
         train_tsds = self._validate_train_schema(dataset)
         train_loader = self._make_daily_loader(train_tsds, shuffle=True, train=True)
@@ -411,12 +676,17 @@ class QlibQuantMoE(Model):
         # 2) Valid set (DK_I)
         try:
             valid_tsds = dataset.prepare("valid", col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
-            valid_loader = self._make_daily_loader(valid_tsds, shuffle=False, train=True)
+            # Valid should be evaluated on full daily cross-sections without sampling.
+            valid_loader = self._make_daily_chunk_loader(valid_tsds, with_label=True)
         except Exception:
             valid_loader = None
 
         # 3) Init network from first batch
-        bx0, by0 = next(iter(train_loader))
+        first = next(iter(train_loader))
+        if isinstance(first, (tuple, list)) and len(first) == 3:
+            bx0, by0, _ = first
+        else:
+            bx0, by0 = first
         if self.label_dim > 0 and by0 is None:
             raise RuntimeError(
                 "First training batch has by=None while label_dim>0. "
@@ -509,7 +779,7 @@ class QlibQuantMoE(Model):
                 # train
                 train_curve["train_listmle"].append(float(tr.get("loss_listmle", np.nan)))
                 train_curve["train_ic"].append(
-                    float(1.0 - tr["loss_ic"]) if "loss_ic" in tr else float("nan")
+                    float(-tr["loss_ic"]) if "loss_ic" in tr else float("nan")
                 )
                 # valid
                 if va is not None:
@@ -518,7 +788,7 @@ class QlibQuantMoE(Model):
                         float(va.get("rank_ic", np.nan)) if "rank_ic" in va else float("nan")
                     )
                     train_curve["valid_ic"].append(
-                        float(1.0 - va["loss_ic"]) if "loss_ic" in va else float("nan")
+                        float(-va["loss_ic"]) if "loss_ic" in va else float("nan")
                     )
                 else:
                     train_curve["valid_listmle"].append(float("nan"))
@@ -562,31 +832,48 @@ class QlibQuantMoE(Model):
         assert self.net is not None
         self.net.eval()
 
+        self._ensure_market_state()
         tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
+        # Always wrap so we can scatter predictions back to the correct index order when using batch_sampler.
+        tsds = self._wrap_with_datetime(tsds)
+        # Inference should be "intra-day batches" without any up/down-sampling:
+        # - every sample enters the model exactly once
+        # - each batch contains a single trading day (split into chunks if needed)
+        sampler = DailyChunkBatchSampler(tsds, max_batch_size=self.batch_size)
         loader = DataLoader(
             dataset=tsds,
-            batch_size=self.batch_size,
-            shuffle=False,
+            batch_sampler=sampler,
             num_workers=self.num_workers,
             pin_memory=(self.device.type == "cuda"),
-            collate_fn=self._collate_feat,
+            collate_fn=self._collate_feat_with_pos,
         )
 
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
-        preds: List[np.ndarray] = []
+        idx = tsds.get_index()
+        pred = np.full((len(idx),), np.nan, dtype=float)
 
         with torch.no_grad():
-            for bx in loader:
+            for batch in loader:
+                if isinstance(batch, (tuple, list)) and len(batch) == 3:
+                    bx, bmacro, bpos = batch
+                elif isinstance(batch, (tuple, list)) and len(batch) == 2:
+                    bx, bpos = batch
+                    bmacro = None
+                else:
+                    raise RuntimeError(f"Unexpected predict batch format: {type(batch)}")
                 bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
+                macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
                 # Note: date_ids removed - regime signal is computed from internal statistics
-                out = self.net(bx_t, f_ids)
+                out = self.net(bx_t, f_ids, macro_features=macro_t)
                 score = out.scores.detach().cpu().numpy()
-                preds.append(score)
+                pos = bpos.detach().cpu().numpy().astype(int)
+                if score.shape[0] != pos.shape[0]:
+                    raise RuntimeError(f"Predict scatter mismatch: score={score.shape}, pos={pos.shape}")
+                pred[pos] = score
 
-        pred = np.concatenate(preds, axis=0)
-        idx = tsds.get_index()
-        if len(pred) != len(idx):
-            pred = pred[: len(idx)]
+        if not np.isfinite(pred).all():
+            bad = int(np.sum(~np.isfinite(pred)))
+            raise RuntimeError(f"Predict produced {bad} NaN/Inf entries; check data/filters.")
         return pd.Series(pred, index=idx).sort_index()
 
     def get_feature_importance(self):
@@ -603,6 +890,7 @@ class QlibQuantMoE(Model):
         - 返回 Series，index 为自然日期（datetime），value 为该日的平均 time_ratio。
         """
         assert self.net is not None
+        self._ensure_market_state()
 
         tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
         idx = tsds.get_index()
@@ -624,10 +912,14 @@ class QlibQuantMoE(Model):
 
             if len(batch_x) == self.batch_size or i == len(tsds) - 1:
                 bx = torch.stack(batch_x, dim=0).to(self.device)
+                macro_t = None
+                if self._market_state is not None:
+                    m = self._macro_from_dates(batch_dates)
+                    macro_t = torch.nan_to_num(m, 0.0).to(self.device).float()
                 
                 with torch.no_grad():
                     # Note: date_ids removed - regime signal is computed from internal statistics
-                    out = self.net(bx, f_ids)
+                    out = self.net(bx, f_ids, macro_features=macro_t)
 
                 if out.gate_weights:
                     # gate_weights: List[num_layers] of [B, 2]
@@ -671,6 +963,7 @@ class QlibQuantMoE(Model):
         - time expert attention is computed on shape [B*N, H, T, T] (or compatible variants)
         - factor expert attention is computed on shape [B*T, H, N, N] (or compatible variants)
         """
+        self._ensure_market_state()
         try:
             tsds = dataset.prepare(segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
         except Exception:
@@ -788,6 +1081,10 @@ class QlibQuantMoE(Model):
             bx = torch.stack(xs, dim=0).to(self.device)  # [B, T, N]
             B = int(bx.shape[0])
             T = int(bx.shape[1])
+            macro_t = None
+            if self._market_state is not None:
+                m = self._macro_from_dates([dt] * B)
+                macro_t = torch.nan_to_num(m, 0.0).to(self.device).float()
 
             layer_idx = attn_layer if attn_layer >= 0 else (len(self.net.layers) - 1)
 
@@ -796,6 +1093,7 @@ class QlibQuantMoE(Model):
                 out = self.net(
                     bx,
                     f_ids,
+                    macro_features=macro_t,
                     return_attn=True,
                     attn_layers=[layer_idx],
                 )

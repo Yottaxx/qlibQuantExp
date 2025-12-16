@@ -1,8 +1,8 @@
 import torch
 from dataclasses import dataclass
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict
 
-from transformers import PreTrainedModel, PretrainedConfig
+from transformers import PretrainedConfig
 from transformers.utils import ModelOutput
 
 
@@ -21,9 +21,11 @@ class QuantMoEConfig(PretrainedConfig):
             dropout: float = 0.1,
             num_alphas: int = 64,
             context_len: int = 32,
-            num_dates: int = 4096,
-            router_noise: float = 0.1,
+            # router (MoE gate)
+            router_noise: float = 0.1,       # logit noise std (training only)
+            router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 1e-3,
+            router_use_layer_summary: bool = False,  # add per-layer market summary token to router input
             use_alibi: bool = True,
             use_feature_selection: bool = True,
             selection_reg_lambda: float = 1e-3,
@@ -37,6 +39,11 @@ class QuantMoEConfig(PretrainedConfig):
             # context encoder
             use_external_macro: bool = False,
             d_macro_input: int = 0,
+            # internal regime stats (used when use_external_macro=False)
+            regime_internal_mode: str = "short",  # "short" (t+1-ish) or "long" (t+5-ish)
+            regime_internal_lag: int = 1,         # effective when mode="long"
+            regime_internal_use_batch_stats: bool = True,
+            regime_internal_tail_threshold: float = 2.0,
             # pooling
             pooling_alpha: float = 0.7,  # Weight for attention vs mean pooling
             **kwargs
@@ -51,10 +58,11 @@ class QuantMoEConfig(PretrainedConfig):
         self.dropout = dropout
         self.num_alphas = num_alphas
         self.context_len = context_len
-        self.num_dates = num_dates
 
         self.router_noise = router_noise
+        self.router_temperature = router_temperature
         self.router_z_loss_coef = router_z_loss_coef
+        self.router_use_layer_summary = router_use_layer_summary
         self.use_alibi = use_alibi
 
         self.use_feature_selection = use_feature_selection
@@ -78,6 +86,11 @@ class QuantMoEConfig(PretrainedConfig):
 
         self.use_external_macro = use_external_macro
         self.d_macro_input = d_macro_input
+
+        self.regime_internal_mode = regime_internal_mode
+        self.regime_internal_lag = regime_internal_lag
+        self.regime_internal_use_batch_stats = regime_internal_use_batch_stats
+        self.regime_internal_tail_threshold = regime_internal_tail_threshold
         
         self.pooling_alpha = pooling_alpha
 
