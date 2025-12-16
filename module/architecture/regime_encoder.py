@@ -75,10 +75,17 @@ class RegimeContextEncoder(nn.Module):
         off_diag_sum = abs_corr.sum() - abs_corr.diagonal().sum()
         crowding = off_diag_sum / float(N * (N - 1))
 
-        evals = torch.linalg.eigvalsh(corr)
-        evals = torch.where(torch.isfinite(evals), evals, torch.zeros_like(evals))
-        evals = evals.clamp_min(0.0)
-        pc1_ratio = evals[-1] / evals.sum().clamp_min(self.eps)
+        # eigvalsh 可能导致梯度不稳定，用 detach 阻断梯度
+        # pc1_ratio 只作为统计特征，不需要反传梯度
+        with torch.no_grad():
+            try:
+                evals = torch.linalg.eigvalsh(corr)
+                evals = torch.where(torch.isfinite(evals), evals, torch.zeros_like(evals))
+                evals = evals.clamp_min(0.0)
+                pc1_ratio = evals[-1] / evals.sum().clamp_min(self.eps)
+            except Exception:
+                pc1_ratio = torch.tensor(0.5, device=device)
+        pc1_ratio = pc1_ratio.detach()
 
         return crowding, pc1_ratio
 

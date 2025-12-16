@@ -74,10 +74,12 @@ class QuantLossFunctions:
         _, indices = torch.sort(target, descending=True)
         s = pred[indices]  # [n]
 
-        # 2) 温度 + 数值稳定
+        # 2) 数值稳定 + 温度
+        # ★ 正确顺序：先减最大值，再除以温度
+        # 若先除以温度，当 tau<1 时会放大数值，引发 logcumsumexp 溢出
+        s = s - s.max()  # 数值稳定（先归一化）
         tau = max(tau, 1e-6)  # 防止除零
-        s = s / tau
-        s = s - s.max()  # 数值稳定
+        s = s / tau  # 温度缩放
 
         # 3) 逐前缀 logsumexp
         rev_s = s.flip(0)

@@ -482,7 +482,7 @@ class QlibQuantMoE(Model):
     def _log_metrics(self, step: int, prefix: str, metrics: Dict[str, float]) -> None:
         """
         - loss_listmle → 额外记 {prefix}/listmle
-        - loss_ic      → 额外记 {prefix}/ic = 1 - loss_ic （loss_ic = -IC）
+        - loss_ic      → 额外记 {prefix}/ic = -loss_ic （loss_ic = -IC）
         """
         m = dict(metrics)
         if "loss_listmle" in m:
@@ -674,12 +674,34 @@ class QlibQuantMoE(Model):
         train_loader = self._make_daily_loader(train_tsds, shuffle=True, train=True)
 
         # 2) Valid set (DK_I)
-        try:
-            valid_tsds = dataset.prepare("valid", col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
-            # Valid should be evaluated on full daily cross-sections without sampling.
-            valid_loader = self._make_daily_chunk_loader(valid_tsds, with_label=True)
-        except Exception:
-            valid_loader = None
+        valid_loader = None
+        valid_err: Optional[Exception] = None
+        for data_key in (DataHandlerLP.DK_I, DataHandlerLP.DK_L):
+            try:
+                valid_tsds = dataset.prepare("valid", col_set=["feature", "label"], data_key=data_key)
+                # Sanity check: ensure label exists (or is packed in x) when we want valid metrics.
+                s0 = valid_tsds[0]
+                raw_x, raw_y = self._extract_sample(s0)
+                x_np = self._as_numpy(raw_x)
+                y_np = None if raw_y is None else self._as_numpy(raw_y)
+                _, y_np = self._split_packed_label(x_np, y_np)
+                if self.label_dim > 0 and y_np is None:
+                    raise RuntimeError(f"Valid segment has no label under data_key={data_key}")
+
+                # Valid should be evaluated on full daily cross-sections without sampling.
+                valid_loader = self._make_daily_chunk_loader(valid_tsds, with_label=True)
+                if data_key != DataHandlerLP.DK_I:
+                    print(
+                        ">>> [Valid] DK_I does not provide label; falling back to DK_L "
+                        "(valid labels may be learn-processed by the handler)."
+                    )
+                break
+            except Exception as e:
+                valid_err = e
+                valid_loader = None
+
+        if valid_loader is None and valid_err is not None:
+            print(f">>> [Valid] disabled: failed to prepare valid loader ({valid_err})")
 
         # 3) Init network from first batch
         first = next(iter(train_loader))

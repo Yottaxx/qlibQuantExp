@@ -395,7 +395,16 @@ def main():
             add_market_ts=bool(args.add_market_ts),
             market_ts_past_only=bool(args.market_ts_past_only),
         )
+    
+    # Log the original train range before extension
+    orig_train_start = dc.get("kwargs", {}).get("segments", {}).get("train", (None, None))[0]
+    print(f"[INFO] Warmup days: {warmup_days}, original train start: {orig_train_start}")
+    
     dc = _extend_train_start_by_trading_days(dc, warmup_days=warmup_days, D=D)
+    
+    # Log the extended train range
+    extended_train_start = dc.get("kwargs", {}).get("segments", {}).get("train", (None, None))[0]
+    print(f"[INFO] Extended train start for warmup: {extended_train_start}")
 
     dataset = init_instance_by_config(dc)
 
@@ -407,6 +416,19 @@ def main():
 
     for seg in ("train", "valid", "test"):
         tsds = dataset.prepare(seg, col_set=["feature"], data_key=DataHandlerLP.DK_I)
+        
+        # Get segment time range for filtering
+        seg_start, seg_end = None, None
+        try:
+            segments = dc.get("kwargs", {}).get("segments", {})
+            if seg in segments:
+                seg_range = segments[seg]
+                if isinstance(seg_range, (tuple, list)) and len(seg_range) == 2:
+                    seg_start = pd.Timestamp(seg_range[0]).normalize()
+                    seg_end = pd.Timestamp(seg_range[1]).normalize()
+                    print(f"[INFO] Segment '{seg}' time range: {seg_start.date()} ~ {seg_end.date()}")
+        except Exception:
+            pass
         
         # Try multiple ways to get the underlying DataFrame (Qlib version compatibility)
         df = None
@@ -420,12 +442,20 @@ def main():
             else:
                 df = None
         
-        # Method 2: via handler fetch (newer Qlib)
+        # Method 2: via handler fetch with segment time range (newer Qlib)
         if df is None:
             try:
                 handler = getattr(dataset, "handler", None)
                 if handler is not None:
-                    df = handler.fetch(col_set="feature", data_key=DataHandlerLP.DK_I)
+                    # Fetch with segment selector to get only the segment's data
+                    if seg_start is not None and seg_end is not None:
+                        df = handler.fetch(
+                            col_set="feature",
+                            data_key=DataHandlerLP.DK_I,
+                            selector=slice(seg_start, seg_end),
+                        )
+                    else:
+                        df = handler.fetch(col_set="feature", data_key=DataHandlerLP.DK_I)
                     if isinstance(df, pd.DataFrame) and not df.empty:
                         method_used = "Method 2: handler.fetch()"
                     else:

@@ -120,4 +120,4 @@ class QuantModelOutput(ModelOutput):
     attn_maps: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
 
     # scores 用于predict
-    scores :  Optional[Tuple[torch.FloatTensor]] = None
+    scores: Optional[torch.FloatTensor] = None
