@@ -26,3 +26,5 @@ Processing valid: 100%|███████████████████
 [INFO] Segment 'test': loaded DataFrame with shape (1112999, 158) using Method 2: handler.fetch()
 Processing test: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 3711/3711 [00:22<00:00, 162.73day/s]
 Saved market state: market_state_csi300.pkl shape=(11133, 816)
+
+>>> [Sanity] loss=4.565823 grad_norm=1.189e+00 score_std=4.559e-02 label_std=1.002e+00 x_last_std=1.007e+00
