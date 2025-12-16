@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 
 def _normalize_date_str(s: str) -> str:
@@ -355,6 +356,12 @@ def main():
     out_path = Path(args.out).expanduser()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Add project root to sys.path for importing work_flow
+    import sys
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
     import work_flow
     import qlib
     from qlib.data.dataset.handler import DataHandlerLP
@@ -400,9 +407,66 @@ def main():
 
     for seg in ("train", "valid", "test"):
         tsds = dataset.prepare(seg, col_set=["feature"], data_key=DataHandlerLP.DK_I)
-        df = getattr(tsds, "data", None)
-        if not isinstance(df, pd.DataFrame):
-            raise RuntimeError("Expect tsds.data DataFrame (use a qlib version compatible with TSDatasetH.data).")
+        
+        # Try multiple ways to get the underlying DataFrame (Qlib version compatibility)
+        df = None
+        method_used = None
+        
+        # Method 1: direct .data attribute (older Qlib)
+        if df is None:
+            df = getattr(tsds, "data", None)
+            if df is not None and isinstance(df, pd.DataFrame):
+                method_used = "Method 1: tsds.data attribute"
+            else:
+                df = None
+        
+        # Method 2: via handler fetch (newer Qlib)
+        if df is None:
+            try:
+                handler = getattr(dataset, "handler", None)
+                if handler is not None:
+                    df = handler.fetch(col_set="feature", data_key=DataHandlerLP.DK_I)
+                    if isinstance(df, pd.DataFrame) and not df.empty:
+                        method_used = "Method 2: handler.fetch()"
+                    else:
+                        df = None
+            except Exception as e:
+                print(f"[DEBUG] Method 2 failed for '{seg}': {e}")
+                df = None
+        
+        # Method 3: iterate and collect from TSDataSampler
+        if df is None:
+            try:
+                print(f"[INFO] Trying Method 3 (iterate TSDataSampler) for '{seg}', this may take a while...")
+                idx = tsds.get_index()
+                samples = []
+                total_samples = len(tsds)
+                for i in tqdm(range(total_samples), desc=f"Method3 {seg}", unit="sample"):
+                    s = tsds[i]
+                    if isinstance(s, dict):
+                        x = s.get("feature", s.get("data", s.get("x", None)))
+                    elif isinstance(s, (tuple, list)):
+                        x = s[0] if len(s) > 0 else None
+                    else:
+                        x = s
+                    if x is not None:
+                        # x is [T, F] for TSDatasetH; take last timestep for daily features
+                        x_np = np.asarray(x, dtype=float)
+                        if x_np.ndim == 2:
+                            x_np = x_np[-1, :]  # last time step
+                        samples.append(x_np)
+                if samples:
+                    df = pd.DataFrame(np.stack(samples, axis=0), index=idx)
+                    method_used = "Method 3: iterate TSDataSampler"
+            except Exception as e:
+                print(f"[DEBUG] Method 3 failed for '{seg}': {e}")
+                df = None
+        
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            print(f"[WARN] Segment '{seg}' returned no valid DataFrame, skipping...")
+            continue
+        
+        print(f"[INFO] Segment '{seg}': loaded DataFrame with shape {df.shape} using {method_used}")
         if not isinstance(df.index, pd.MultiIndex) or "datetime" not in df.index.names:
             raise RuntimeError("Expected MultiIndex with 'datetime' level in tsds.data index.")
 
@@ -435,7 +499,9 @@ def main():
             adf = adf.rename(columns=rename)
             aux_df = adf
 
-        for dt, sub in df.groupby(level="datetime"):
+        # Group by date and compute daily stats
+        daily_groups = list(df.groupby(level="datetime"))
+        for dt, sub in tqdm(daily_groups, desc=f"Processing {seg}", unit="day"):
             dtn = pd.Timestamp(dt).normalize()
             min_dt = dtn if min_dt is None else min(min_dt, dtn)
             max_dt = dtn if max_dt is None else max(max_dt, dtn)
