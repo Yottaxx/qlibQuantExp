@@ -109,6 +109,7 @@ model_conf = {
             "use_warmup": True,
             "warmup_ratio": 0.05,
             "warmup_steps": 0,
+            "debug_sanity_check":True,
         },
     },
 }

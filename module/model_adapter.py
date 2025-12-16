@@ -97,6 +97,75 @@ class QlibQuantMoE(Model):
         # global step for scheduler
         self.global_step: int = 0
 
+        # ---- diagnostics ----
+        # Enable a one-batch backward sanity check at the beginning of fit()
+        self.debug_sanity_check = bool(self.trainer_config.get("debug_sanity_check", False))
+        # Thresholds for "almost constant" detection
+        self.debug_std_eps = float(self.trainer_config.get("debug_std_eps", 1e-8))
+        self.debug_grad_eps = float(self.trainer_config.get("debug_grad_eps", 1e-12))
+        self._warned_keys: set[str] = set()
+
+    def _warn_once(self, key: str, msg: str) -> None:
+        if key in self._warned_keys:
+            return
+        self._warned_keys.add(key)
+        print(msg)
+
+    def _sanity_check_batch(
+        self,
+        bx: torch.Tensor,
+        by: Optional[torch.Tensor],
+        bmacro: Optional[torch.Tensor],
+        *,
+        f_ids: torch.Tensor,
+        optimizer: torch.optim.Optimizer,
+    ) -> None:
+        if self.net is None:
+            return
+        self.net.train(True)
+
+        bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
+        by_t = None if by is None else by.to(self.device).float()
+        macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
+
+        optimizer.zero_grad(set_to_none=True)
+        out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
+        loss = getattr(out, "loss", None)
+        if loss is None:
+            self._warn_once(
+                "sanity_no_loss",
+                ">>> [Sanity] out.loss is None; no backward/step will happen. Check label pipeline & masking.",
+            )
+            return
+        if not torch.isfinite(loss):
+            self._warn_once("sanity_nan_loss", f">>> [Sanity] loss is NaN/Inf: {loss}")
+            return
+
+        loss.backward()
+        grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
+
+        score_std = float("nan")
+        if getattr(out, "scores", None) is not None:
+            score_std = float(out.scores.detach().float().std(unbiased=False).item())
+
+        label_std = float("nan")
+        if by_t is not None:
+            label_std = float(by_t.detach().float().std(unbiased=False).item())
+
+        x_last_std = float("nan")
+        if bx_t.ndim == 3 and bx_t.shape[0] > 0:
+            x_last_std = float(bx_t[:, -1, :].detach().float().std(unbiased=False).item())
+
+        print(
+            ">>> [Sanity] "
+            f"loss={float(loss.detach().item()):.6f} "
+            f"grad_norm={grad_norm:.3e} "
+            f"score_std={score_std:.3e} "
+            f"label_std={label_std:.3e} "
+            f"x_last_std={x_last_std:.3e}"
+        )
+        optimizer.zero_grad(set_to_none=True)
+
     @staticmethod
     def _extract_datetime(s: Any) -> Optional[pd.Timestamp]:
         if isinstance(s, dict):
@@ -532,6 +601,8 @@ class QlibQuantMoE(Model):
 
         skip_invalid_label = 0
         skip_nan_loss = 0
+        skip_no_loss = 0
+        opt_steps = 0
         daily_buffer = defaultdict(lambda: {"p": [], "y": []}) if not train else None
 
         iterator = pbar if pbar is not None else loader
@@ -579,13 +650,49 @@ class QlibQuantMoE(Model):
                         skip_nan_loss += 1
                         continue
                     loss.backward()
-                    torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
+                    grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
                     optimizer.step()
+                    opt_steps += 1
                     if scheduler is not None:
                         scheduler.step()
                     self.global_step += 1
+                    if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
+                        self._warn_once(
+                            "zero_grad_norm",
+                            f">>> [Warn] grad_norm≈0 ({grad_norm:.3e}); parameters may not be updating.",
+                        )
+                elif train and optimizer is not None and loss is None:
+                    skip_no_loss += 1
 
             n_batches += 1
+
+            # ---- one-time diagnostics for "loss never moves" ----
+            # If scores/x/labels are almost constant in a batch, list-wise ranking loss can produce near-zero updates.
+            if train and optimizer is not None:
+                try:
+                    if by_t is not None:
+                        y_std = float(by_t.detach().float().std(unbiased=False).item())
+                        if y_std <= self.debug_std_eps:
+                            self._warn_once(
+                                "label_almost_constant",
+                                f">>> [Warn] label std≈0 ({y_std:.3e}); ranking loss has little signal in-batch.",
+                            )
+                    if getattr(out, "scores", None) is not None:
+                        p_std = float(out.scores.detach().float().std(unbiased=False).item())
+                        if p_std <= self.debug_std_eps:
+                            self._warn_once(
+                                "score_almost_constant",
+                                f">>> [Warn] score std≈0 ({p_std:.3e}); check data variability / model wiring.",
+                            )
+                    if bx_t.ndim == 3 and bx_t.shape[0] > 0:
+                        x_std = float(bx_t[:, -1, :].detach().float().std(unbiased=False).item())
+                        if x_std <= self.debug_std_eps:
+                            self._warn_once(
+                                "x_almost_constant",
+                                f">>> [Warn] x(last-step) std≈0 ({x_std:.3e}); features may be all-0 after Fillna.",
+                            )
+                except Exception:
+                    pass
 
             # 聚合模型内部的 metrics（loss_total / loss_listmle / loss_ic / aux / sparsity ...）
             if getattr(out, "metrics", None):
@@ -631,12 +738,21 @@ class QlibQuantMoE(Model):
                     avg["lr"] = optimizer.param_groups[0]["lr"]
                 avg["skip_lbl"] = skip_invalid_label
                 avg["skip_nan"] = skip_nan_loss
+                avg["skip_noloss"] = skip_no_loss
+                if train and optimizer is not None:
+                    avg["opt"] = opt_steps
                 pbar.set_postfix(avg, refresh=False)
 
         if pbar is not None:
             pbar.close()
 
         avg = self._avg(meters, n_batches)
+        if train and optimizer is not None and opt_steps == 0:
+            self._warn_once(
+                "no_optimizer_steps",
+                ">>> [Warn] No optimizer steps happened in this epoch (opt_steps=0). "
+                "Common causes: labels missing/filtered, loss=None/NaN, or gradients are zero.",
+            )
 
         # If we buffered daily chunks, compute daily IC / RankIC on the full cross-section per day.
         # Expose explicit names to avoid confusion with batch-level metrics.
@@ -706,9 +822,10 @@ class QlibQuantMoE(Model):
         # 3) Init network from first batch
         first = next(iter(train_loader))
         if isinstance(first, (tuple, list)) and len(first) == 3:
-            bx0, by0, _ = first
+            bx0, by0, bmacro0 = first
         else:
             bx0, by0 = first
+            bmacro0 = None
         if self.label_dim > 0 and by0 is None:
             raise RuntimeError(
                 "First training batch has by=None while label_dim>0. "
@@ -721,6 +838,9 @@ class QlibQuantMoE(Model):
         assert self.net is not None
         optimizer = optim.AdamW(self.net.parameters(), lr=self.lr)
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
+
+        if self.debug_sanity_check:
+            self._sanity_check_batch(bx0, by0, bmacro0, f_ids=f_ids, optimizer=optimizer)
 
         # Warmup scheduler
         if self.use_warmup:
