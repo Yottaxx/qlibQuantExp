@@ -70,7 +70,7 @@ data_conf = {
                     {"class": "DropnaLabel"},
                     {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
                 ],
-                # Label: 下一日收益（在 learn_processors 中会被做成 rank-label）
+                # Label: 下五日收益（在 learn_processors 中会被做成 rank-label）
                 "label": ["Ref($close, -5) / Ref($close, -1) - 1"],
             },
         },
