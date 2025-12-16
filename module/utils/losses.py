@@ -75,8 +75,9 @@ class QuantLossFunctions:
         s = pred[indices]  # [n]
 
         # 2) 温度 + 数值稳定
+        tau = max(tau, 1e-6)  # 防止除零
         s = s / tau
-        s = s - s.max()
+        s = s - s.max()  # 数值稳定
 
         # 3) 逐前缀 logsumexp
         rev_s = s.flip(0)
