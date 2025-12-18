@@ -28,8 +28,22 @@ Router 位于每层 `RegimeAdaptiveMoEBlock`，输入为 `regime_embedding`，�
 
 - `router_noise`（float，默认 0.1）：训练时对 `router_logits` 添加的高斯噪声标准差（探索机制）。`0` 表示关闭。
 - `router_temperature`（float，默认 1.0）：softmax 温度，`<1` 更尖锐、`>1` 更平滑（探索/锐化机制）。
-- `router_z_loss_coef`（float，默认 1e-3）：router 的 z-loss 系数（稳定 logsumexp 的正则项）。
-- `router_use_layer_summary`（bool，默认 False）：是否把“每层的市场摘要 token”拼到 router 输入里，使 gate 随深度自适应（仍保持 market-level 路由，不做个股个性化路由）。
+- `router_z_loss_coef`（float，默认 0.01）：router 的 z-loss 系数（防止 collapse）。
+- `router_use_layer_summary`（bool，默认 True）：是否把“每层的市场摘要 token”拼到 router 输入里。
+
+#### 🚨 Router 参数详解
+
+| 参数 | 作用 | 调参逻辑 |
+|------|------|----------|
+| `router_z_loss_coef` | 惩罚 logits 绝对值过大，防止 collapse | 太低(<1e-3)→collapse; 太高(>0.1)→强制均匀 |
+| `router_temperature` | 控制 softmax 尖锐度 | <1→硬选择; >1→软选择 |
+| `router_noise` | 训练时增加探索 | 0.1~0.3 防止早期 collapse |
+
+**为什么需要 z-loss？**
+```python
+z_loss = (logsumexp(router_logits, dim=-1) ** 2).mean()
+```
+当 logits 差异过大（如 `[10, -10]`），softmax 几乎只选一个专家，z-loss 会变大来阻止这种情况。
 
 实现位置：`module/architecture/moe_block.py`。
 
@@ -39,12 +53,26 @@ Router 位于每层 `RegimeAdaptiveMoEBlock`，输入为 `regime_embedding`，�
 
 ### 4) 可微特征选择（STG-style gate）
 
-启用后，模型会学习一个 `z∈[0,1]^N` 对因子维进行软选择（与 `loss_weights["reg"]` 配合做稀疏化）。
+启用后，模型会学习一个 `z∈[0,1]^N` 对因子维进行软选择。
 
 - `use_feature_selection`（bool，默认 True）：是否启用 `DifferentiableFeatureSelector`。
-- `selection_reg_lambda`（float，默认 1e-3）：特征选择正则系数（乘到 `reg_loss` 上）。
+- `selection_reg_lambda`（float，默认 1e-5）：特征选择正则系数。
 - `selection_temperature`（float，默认 0.1）：sigmoid 温度（越小越接近硬选择）。
-- `selection_noise_std`（float，默认 0.5）：训练时 gate 的噪声标准差（探索）。
+- `selection_noise_std`（float，默认 0.5）：训练时 gate 的噪声标准差。
+
+#### 🚨 特征选择参数详解
+
+| 参数 | 作用 | 调参逻辑 |
+|------|------|----------|
+| `selection_reg_lambda` | 控制稀疏惩罚强度 | 1e-5~1e-4 轻度稀疏; 1e-3+ 强稀疏 |
+| `selection_temperature` | sigmoid 锐度 | 0.1 硬选择; 0.5+ 软选择 |
+| `selection_noise_std` | 训练探索 | 0.3~0.5 防止早期卷缩 |
+
+**reg_loss 计算方式**（已修复）：
+```python
+reg_loss = z.sum(dim=-1).mean()  # 平均每个样本选择了多少个特征
+```
+值域为 `[0, N]`，对特征数量 N 不敏感。
 
 ### 5) Loss / 训练目标（截面排序）
 
@@ -95,5 +123,27 @@ Router 位于每层 `RegimeAdaptiveMoEBlock`，输入为 `regime_embedding`，�
 
 ## 建议配置（常用模板）
 
-- t+1（更偏短期）：`regime_internal_mode="short"`，`router_temperature≈1.0`，`router_noise` 可小（0~0.1）。
-- t+5（更偏跨周期）：优先启用 `market_state_path`（外部 macro），或在无 macro 时用 `regime_internal_mode="long", regime_internal_lag=5`，并适当降低 `router_temperature`（例如 0.7~1.0）让 gate 更可分。
+### 防 Collapse + 适度稀疏（推荐）
+```python
+"model_config": {
+    "router_z_loss_coef": 0.01,       # 比旧默认高 10x，防 collapse
+    "router_temperature": 1.0,
+    "router_noise": 0.1,
+    "selection_reg_lambda": 1e-5,     # 修复后需要降低
+    "selection_temperature": 0.1,
+},
+```
+
+### 有效系数计算
+```
+Z-loss 有效系数 = loss_weights["aux"] × router_z_loss_coef
+              = 0.01 × 0.01 = 1e-4
+
+Reg 有效系数 = loss_weights["reg"] × selection_reg_lambda
+           = 0.001 × 1e-5 = 1e-8
+```
+
+### 不同预测周期的建议
+- **t+1**：`regime_internal_mode="short"`，`router_temperature≈1.0`，`router_noise` 可小（0~0.1）。
+- **t+5**：优先启用 `market_state_path`，或用 `regime_internal_mode="long", regime_internal_lag=5`。
+

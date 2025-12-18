@@ -19,8 +19,11 @@ class DifferentiableFeatureSelector(nn.Module):
         else:
             z = torch.sigmoid(self.mu)
 
-        # 正则化 Loss (L1 Norm)，与激活的特征数量成正比
-        reg_loss = z.mean()
+        # 正则化 Loss (L1 Norm)
+        # Fix: 使用 sum(dim=-1).mean() 替代 .mean()
+        # .mean() 会随着特征数量 N 增加而变小 (1/N)，导致对多特征模型约束过弱
+        # .sum(dim=-1).mean() 代表“平均每个样本选择了多少个特征”，对 N 不敏感
+        reg_loss = z.sum(dim=-1).mean()
 
         # Apply Gate
         z_broadcast = z.view(1, 1, -1, 1)

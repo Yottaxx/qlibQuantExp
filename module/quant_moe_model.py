@@ -214,6 +214,7 @@ class QuantMoEModel(PreTrainedModel):
                     l_huber = QuantLossFunctions.cs_huber_loss(p, y, self.config.huber_delta)
 
                 # MoE router z-loss & 特征稀疏正则
+                # 直接用 router_z_loss_coef 和 selection_reg_lambda，不再经过 loss_weights 二次缩放
                 l_aux = (
                     torch.stack(z_losses).mean() * self.config.router_z_loss_coef
                     if z_losses
@@ -221,11 +222,11 @@ class QuantMoEModel(PreTrainedModel):
                 )
                 l_reg = reg_loss * self.config.selection_reg_lambda
 
-                # ★ total_loss：只用 ListMLE + 正则 / z-loss
+                # ★ total_loss：ListMLE + 辅助 loss
                 total_loss = (
                     w.get("listmle", 1.0) * l_listmle
-                    + w.get("aux", 1.0) * l_aux
-                    + w.get("reg", 1.0) * l_reg
+                    + l_aux  # 直接加，不再乘 w["aux"]
+                    + l_reg  # 直接加，不再乘 w["reg"]
                 )
                 if l_rank is not None:
                     total_loss = total_loss + w.get("rank", 0.0) * l_rank

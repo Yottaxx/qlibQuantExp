@@ -24,11 +24,11 @@ class QuantMoEConfig(PretrainedConfig):
             # router (MoE gate)
             router_noise: float = 0.1,       # logit noise std (training only)
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
-            router_z_loss_coef: float = 1e-3,
+            router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
             router_use_layer_summary: bool = True,  # add per-layer market summary token to router input
             use_alibi: bool = True,
             use_feature_selection: bool = True,
-            selection_reg_lambda: float = 1e-3,
+            selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
             selection_temperature: float = 0.1,
             selection_noise_std: float = 0.5,
             # Loss & ranking
@@ -71,13 +71,12 @@ class QuantMoEConfig(PretrainedConfig):
 
         self.selection_noise_std = selection_noise_std
         # 默认 Loss 权重
+        # 注意：aux 和 reg 已移除，直接由 router_z_loss_coef 和 selection_reg_lambda 控制
         self.loss_weights = loss_weights if loss_weights is not None else {
             "listmle": 1.0,
             "ic": 0.0,     # 不进入 total_loss，仅做监控
             "rank": 0.0,
             "huber": 0.0,
-            "aux": 0.01,    # Z-Loss
-            "reg": 0.001,    # Feature Selection L1
         }
 
         self.listmle_tau = listmle_tau
