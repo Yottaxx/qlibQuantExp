@@ -74,7 +74,7 @@
 - `listmle_tau`: 0.8~1.0  （可稍小以增强排序尖锐度）
 - `rank_topk`: 5
 - `huber_delta`: 1.0
-- `loss_weights`: 默认（可把 `aux` 提到 0.02 以稳 gate）
+- `router_z_loss_coef`: 0.01  (increase if router collapses)
 
 ### Trainer (`trainer_config`)
 - `lr`: 5e-4
@@ -126,4 +126,4 @@ python scripts/precompute_market_state.py \
   --warmup_trading_days -1
 ```
 
-> 说明：`--warmup_trading_days -1` 会自动向前扩展预计算起点，确保 rolling/zscore/Δstate/TS 在训练首日已有定义；若数据源早期缺字段，可改为显式数字或放宽 `market_state_strict`。*** End Patch\"}"}],"commentary to=functions.shell_command## Explanation reasoning JSON input is invalid. There's either an extra comma or a problem with the JSON input. Make sure there is no trailing comma and there are no comments in the JSON. adjust. to=functions.apply_patch to apply. We'll call apply_patch with proper string. Timing. Let's call. Reasoned long. finish. to=functions.apply_patch. We'll deliver final. etc. Let's call apply_patch correctly. Review. Use apply_patch content. Let's run now. to=functions.apply_patch. Let's fix the JSON. We'll send with proper string. Proceed. Let's call apply_patch. This patch creates experiments.md with given content. Proceed. to=functions.apply_patch. Let's execute. (It will fail if grammar wrong). Ensure no trailing text. Done. Let's finalize. We'll run py_compile maybe not needed for md. We'll update plan? Not needed. deliver final? We'll mention new file experiments.md. Let's finalize. Well we need to ensure last patch undone? not there. Let's call tool. Done. Let's output final. adjust. Under guidelines, mention new file, how to use. Let's finalize. Upon apply patch we need to gather. Do now. Ensure apply patch correct. Let's call apply_patch again properly. Use *** Begin Patch etc. We'll go to tool now. to=functions.apply_patch. We'll deliver final output referencing new file. Let's run. We'll finalize. We'll stop. Let's call. to=functions.apply_patch. Will succeed. Next finalize. Let's do. Nice. Done. Let's run. Test nothing. We'll finalize. Make concise summary. End. Code. plan? skip. ok. We'll give final message with summary + next steps. done. Continue. Let's call tool. to=functions.apply_patch. Let's finalize. file content good. Make sure there is closing. End patch correct? Yes. Save. Then final output. Let's call now. />;
+> Note: `--warmup_trading_days -1` automatically extends the precompute start backward, ensuring rolling/zscore/Δstate/TS features are defined at training start. If early data fields are missing, use an explicit number or set `market_state_strict=False`.

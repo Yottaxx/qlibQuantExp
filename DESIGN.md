@@ -33,7 +33,10 @@ This document summarizes the current end-to-end design for the cross-sectional s
 
 ## Losses & Metrics
 - Main: ListMLE (`listmle_tau` temperature, clamped to avoid NaN).
-- Aux (optional via `loss_weights`): RankNet top/bottom (`rank_topk`), Huber (`huber_delta`), router z-loss, feature-selection sparsity.
+- Aux losses (directly controlled by coefficients, not via `loss_weights`):
+  - Router z-loss: `router_z_loss_coef` (default 0.01) prevents router collapse.
+  - Feature selection sparsity: `selection_reg_lambda` (default 1e-5) encourages sparse selection.
+- Optional losses (via `loss_weights`): RankNet top/bottom (`rank_topk`), Huber (`huber_delta`).
 - Monitoring (adapter):
   - Train (batch subset): `ic_pearson_batch`, `rank_ic_batch` (aliases `ic_raw/rank_ic` during train).
   - Valid/Test (full daily cross-section): `ic_pearson_daily`, `rank_ic_daily` (aliases `ic_raw/rank_ic` during eval); early-stop uses `rank_ic_daily`.

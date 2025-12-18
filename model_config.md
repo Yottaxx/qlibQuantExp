@@ -74,20 +74,24 @@ reg_loss = z.sum(dim=-1).mean()  # 平均每个样本选择了多少个特征
 ```
 值域为 `[0, N]`，对特征数量 N 不敏感。
 
-### 5) Loss / 训练目标（截面排序）
+### 5) Loss / Training Objective (Cross-Sectional Ranking)
 
-主目标是 list-wise 排序（ListMLE），并可选叠加 pairwise/top-bottom 与回归型 Huber。
+Main objective is list-wise ranking (ListMLE), with optional pairwise/top-bottom and Huber regression.
 
-- `loss_weights`（dict）：各 loss 项权重，默认：
-  - `listmle`：ListMLE 主损失权重
-  - `rank`：RankNet top/bottom 辅助损失权重（可选）
-  - `huber`：截面 Huber 辅助损失权重（可选）
-  - `aux`：MoE router z-loss 权重（乘上 `router_z_loss_coef` 之后再乘它）
-  - `reg`：特征选择稀疏正则权重（乘上 `selection_reg_lambda` 之后再乘它）
-  - 注：IC 目前作为监控指标，不进入 `total_loss`（即使 dict 中存在 `ic` key 也不会生效）。
-- `listmle_tau`（float，默认 1.0）：ListMLE 温度（越小越“硬排序”，但更不稳定）。
-- `rank_topk`（int，默认 5）：RankNet top/bottom K 的 K。
-- `huber_delta`（float，默认 1.0）：Huber 的 delta。
+- `loss_weights` (dict): Weights for loss components. Default:
+  - `listmle`: 1.0 - ListMLE main loss weight
+  - `rank`: 0.0 - RankNet top/bottom auxiliary loss (optional)
+  - `huber`: 0.0 - Cross-sectional Huber auxiliary loss (optional)
+  - `ic`: 0.0 - IC is for monitoring only, does NOT enter `total_loss`
+
+> [!IMPORTANT]
+> **`aux` and `reg` keys have been removed.** Router z-loss and feature selection regularization are now controlled **directly** by their respective coefficients:
+> - `router_z_loss_coef` (default: 0.01) - Added directly to total loss
+> - `selection_reg_lambda` (default: 1e-5) - Added directly to total loss
+
+- `listmle_tau` (float, default 1.0): ListMLE temperature (lower = harder ranking, but less stable).
+- `rank_topk` (int, default 5): K for RankNet top/bottom K.
+- `huber_delta` (float, default 1.0): Huber delta.
 
 ### 6) Regime Encoder（市场状态表征）
 
@@ -134,14 +138,13 @@ reg_loss = z.sum(dim=-1).mean()  # 平均每个样本选择了多少个特征
 },
 ```
 
-### 有效系数计算
-```
-Z-loss 有效系数 = loss_weights["aux"] × router_z_loss_coef
-              = 0.01 × 0.01 = 1e-4
+### Loss Coefficient Summary
 
-Reg 有效系数 = loss_weights["reg"] × selection_reg_lambda
-           = 0.001 × 1e-5 = 1e-8
-```
+With the current design, loss coefficients work directly:
+- **z-loss effective weight** = `router_z_loss_coef` (default: 0.01)
+- **reg effective weight** = `selection_reg_lambda` (default: 1e-5)
+
+No multiplication with `loss_weights` keys required.
 
 ### 不同预测周期的建议
 - **t+1**：`regime_internal_mode="short"`，`router_temperature≈1.0`，`router_noise` 可小（0~0.1）。

@@ -346,7 +346,7 @@ For the label `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5):
 "trainer_config": {
     "lr": 5e-4,
     "n_epochs": 20,
-    "batch_size": 4,
+    "batch_size": 128,  # Use 64-256 for proper regime estimation
     # Macro feature configuration (T+1 to T+5 prediction)
     "market_state_path": "market_state_csi300.pkl",
     "market_state_shift": 0,        # Use day T's state for T's sample
@@ -354,6 +354,9 @@ For the label `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5):
     ...
 }
 ```
+
+> [!NOTE]
+> For Internal Regime mode (`use_external_macro=False`), use `batch_size >= 64` to ensure meaningful correlation/crowding statistics.
 
 ```bash
 # Precompute command for T+1 to T+5 prediction
