@@ -182,10 +182,24 @@ def _pca_fit_transform(mat: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray,
     return scores, mu.astype(np.float32), comps.astype(np.float32)
 
 
-def _rolling_zscore(df: pd.DataFrame, window: int) -> pd.DataFrame:
+def _rolling_zscore(df: pd.DataFrame, window: int, *, shift_stats: bool = False) -> pd.DataFrame:
+    """
+    Compute rolling z-score normalization.
+    
+    Args:
+        shift_stats: If True, use past-only statistics (shift by 1).
+                     Only enable for same-day prediction (T → T).
+                     For T+k prediction (k>=1), set False to use all available info up to T.
+    """
     w = int(window)
-    mu = df.rolling(w, min_periods=w).mean().shift(1)
-    sd = df.rolling(w, min_periods=w).std(ddof=0).shift(1).replace(0.0, np.nan)
+    mu = df.rolling(w, min_periods=w).mean()
+    sd = df.rolling(w, min_periods=w).std(ddof=0).replace(0.0, np.nan)
+    
+    if shift_stats:
+        # Past-only: shift stats by 1 day (for same-day prediction scenarios)
+        mu = mu.shift(1)
+        sd = sd.shift(1)
+    
     return (df - mu) / sd
 
 
@@ -193,10 +207,17 @@ def _parse_int_list(s: str) -> List[int]:
     return [int(x) for x in (s or "").split(",") if str(x).strip()]
 
 
-def _market_ts_features(close: pd.Series, windows: List[int], *, past_only: bool = True) -> pd.DataFrame:
+def _market_ts_features(close: pd.Series, windows: List[int], *, past_only: bool = False) -> pd.DataFrame:
     """
     Build compact market-level time-series features from a benchmark close series.
-    All rolling features are past-only by default (shifted by 1) to avoid look-ahead.
+    
+    Args:
+        past_only: If True, shift all features by 1 day (for same-day prediction T → T).
+                   If False (default), use features up to day T (for T+k prediction, k>=1).
+                   
+    Note:
+        For label = Ref($close, -k) where k >= 1, past_only=False is correct because
+        you make decisions after T's close and predict T+1 onwards.
     """
     c = pd.to_numeric(close, errors="coerce").astype(float)
     c.index = pd.to_datetime(c.index).normalize()
@@ -340,7 +361,7 @@ def main():
     ap.add_argument(
         "--market_ts_past_only",
         action="store_true",
-        help="Use past-only market TS features (shift by 1 day) to avoid look-ahead (recommended).",
+        help="Use past-only market TS features (shift by 1 day). Only enable for same-day prediction (T→T). For T+k prediction (k>=1), keep disabled (default).",
     )
     ap.add_argument(
         "--warmup_trading_days",
@@ -644,17 +665,24 @@ def main():
             close = mdf.iloc[:, 0]
         close.index = pd.to_datetime(close.index).normalize()
 
+        # Note: past_only should be False for T+k prediction (k>=1), True only for same-day prediction
         ts_feat = _market_ts_features(close, m_wins, past_only=bool(args.market_ts_past_only))
         state_df = state_df.join(ts_feat, how="left")
 
     if args.roll_mean and args.roll_mean > 1:
         r = int(args.roll_mean)
-        rolled = state_df.rolling(r, min_periods=r).mean().shift(1)
+        rolled = state_df.rolling(r, min_periods=r).mean()
+        # Note: NOT shifted by default. Only shift if predicting same-day returns (T → T).
+        # For T+k prediction (k>=1), we want features up to and including day T.
+        # If you need past-only for same-day prediction, uncomment the next line:
+        # rolled = rolled.shift(1)
         rolled.columns = [f"{c}_roll_mean{r}" for c in rolled.columns]
         state_df = pd.concat([state_df, rolled], axis=1)
 
     for w in z_wins:
-        z = _rolling_zscore(state_df, w)
+        # shift_stats=False (default): use statistics up to day T for T+k prediction
+        # Set shift_stats=True only if predicting same-day returns (T → T)
+        z = _rolling_zscore(state_df, w, shift_stats=False)
         z.columns = [f"{c}_z{w}" for c in z.columns]
         state_df = pd.concat([state_df, z], axis=1)
 

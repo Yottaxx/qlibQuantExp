@@ -12,12 +12,12 @@ The pipeline is:
 ## What Was Updated
 
 - `scripts/precompute_market_state.py` upgraded from 4 naive scalars to a stronger daily-state design:
-  - Per-day **global distribution** scalars (`mean_abs/std/breadth/tail_2sigma`)
-  - **Correlation/crowding** scalars (`corr_mean_abs/corr_fro/corr_pc1_ratio`)
-  - **Per-factor cross-sectional stats** (mean/std/breadth) → **PCA compression** to `k` dims (`market_state_pca_*`)
-  - Optional **Δstate** features over multiple lags (past-only; `*_d1`, `*_d5`, ...)
-  - Optional **benchmark market time-series** features (return/vol/momentum/drawdown)
-  - Optional **past-only rolling z-score** features for stability across horizons (`*_z20`, `*_z60`, …)
+  - Per-day **global distribution** scalars (`mean_abs/std/breadth/tail_2sigma`) — computed on day T
+  - **Correlation/crowding** scalars (`corr_mean_abs/corr_fro/corr_pc1_ratio`) — computed on day T
+  - **Per-factor cross-sectional stats** (mean/std/breadth) → **PCA compression** to `k` dims (`market_state_pca_*`) — computed on day T
+  - Optional **Δstate** features over multiple lags (`*_d1`, `*_d5`, ...) — past-only by construction
+  - Optional **benchmark market time-series** features (return/vol/momentum/drawdown) — up to day T by default
+  - Optional **rolling z-score** features for stability across horizons (`*_z20`, `*_z60`, …) — up to day T by default
   - Optional robust filtering and weighting (`--filter_*`, `--weight_field`)
   - Optional “raw-ish” feature mode without `RobustZScoreNorm` (`--no_norm`)
 - `module/model_adapter.py` already supports passing `macro_features` everywhere (train/valid/predict/visuals) via:
@@ -41,12 +41,15 @@ python scripts/precompute_market_state.py \
   --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --market_ts_past_only \
   --zscore_windows 20,60 \
   --roll_mean 20 \
   --weight_field '$amount' \
   --filter_robust_z 6 \
   --filter_max_bad_frac 0.05
+
+# Note: --market_ts_past_only is NOT included by default.
+# Only add it if your label predicts same-day returns (T → T).
+# For T+k prediction (k>=1), the default (no shift) is correct.
 ```
 
 ### CSI800 (example)
@@ -59,7 +62,6 @@ python scripts/precompute_market_state.py \
   --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --market_ts_past_only \
   --zscore_windows 20,60,120 \
   --roll_mean 20 \
   --weight_field '$amount' \
@@ -103,10 +105,13 @@ Outputs:
 - `--pca_dim`: PCA dimension for the compressed regime vector (`market_state_pca_0..k-1`)
   - Typical: `8~32`
 
-### Cross-period Standardization (past-only)
+### Cross-period Standardization
 - `--zscore_windows`: comma-separated windows, e.g. `20,60,120`
-  - Generates `*_z{window}` columns using rolling mean/std **shifted by 1 day** (no look-ahead).
-- `--roll_mean`: optional past-only rolling mean window; generates `*_roll_mean{W}` columns
+  - Generates `*_z{window}` columns using rolling mean/std computed **up to day T** (default, for T+k prediction).
+  - For same-day prediction (T→T), modify the script to set `shift_stats=True`.
+- `--roll_mean`: optional rolling mean window; generates `*_roll_mean{W}` columns
+  - Computed **up to day T** by default.
+  - For same-day prediction, uncomment the `shift(1)` line in the script.
 
 ### Δstate (past-only)
 - `--state_delta_lags`: comma-separated lags, e.g. `1,5,10`
@@ -116,7 +121,9 @@ Outputs:
 - `--add_market_ts`: append benchmark market TS features computed from the benchmark close series.
 - `--market_index`: override benchmark instrument code (defaults: `csi300->SH000300`, `csi800->SH000906`).
 - `--market_ts_windows`: comma-separated windows used for vol/mom/dd.
-- `--market_ts_past_only`: shift TS features by 1 day (recommended, avoids look-ahead).
+- `--market_ts_past_only`: (optional flag) shift TS features by 1 day.
+  - **Default**: disabled (features computed up to day T, for T+k prediction where k>=1).
+  - **Enable only** for same-day prediction (T→T) scenarios.
 
 ---
 
@@ -133,8 +140,12 @@ Enable macro features by adding these keys to `trainer_config`:
 ```
 
 Notes:
-- `market_state_shift` shifts the entire state table by `k` days (within its index).
-  - Use `1` if you want to be conservative about information availability (avoid any same-day leakage).
+- `market_state_shift=0` (default, recommended): Use state computed on day T to predict T+1 onwards.
+  - Features are computed **up to and including day T** (T's close price is known when making T+1 predictions).
+  - This configuration matches labels like `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5 returns).
+- `market_state_shift=1` (conservative): Use state computed on day T-1 to predict T onwards.
+  - **Only needed** if your label predicts same-day returns (T→T), which is rare.
+  - For standard T+k prediction (k>=1), this wastes 1 day of information.
 - `market_state_strict=True` makes missing dates (or NaN state rows) a hard error.
   - This is recommended for paper-quality experiments.
 
@@ -156,8 +167,210 @@ to make rolling/z-score/Δstate/market-TS features defined at your training star
 
 ---
 
+## Time Alignment Philosophy (Important!)
+
+### Default Behavior (T+k Prediction, k>=1)
+
+**Assumption**: You make trading decisions **after day T closes** and predict **T+1 onwards**.
+
+- Features are computed **up to and including day T** (no shift).
+- Label example: `Ref($close, -5) / Ref($close, -1) - 1` predicts T+1 to T+5 returns.
+- This is the **correct** setup for:
+  - Overnight strategy (decide after T's close, execute at T+1's open)
+  - Multi-day holding periods (T+5, T+10, T+20)
+
+**Why no shift?** On day T's close, you know T's price and can compute T's market state (volatility, correlation, etc.). Using this information to predict T+1~T+5 has **no look-ahead bias**.
+
+### When to Enable Shift (T→T Same-Day Prediction)
+
+**Only if** your label predicts **same-day returns** (e.g., `$close / Ref($close, 1) - 1`):
+
+1. Add `--market_ts_past_only` when generating state
+2. Set `market_state_shift=1` in training config
+3. Modify script: set `shift_stats=True` for zscore and uncomment `shift(1)` for roll_mean
+
+This scenario is **rare** in practice (most quant strategies predict at least T+1).
+
+---
+
 ## Practical Advice (CSI800 / Long Horizon)
 
 - CSI800 is larger and noisier: prefer `--weight_field '$amount'` and robust filtering.
 - For t+5/t+20, always include `--zscore_windows` (e.g. `20,60,120`) to stabilize regimes across periods.
 - If you keep `CSRankNorm` on labels, market-state features should carry more slow-moving information (correlation/crowding + PCA regime) to help the router distinguish regimes.
+- **Do not** use `--market_ts_past_only` or `market_state_shift=1` unless you have a same-day prediction task.
+
+---
+
+## Design Analysis & Verification (2024-12-18)
+
+### Current Configuration Summary
+
+| Component | Setting | Value |
+|-----------|---------|-------|
+| **Label** | `work_flow.py` | `Ref($close, -5) / Ref($close, -1) - 1` |
+| **Prediction Horizon** | T+1 to T+5 | Next-day to 5-day forward return |
+| **market_state_shift** | Recommended | `0` (default) |
+| **--market_ts_past_only** | Recommended | `False` (default) |
+| **zscore shift_stats** | Recommended | `False` (default) |
+| **roll_mean shift** | Recommended | `False` (default) |
+
+### Label Analysis
+
+```python
+# work_flow.py line 74
+"label": ["Ref($close, -5) / Ref($close, -1) - 1"]
+```
+
+**Interpretation**:
+- `Ref($close, -5)` = Close price 5 days into the future (T+5)
+- `Ref($close, -1)` = Close price 1 day into the future (T+1)
+- This computes: **(T+5 close / T+1 close) - 1** = Return from T+1 to T+5
+
+**Key Insight**: The label predicts returns **starting from T+1**, not from T. This is a forward-looking prediction made **after observing day T's close**.
+
+### Time Alignment Verification
+
+#### ✅ No Look-Ahead Bias
+
+The current design has **no look-ahead bias** for the T+1 to T+5 prediction task:
+
+```
+Timeline:
+   T-2      T-1       T        T+1      T+2      T+3      T+4      T+5
+    |        |        |         |        |        |        |        |
+                     [Close]   [Open]
+                       ↓         ↓
+              Features computed  Prediction executed
+              up to here         starting here
+```
+
+1. **Features (market state)**: Computed using data up to and including day T's close
+2. **Decision point**: After day T's market close
+3. **Execution**: Buy at T+1's open (or close for `deal_price=close`)
+4. **Label**: Return from T+1 to T+5
+
+Since features use only {T-∞, ..., T} and predict {T+1, ..., T+5}, there is **no temporal leakage**.
+
+#### Why `market_state_shift=0` is Correct
+
+```python
+# module/utils/market_state.py lines 71-75
+if shift:
+    shift = int(shift)
+    if shift < 0:
+        raise ValueError("shift must be >= 0")
+    df = df.shift(shift)  # Uses pandas shift on index
+```
+
+- `shift=0`: For date T query, return state computed on day T
+- `shift=1`: For date T query, return state computed on day T-1
+
+For T+k prediction (k≥1), `shift=0` is correct because:
+1. You make the prediction after T's close
+2. T's market state is fully observable at that point
+3. Using T's state to predict T+1~T+5 has no information leakage
+
+**Warning**: Only use `shift=1` if your label predicts same-day returns (T→T), which is NOT the case here.
+
+### Precompute Script Analysis
+
+#### Feature Categories and Their Time Properties
+
+| Feature Category | Computed From | Look-Ahead Safe? |
+|-----------------|---------------|------------------|
+| Global scalars (`mean_abs`, `std`, etc.) | Day T cross-section | ✅ Yes |
+| Correlation/crowding | Day T factor correlations | ✅ Yes |
+| PCA components | Day T factor matrix | ✅ Yes |
+| Δstate (`*_d1`, `*_d5`, etc.) | `state_T - state_{T-lag}` | ✅ Yes (past-only) |
+| Rolling z-score (`*_z20`, etc.) | Rolling window up to T | ✅ Yes (with `shift_stats=False`) |
+| Roll mean (`*_roll_mean20`) | Rolling window up to T | ✅ Yes (NOT shifted by default) |
+| Market TS features | Benchmark close up to T | ✅ Yes (with `past_only=False`) |
+
+#### Verified Code Paths
+
+```python
+# precompute_market_state.py line 685
+z = _rolling_zscore(state_df, w, shift_stats=False)  # ✅ Correct for T+k
+
+# precompute_market_state.py lines 672-678
+rolled = state_df.rolling(r, min_periods=r).mean()
+# NOT shifted by default → uses data up to T → ✅ Correct for T+k
+
+# precompute_market_state.py line 669
+ts_feat = _market_ts_features(close, m_wins, past_only=bool(args.market_ts_past_only))
+# Default past_only=False → uses data up to T → ✅ Correct for T+k
+```
+
+### Potential Issues & Recommendations
+
+#### 1. ✅ No Bugs Found in Core Logic
+
+The time alignment is correct for the T+1 to T+5 prediction task:
+- Features computed up to day T
+- Label predicts T+1 to T+5
+- `market_state_shift=0` correctly maps date → same-day state
+
+#### 2. ⚠️ Warmup Period Consideration
+
+Rolling features (z-score, roll_mean, market_ts) introduce NaN values for the initial warmup period:
+
+```python
+# Warmup auto-calculation in precompute script
+need = max(max_lag, max_window + 1)
+```
+
+**Recommendation**: Ensure `--warmup_trading_days` is sufficient or set `market_state_strict=False` for initial dates.
+
+#### 3. ⚠️ Documentation-Code Consistency
+
+The documentation and code are now aligned:
+- `macro_feature.md` correctly states `shift=0` for T+k prediction
+- `precompute_market_state.py` uses correct defaults
+- `model_adapter.py` defaults to `market_state_shift=0`
+
+### Configuration Checklist for Current Setup
+
+For the label `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5):
+
+- [x] `market_state_shift=0` in trainer_config
+- [x] No `--market_ts_past_only` flag when running precompute
+- [x] `shift_stats=False` in `_rolling_zscore()` (default)
+- [x] `roll_mean` NOT shifted (default behavior)
+- [x] Warmup period extended to cover rolling windows
+
+### Example Complete Configuration
+
+```python
+# work_flow.py trainer_config
+"trainer_config": {
+    "lr": 5e-4,
+    "n_epochs": 20,
+    "batch_size": 4,
+    # Macro feature configuration (T+1 to T+5 prediction)
+    "market_state_path": "market_state_csi300.pkl",
+    "market_state_shift": 0,        # Use day T's state for T's sample
+    "market_state_strict": True,    # Raise on missing/NaN states
+    ...
+}
+```
+
+```bash
+# Precompute command for T+1 to T+5 prediction
+python scripts/precompute_market_state.py \
+  --out market_state_csi300.pkl \
+  --pca_dim 16 \
+  --state_delta_lags 1,5,10 \
+  --add_market_ts \
+  --market_ts_windows 5,20,60 \
+  --zscore_windows 20,60 \
+  --roll_mean 20 \
+  --weight_field '$amount' \
+  --filter_robust_z 6 \
+  --filter_max_bad_frac 0.05
+  # Note: NO --market_ts_past_only flag (correct for T+k prediction)
+```
+
+### Conclusion
+
+**The macro feature design is correctly aligned with the current label configuration (T+1 to T+5 prediction).** No bugs were found in the time alignment logic. The default settings (`market_state_shift=0`, no `--market_ts_past_only`) are appropriate for this prediction horizon.

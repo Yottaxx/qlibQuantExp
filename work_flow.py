@@ -550,7 +550,7 @@ def generate_paper_report(
       - attention map 的局部性指标
     输出一份 Markdown 报告到 kdd_report.md，并在控制台打印。
     """
-    local_dir: Path = rec.get_local_dir()
+    local_dir = Path(rec.get_local_dir())
     report_path = local_dir / "kdd_report.md"
 
     run_conf = _load_run_conf(rec)
