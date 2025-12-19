@@ -14,11 +14,15 @@
 - `d_model`: 64~128（依资源）
 - `n_layers`: 2~4
 - `n_heads`: 4
-- `use_feature_selection`: True
-- `selection_reg_lambda`: 1e-5~1e-4（`reg_loss=z.sum(dim=-1).mean()` 后建议用更小系数）
-- `selection_temperature`: 0.1
-- `selection_noise_std`: 0.5
-- `use_alibi`: True
+- `use_feature_selection`: False（建议先做 FiLM-only baseline；再做 STG ablation）
+- `selection_reg_lambda`: 1e-5~1e-4（若开 STG；`reg_loss=z.sum(dim=-1).mean()` 值域 `[0,N]`）
+- `selection_temperature`: 0.1（若开 STG）
+- `selection_noise_std`: 0.5（若开 STG）
+- `use_regime_time_embedding`: True  （regime-adaptive time embedding）
+- `time_tau_init`: 5.0
+- `use_regime_factor_gate`: True  （regime-adaptive factor gate）
+- `factor_gate_scale`: 0.5
+- `use_alibi`: False（推荐先关；短 T + regime time embedding 下通常足够，且可避免 MHA 的 `attn_mask` 展开开销；需要时再做 ablation 开启）
 - `use_external_macro`: False  （t+1 可不依赖外部 macro）
 - `regime_internal_mode`: "short"
 - `regime_internal_lag`: 1
@@ -56,11 +60,15 @@
 - `d_model`: 128
 - `n_layers`: 3~4
 - `n_heads`: 4
-- `use_feature_selection`: True
-- `selection_reg_lambda`: 1e-5~1e-4（`reg_loss=z.sum(dim=-1).mean()` 后建议用更小系数）
-- `selection_temperature`: 0.1
-- `selection_noise_std`: 0.5
-- `use_alibi`: True
+- `use_feature_selection`: False（建议先做 FiLM-only baseline；再做 STG ablation）
+- `selection_reg_lambda`: 1e-5~1e-4（若开 STG；`reg_loss=z.sum(dim=-1).mean()` 值域 `[0,N]`）
+- `selection_temperature`: 0.1（若开 STG）
+- `selection_noise_std`: 0.5（若开 STG）
+- `use_regime_time_embedding`: True
+- `time_tau_init`: 5.0
+- `use_regime_factor_gate`: True
+- `factor_gate_scale`: 0.5
+- `use_alibi`: False（同上，建议先关；需要时再做 ablation）
 - `use_external_macro`: True  （由 adapter 自动设置）
 - `regime_internal_mode`: "long"  （仅作 fallback）
 - `regime_internal_lag`: 5
@@ -103,7 +111,8 @@ python scripts/precompute_market_state.py \
   --weight_field '$amount' \
   --filter_robust_z 6 \
   --filter_max_bad_frac 0.05 \
-  --warmup_trading_days -1
+  --warmup_trading_days -1 \
+  --no_norm 
 ```
 
 ### Macro State 预计算命令（示例：CSI800）
@@ -123,7 +132,9 @@ python scripts/precompute_market_state.py \
   --min_trade 1 \
   --filter_robust_z 6 \
   --filter_max_bad_frac 0.05 \
-  --warmup_trading_days -1
+  --warmup_trading_days -1 \
+  --no_norm 
+
 ```
 
 > Note: `--warmup_trading_days -1` automatically extends the precompute start backward, ensuring rolling/zscore/Δstate/TS features are defined at training start. If early data fields are missing, use an explicit number or set `market_state_strict=False`.

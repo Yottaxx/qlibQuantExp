@@ -59,6 +59,9 @@ class RegimeAdaptiveMoEBlock(nn.Module):
         regime_embedding: torch.Tensor,
         attn_bias=None,
         return_attn: bool = False,
+        *,
+        factor_film: tuple[torch.Tensor, torch.Tensor] | None = None,
+        feature_mask: torch.Tensor | None = None,
     ):
         B, T, N, D = x.shape
         residual = x
@@ -101,6 +104,33 @@ class RegimeAdaptiveMoEBlock(nn.Module):
 
         w_time = gate_weights[:, 0].view(B, 1, 1, 1)
         w_factor = gate_weights[:, 1].view(B, 1, 1, 1)
+
+        # Apply factor-level conditioning after LayerNorm (FiLM/AdaLN style) so it is not canceled by Pre-LN.
+        if factor_film is not None:
+            gamma, beta = factor_film
+            if gamma.ndim != 3 or beta.ndim != 3:
+                raise ValueError(
+                    f"factor_film expects (gamma,beta) with shape [B,N,D]; got {tuple(gamma.shape)}, {tuple(beta.shape)}"
+                )
+            if tuple(gamma.shape) != (B, N, D) or tuple(beta.shape) != (B, N, D):
+                raise ValueError(
+                    f"factor_film expects (gamma,beta) with shape [B,N,D]={B,N,D}; got {tuple(gamma.shape)}, {tuple(beta.shape)}"
+                )
+            x = x * gamma.view(B, 1, N, D) + beta.view(B, 1, N, D)
+
+        # Feature selection mask (global factor gate) should apply last, so masked features stay masked even with FiLM shift.
+        if feature_mask is not None:
+            feature_mask = feature_mask.to(device=x.device, dtype=x.dtype)
+            if feature_mask.ndim == 1:
+                if int(feature_mask.shape[0]) != int(N):
+                    raise ValueError(f"feature_mask must have length N={N}, got {int(feature_mask.shape[0])}")
+                x = x * feature_mask.view(1, 1, N, 1)
+            elif feature_mask.ndim == 2:
+                if tuple(feature_mask.shape) != (B, N):
+                    raise ValueError(f"feature_mask 2D must be [B,N]={B,N}, got {tuple(feature_mask.shape)}")
+                x = x * feature_mask.view(B, 1, N, 1)
+            else:
+                raise ValueError(f"feature_mask must be 1D/2D, got shape {tuple(feature_mask.shape)}")
 
         bias_time = bias_factor = None
         if isinstance(attn_bias, (tuple, list)) and len(attn_bias) == 2:

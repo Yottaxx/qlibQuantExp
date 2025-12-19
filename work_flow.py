@@ -93,6 +93,7 @@ model_conf = {
             "d_model": 8,
             "n_layers": 2,
             "use_feature_selection": True,
+            "use_alibi": False,  # recommended default (time embedding already provides position signal)
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
@@ -640,8 +641,12 @@ def generate_paper_report(
 
     # ---------- 3. gate & attention 诊断 ----------
     gate_series = None
+    gate_png = None
     attn_maps = None
     attn_pngs = None
+    diag_series: Dict[str, pd.Series] = {}
+    diag_pngs: Dict[str, str] = {}
+    tau_vs_time_ratio_png = None
 
     try:
         gate_series = rec.load_object("st_disentangle_gate_series")
@@ -649,9 +654,19 @@ def generate_paper_report(
         pass
 
     try:
+        gate_png = rec.load_object("st_disentangle_gate_png")
+    except Exception:
+        gate_png = None
+
+    try:
         attn_maps = rec.load_object("st_disentangle_attn_maps")
     except Exception:
         pass
+
+    try:
+        tau_vs_time_ratio_png = rec.load_object("st_disentangle_tau_vs_time_ratio_png")
+    except Exception:
+        tau_vs_time_ratio_png = None
 
     # optional: png filenames saved by model.export_visuals(save_png=True)
     try:
@@ -659,15 +674,49 @@ def generate_paper_report(
     except Exception:
         attn_pngs = None
 
+    # Optional: extra daily diagnostics exported by model.export_visuals()
+    for k in [
+        "gate_entropy",
+        "time_tau",
+        "time_half_life",
+        "factor_gate_entropy",
+        "factor_gate_topk_mass_10",
+    ]:
+        try:
+            s = rec.load_object(f"st_disentangle_{k}_series")
+            if s is not None:
+                diag_series[k] = s
+        except Exception:
+            pass
+        try:
+            fn = rec.load_object(f"st_disentangle_{k}_png")
+            if fn:
+                diag_pngs[k] = fn
+        except Exception:
+            pass
+
+    def _series_stats(s: pd.Series | None) -> str:
+        if s is None or len(s) == 0:
+            return "N/A"
+        try:
+            s = s.dropna().sort_index()
+        except Exception:
+            return "N/A"
+        if len(s) == 0:
+            return "N/A"
+        mean = float(s.mean())
+        std = float(s.std())
+        p10 = float(s.quantile(0.10))
+        p90 = float(s.quantile(0.90))
+        return f"mean={mean:.3f}, std={std:.3f}, p10={p10:.3f}, p90={p90:.3f}"
+
     # gate time_ratio 统计
-    gate_stats_str = "N/A"
-    if gate_series is not None and len(gate_series) > 0:
-        gate_series = gate_series.sort_index()
-        g_mean = float(gate_series.mean())
-        g_std = float(gate_series.std())
-        g_p10 = float(gate_series.quantile(0.10))
-        g_p90 = float(gate_series.quantile(0.90))
-        gate_stats_str = f"mean={g_mean:.3f}, std={g_std:.3f}, p10={g_p10:.3f}, p90={g_p90:.3f}"
+    gate_stats_str = _series_stats(gate_series)
+    gate_entropy_stats_str = _series_stats(diag_series.get("gate_entropy", None))
+    time_tau_stats_str = _series_stats(diag_series.get("time_tau", None))
+    time_half_life_stats_str = _series_stats(diag_series.get("time_half_life", None))
+    factor_gate_entropy_stats_str = _series_stats(diag_series.get("factor_gate_entropy", None))
+    factor_gate_topk10_stats_str = _series_stats(diag_series.get("factor_gate_topk_mass_10", None))
 
     def _row_normalize(a: np.ndarray) -> np.ndarray:
         a = np.asarray(a, dtype=float)
@@ -835,12 +884,54 @@ def generate_paper_report(
     lines.append("## 4. Spatio-Temporal Disentanglement Diagnostics\n")
     lines.append("### 4.1 Router Gate over Time (time vs. cross-sectional experts)\n")
     lines.append(f"- Gate time_ratio (time-expert weight) stats on test set: {gate_stats_str}\n")
+    lines.append(f"- Gate entropy stats on test set: {gate_entropy_stats_str}\n")
     gate_interp = """
     - time_ratio 接近 1 表示更信任「时间 expert」，接近 0 表示更信任「截面 expert」。
     - 若 mean 在 (0.3, 0.7) 且 std > 0，说明路由器确实在不同阶段做非平凡决策；
       若长期贴近 0 或 1，则 MoE 退化为单专家模型。
     """
     lines.append(textwrap.dedent(gate_interp).strip() + "\n")
+
+    if gate_png and (local_dir / str(gate_png)).exists():
+        lines.append(f"![Gate time_ratio series]({gate_png})\n")
+    fn = diag_pngs.get("gate_entropy", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![Gate entropy series]({fn})\n")
+
+    lines.append("### 4.1.1 Regime-Adaptive Time Scale (tau / half-life)\n")
+    lines.append(f"- time_tau stats on test set: {time_tau_stats_str}\n")
+    lines.append(f"- time_half_life stats on test set: {time_half_life_stats_str}\n")
+    fn = diag_pngs.get("time_tau", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![time_tau series]({fn})\n")
+    fn = diag_pngs.get("time_half_life", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![time_half_life series]({fn})\n")
+    time_interp = """
+    - `time_tau` 来自 regime-adaptive time embedding 的时间尺度参数（越大越偏长记忆，越小越偏短记忆）。
+    - `time_half_life = time_tau * ln(2)`（单位为窗口时间步，若 1 步=1 天则可视作“天数半衰期”）。
+    """
+    lines.append(textwrap.dedent(time_interp).strip() + "\n")
+
+    if tau_vs_time_ratio_png and (local_dir / str(tau_vs_time_ratio_png)).exists():
+        lines.append("### 4.1.1.1 tau vs time_ratio (same-day overlay)\n")
+        lines.append(f"![tau vs time_ratio]({tau_vs_time_ratio_png})\n")
+
+    lines.append("### 4.1.2 Regime-Adaptive Factor Gate (concentration)\n")
+    lines.append(f"- factor_gate_entropy stats on test set: {factor_gate_entropy_stats_str}\n")
+    lines.append(f"- factor_gate_topk_mass_10 stats on test set: {factor_gate_topk10_stats_str}\n")
+    fn = diag_pngs.get("factor_gate_entropy", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![factor_gate_entropy series]({fn})\n")
+    fn = diag_pngs.get("factor_gate_topk_mass_10", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![factor_gate_topk_mass_10 series]({fn})\n")
+    factor_gate_interp = """
+    - `factor_gate_entropy` 是把 per-sample 的 factor gate 归一化后得到的分布熵（再除以 log(N) 做归一化到 0~1）。
+      越低表示 gate 越“集中”，即 regime 对因子组合的重加权更强、更具结构性。
+    - `factor_gate_topk_mass_10` 表示前 10 个因子（按 gate 权重排序）的累计质量占比；越高说明越稀疏/越集中。
+    """
+    lines.append(textwrap.dedent(factor_gate_interp).strip() + "\n")
 
     lines.append("### 4.2 Temporal Attention (Heatmap + Locality)\n")
     lines.append(

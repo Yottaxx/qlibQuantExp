@@ -16,13 +16,16 @@ Key options
 Outputs
 -------
 DataFrame with index=datetime, saved as .pkl/.parquet/.csv.
-Also writes a sidecar `*.pca.npz` for PCA params.
+Also writes sidecars:
+- `*.pca.npz` for PCA params (mean/components)
+- `*.pca.meta.json` for PCA fit metadata (split/range/dims), useful for leakage auditing
 """
 
 from __future__ import annotations
 
 import argparse
 import copy
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -171,15 +174,57 @@ def _factor_stats(x: np.ndarray, w: Optional[np.ndarray]) -> np.ndarray:
     return np.concatenate([mu, sd, br], axis=0).astype(np.float32, copy=False)
 
 
-def _pca_fit_transform(mat: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _pca_fit(mat: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Fit PCA (via SVD) on the provided matrix.
+
+    Notes
+    -----
+    - This is intended to be fit on *train only* for paper-quality experiments.
+    - We center with nanmean; rows with NaNs are kept but NaNs are treated as 0 after centering.
+    """
     x = np.asarray(mat, dtype=float)
     mu = np.nanmean(x, axis=0)
+    mu = np.where(np.isfinite(mu), mu, 0.0)
     x = np.nan_to_num(x - mu[None, :], nan=0.0, posinf=0.0, neginf=0.0)
     u, s, vt = np.linalg.svd(x, full_matrices=False)
     k = int(min(max(1, k), vt.shape[0]))
     comps = vt[:k]
-    scores = (u[:, :k] * s[:k]).astype(np.float32)
-    return scores, mu.astype(np.float32), comps.astype(np.float32)
+    return mu.astype(np.float32), comps.astype(np.float32)
+
+
+def _pca_transform(mat: np.ndarray, mu: np.ndarray, comps: np.ndarray) -> np.ndarray:
+    """
+    Apply PCA transform to a matrix using pre-fit mean and components.
+
+    Returns
+    -------
+    scores: np.ndarray
+        Shape [n_samples, k].
+    """
+    x = np.asarray(mat, dtype=float)
+    mu = np.asarray(mu, dtype=float)
+    comps = np.asarray(comps, dtype=float)
+    x = np.nan_to_num(x - mu[None, :], nan=0.0, posinf=0.0, neginf=0.0)
+    scores = x @ comps.T
+    return scores.astype(np.float32, copy=False)
+
+
+def _filter_df_by_datetime(df: pd.DataFrame, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]) -> pd.DataFrame:
+    """
+    Defensive segment filtering: keep only rows within [start, end] on the 'datetime' index level.
+
+    We do this even if `dataset.prepare(seg)` is supposed to do it already, because `handler.fetch()`
+    may return a superset on some Qlib versions.
+    """
+    if start is None or end is None:
+        return df
+    if not isinstance(df.index, pd.MultiIndex) or "datetime" not in df.index.names:
+        return df
+    dts = pd.to_datetime(df.index.get_level_values("datetime")).normalize()
+    m = (dts >= pd.Timestamp(start).normalize()) & (dts <= pd.Timestamp(end).normalize())
+    # Keep index/columns as-is (MultiIndex preserved).
+    return df.loc[m]
 
 
 def _rolling_zscore(df: pd.DataFrame, window: int, *, shift_stats: bool = False) -> pd.DataFrame:
@@ -347,6 +392,16 @@ def main():
         help="Optional qlib field for suspension flag (keep rows with value == 0).",
     )
     ap.add_argument("--pca_dim", type=int, default=16, help="PCA output dim (8~32 typical).")
+    ap.add_argument(
+        "--pca_fit_on",
+        type=str,
+        default="train",
+        choices=["train", "all"],
+        help=(
+            "PCA fit split. For paper-quality experiments, use 'train' to avoid look-ahead "
+            "(fit PCA on train days only, then apply to valid/test)."
+        ),
+    )
     ap.add_argument("--zscore_windows", type=str, default="", help="Comma-separated windows, e.g. '20,60,120'.")
     ap.add_argument("--roll_mean", type=int, default=0, help="Optional past-only rolling mean window.")
     ap.add_argument("--state_delta_lags", type=str, default="1,5,10", help="Comma-separated lags for Δstate features.")
@@ -516,6 +571,12 @@ def main():
         if not isinstance(df, pd.DataFrame) or df.empty:
             print(f"[WARN] Segment '{seg}' returned no valid DataFrame, skipping...")
             continue
+
+        # Defensive filter: ensure the segment range is respected even if handler.fetch returns a superset.
+        df = _filter_df_by_datetime(df, seg_start, seg_end)
+        if df.empty:
+            print(f"[WARN] Segment '{seg}' became empty after datetime filtering, skipping...")
+            continue
         
         print(f"[INFO] Segment '{seg}': loaded DataFrame with shape {df.shape} using {method_used}")
         if not isinstance(df.index, pd.MultiIndex) or "datetime" not in df.index.names:
@@ -623,8 +684,39 @@ def main():
         raise RuntimeError("No daily states computed; check filters and data.")
 
     base_df = pd.DataFrame(rows, index=pd.to_datetime(idx_list)).sort_index()
+    if not base_df.index.is_unique:
+        # Duplicate dates typically indicate mis-filtered segments (e.g., handler.fetch returned a superset).
+        # This would silently overwrite during lookup, so fail fast for paper-quality usage.
+        dup = base_df.index[base_df.index.duplicated()].unique()
+        raise RuntimeError(
+            f"Duplicate dates found in computed market_state ({len(dup)} duplicates, e.g. {dup[:5].tolist()}). "
+            "Check your segment filtering / Qlib handler.fetch behavior."
+        )
+
     factor_mat = np.stack(factor_vecs, axis=0)
-    scores, pca_mean, pca_comps = _pca_fit_transform(factor_mat, k=args.pca_dim)
+
+    # PCA fit policy: train-only (recommended) vs all-days (legacy)
+    segs = dc.get("kwargs", {}).get("segments", {}) or {}
+    train_start, train_end = None, None
+    if "train" in segs and segs["train"]:
+        try:
+            train_start = pd.Timestamp(segs["train"][0]).normalize()
+            train_end = pd.Timestamp(segs["train"][1]).normalize()
+        except Exception:
+            train_start, train_end = None, None
+
+    fit_mask = np.ones((base_df.shape[0],), dtype=bool)
+    fit_desc = "all"
+    if args.pca_fit_on == "train":
+        if train_start is None or train_end is None:
+            raise RuntimeError("--pca_fit_on=train requires a valid dc['kwargs']['segments']['train'] range.")
+        fit_mask = (base_df.index >= train_start) & (base_df.index <= train_end)
+        fit_desc = f"train[{train_start.date()}..{train_end.date()}]"
+        if int(np.sum(fit_mask)) < 5:
+            raise RuntimeError(f"Too few train days for PCA fit ({int(np.sum(fit_mask))}) in {fit_desc}.")
+
+    pca_mean, pca_comps = _pca_fit(factor_mat[fit_mask], k=args.pca_dim)
+    scores = _pca_transform(factor_mat, pca_mean, pca_comps)
     pca_df = pd.DataFrame(scores, index=base_df.index, columns=[f"market_state_pca_{i}" for i in range(scores.shape[1])])
     state_df = pd.concat([base_df, pca_df], axis=1)
 
@@ -686,8 +778,21 @@ def main():
         z.columns = [f"{c}_z{w}" for c in z.columns]
         state_df = pd.concat([state_df, z], axis=1)
 
+    # Save PCA params for reproducibility (and to make leakage checks explicit)
     try:
         np.savez_compressed(out_path.with_suffix(out_path.suffix + ".pca.npz"), mean=pca_mean, components=pca_comps)
+        meta = {
+            "pca_dim": int(pca_comps.shape[0]),
+            "input_dim": int(pca_comps.shape[1]),
+            "fit_on": str(args.pca_fit_on),
+            "fit_desc": str(fit_desc),
+        }
+        if train_start is not None and train_end is not None:
+            meta["train_range"] = [str(train_start.date()), str(train_end.date())]
+        out_path.with_suffix(out_path.suffix + ".pca.meta.json").write_text(
+            json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     except Exception:
         pass
 

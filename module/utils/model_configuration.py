@@ -19,14 +19,25 @@ class QuantMoEConfig(PretrainedConfig):
             n_layers: int = 4,
             d_ff: int = 128,
             dropout: float = 0.1,
+            initializer_range: float = 0.02,
             num_alphas: int = 64,
             context_len: int = 32,
+            # regime-adaptive embeddings (lightweight, recommended)
+            use_regime_time_embedding: bool = True,
+            time_tau_min: float = 0.5,
+            time_tau_max: float = 50.0,
+            time_tau_init: float = 5.0,
+            time_emb_init_std: float = 0.02,
+            time_decay_normalize: bool = True,
+            use_regime_factor_gate: bool = True,
+            factor_gate_scale: float = 0.5,
+            factor_gate_shift_scale: float = 0.0,
             # router (MoE gate)
             router_noise: float = 0.1,       # logit noise std (training only)
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
             router_use_layer_summary: bool = True,  # add per-layer market summary token to router input
-            use_alibi: bool = True,
+            use_alibi: bool = False,
             use_feature_selection: bool = True,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
             selection_temperature: float = 0.1,
@@ -56,8 +67,21 @@ class QuantMoEConfig(PretrainedConfig):
         self.n_layers = n_layers
         self.d_ff = d_ff
         self.dropout = dropout
+        self.initializer_range = initializer_range
         self.num_alphas = num_alphas
         self.context_len = context_len
+
+        # regime-adaptive embeddings
+        self.use_regime_time_embedding = use_regime_time_embedding
+        self.time_tau_min = time_tau_min
+        self.time_tau_max = time_tau_max
+        self.time_tau_init = time_tau_init
+        self.time_emb_init_std = time_emb_init_std
+        self.time_decay_normalize = time_decay_normalize
+
+        self.use_regime_factor_gate = use_regime_factor_gate
+        self.factor_gate_scale = factor_gate_scale
+        self.factor_gate_shift_scale = factor_gate_shift_scale
 
         self.router_noise = router_noise
         self.router_temperature = router_temperature

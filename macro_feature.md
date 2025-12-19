@@ -45,7 +45,8 @@ python scripts/precompute_market_state.py \
   --roll_mean 20 \
   --weight_field '$amount' \
   --filter_robust_z 6 \
-  --filter_max_bad_frac 0.05
+  --filter_max_bad_frac 0.05 \
+  --no_norm 
 
 # Note: --market_ts_past_only is NOT included by default.
 # Only add it if your label predicts same-day returns (T → T).
@@ -66,12 +67,15 @@ python scripts/precompute_market_state.py \
   --roll_mean 20 \
   --weight_field '$amount' \
   --filter_robust_z 6 \
-  --filter_max_bad_frac 0.05
+  --filter_max_bad_frac 0.05 \
+  --no_norm 
+
 ```
 
 Outputs:
 - `market_state_*.pkl` (main state DataFrame)
 - `market_state_*.pkl.pca.npz` (PCA mean/components sidecar for reproducibility)
+- `market_state_*.pkl.pca.meta.json` (PCA fit metadata: split/range/dims; useful for leakage auditing)
 
 ---
 
@@ -104,6 +108,9 @@ Outputs:
 ### PCA
 - `--pca_dim`: PCA dimension for the compressed regime vector (`market_state_pca_0..k-1`)
   - Typical: `8~32`
+- `--pca_fit_on`: PCA fit split (default: `train`)
+  - `train` (recommended for paper/strict backtests): fit PCA on train days only, then transform valid/test (no look-ahead)
+  - `all`: legacy behavior (fit on all days; not recommended for strict evaluation)
 
 ### Cross-period Standardization
 - `--zscore_windows`: comma-separated windows, e.g. `20,60,120`

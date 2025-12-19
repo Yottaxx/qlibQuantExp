@@ -19,16 +19,18 @@ This document summarizes the current end-to-end design for the cross-sectional s
 - Macro state lookup: optional `market_state_path`, `market_state_shift`, `market_state_strict` (strict raises on missing/NaN).
 
 ## Model (QuantMoEModel)
-- Embedding: value projection + factor ID embedding; dropout.
+- Embedding: value projection + factor ID embedding + regime-adaptive time embedding (lag table modulated by `time_tau(regime)`); dropout.
+- Optional regime-adaptive factor gate (FiLM/AdaLN): per-sample, per-factor `gamma/beta` applied **after each block’s LayerNorm** (so it isn’t canceled by Pre-LN); permutation-equivariant w.r.t factor order.
 - Optional feature selector (STG-style):
   - Params: `use_feature_selection`, `selection_temperature`, `selection_noise_std`, `selection_reg_lambda`.
+  - Applied after each block’s LayerNorm (factor-axis mask), so it affects attention rather than being canceled by Pre-LN.
 - Regime encoder:
   - External macro: `use_external_macro=True`, `d_macro_input` auto-set by adapter.
   - Internal stats: market-level (batch stats) or per-sample fallback; modes `regime_internal_mode={short,long}`, `regime_internal_lag`, `regime_internal_use_batch_stats`, `regime_internal_tail_threshold`.
 - Router (per layer):
   - Inputs: regime embedding (+ optional `router_use_layer_summary` from layer hidden mean/std).
   - Options: `router_noise` (logit noise, train only), `router_temperature`, `router_z_loss_coef`.
-  - Experts: time expert (per-factor temporal) + factor expert (per-time cross-sectional); ALiBi optional (`use_alibi`).
+  - Experts: time expert (per-factor temporal) + factor expert (per-time factor mixing); ALiBi optional on time axis (`use_alibi`).
 - Pooling & head: AdaptivePooling (`pooling_alpha` mixes attention/mean) on last time step, then linear head → stock score.
 
 ## Losses & Metrics
@@ -47,7 +49,7 @@ This document summarizes the current end-to-end design for the cross-sectional s
 - Features per date:
   - Global scalars: mean_abs/std/breadth/tail_2sigma.
   - Correlation/crowding: mean abs corr, Fro norm, PC1 ratio.
-  - Per-factor cross-sectional stats (mean/std/breadth) → PCA (`pca_dim`).
+  - Per-factor cross-sectional stats (mean/std/breadth) → PCA (`pca_dim`), **fit on train only** by default (`--pca_fit_on=train`) then transformed on valid/test (no look-ahead).
   - Δstate (past-only): `--state_delta_lags`.
   - Market TS (past-only if chosen): return/vol/momentum/drawdown from benchmark close (`--add_market_ts`, `--market_ts_windows`).
   - Rolling/z-score (past-only): `--roll_mean`, `--zscore_windows`.
@@ -57,7 +59,7 @@ This document summarizes the current end-to-end design for the cross-sectional s
 - Adapter auto-sets `d_macro_input = n_columns` of state file.
 
 ## Visuals & Reports
-- `export_visuals`: gate time_ratio series + attention maps (time/factor) stored in recorder and optional PNGs.
+- `export_visuals`: daily series for router + regime-adaptive diagnostics (`time_ratio`, `gate_entropy`, `time_tau`, `time_half_life`, `factor_gate_entropy`, `factor_gate_topk_mass_10`, ...) plus a combined `tau_vs_time_ratio` overlay plot, and attention maps (time/factor), stored in recorder with optional PNGs.
 - Official Qlib graphs: exported via `export_qlib_official_graphs` (raises if inputs missing), embedded into `kdd_report.md`.
 - Report: `generate_paper_report` summarizes train curves, IC/RankIC (HAC t-stat), backtest metrics, gate stats, attention summaries; saves `run_conf` for reproducibility.
 

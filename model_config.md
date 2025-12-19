@@ -19,6 +19,7 @@
 - `n_layers`（int，默认 4）：MoE block 层数（`RegimeAdaptiveMoEBlock` 堆叠次数）。
 - `d_ff`（int，默认 128）：FFN 中间层宽度。
 - `dropout`（float，默认 0.1）：Dropout 概率（注意力/FFN/embedding）。
+- `initializer_range`（float，默认 0.02）：HF-style 初始化标准差（`Linear/Embedding/MultiheadAttention(in_proj)`），用于统一输入/embedding 尺度并提升训练稳定性。
 - `num_alphas`（int，默认 64）：因子数 N（由数据自动探测覆盖）。
 - `context_len`（int，默认 32）：时间窗口长度 T（由数据自动探测覆盖）。
 
@@ -47,13 +48,38 @@ z_loss = (logsumexp(router_logits, dim=-1) ** 2).mean()
 
 实现位置：`module/architecture/moe_block.py`。
 
-### 3) 注意力位置偏置（ALiBi）
+### 3) Regime-Adaptive Embeddings（Time / Factor）
 
-- `use_alibi`（bool，默认 True）：是否在 time/factor 两个维度都使用双向 ALiBi bias（`|i-j|`）。
+这组参数用于实现 “regime 不仅切 expert ratio，也切换时间尺度/因子组合” 的闭环：
 
-### 4) 可微特征选择（STG-style gate）
+- `use_regime_time_embedding`（bool，默认 True）：是否启用 regime-adaptive time embedding（learned lag table + `time_tau(regime)` 衰减）。
+- `time_tau_min`（float，默认 0.5）：`tau` 下界（越小越偏向短记忆）。
+- `time_tau_max`（float，默认 50.0）：`tau` 上界（防止数值发散）。
+- `time_tau_init`（float，默认 5.0）：初始化时的 `tau`（通过 `tau_base` 对齐该值，并让 MLP 输出为小幅 `delta`，训练初期更稳）。
+- `time_emb_init_std`（float，默认 0.02）：time embedding 表的初始化标准差（设为 `0` 可从 0 开始学）。
+- `time_decay_normalize`（bool，默认 True）：是否把衰减权重归一化到 `mean(w)=1`（避免不同 regime 下 embedding 尺度漂移）。
+  - 备注：当前实现用小型 MLP 预测 `tau_delta(r)`，并采用 `tau_base + scale * tau_delta(r)` 的初始化（`tau_base` 对齐 `time_tau_init`），保证初期稳定且可学习。
+
+- `use_regime_factor_gate`（bool，默认 True）：是否启用 regime-adaptive factor FiLM（per-sample, per-factor 的自适应 `gamma/beta`）。
+- `factor_gate_scale`（float，默认 0.5）：`gamma` 幅度，元素范围约为 `[1-scale, 1+scale]`（在每个 MoE block 的 Pre-LN 之后生效，避免被 LayerNorm 抵消）。
+- `factor_gate_shift_scale`（float，默认 0.0）：`beta` 幅度，元素范围约为 `[-shift_scale, +shift_scale]`（默认 0 表示只做 scale，不做 shift）。
+
+实现位置：
+- `module/architecture/regime_adaptive_embedding.py`
+
+### 4) 注意力位置偏置（ALiBi）
+
+- `use_alibi`（bool，默认 False）：是否在 **time 维度** 使用双向 ALiBi bias（`|i-j|`）。
+  - 因子维（N axis）默认不使用 ALiBi：因子 index 通常无自然顺序，易引入伪先验且会显著放大 mask 内存。
+  - 实现提示：当前 `ParallelAttention` 使用 PyTorch `nn.MultiheadAttention`，启用 ALiBi 会构造 `[B*H, L, L]` 的 `attn_mask`；对 time expert 来说有效 batch 是 `B*N`，在大截面时会显著增加显存/时间开销。若 `T` 很短（8~32）且已启用 `use_regime_time_embedding`，通常可以先把 `use_alibi=False` 作为默认 ablation。
+
+### 5) 可微特征选择（STG-style gate）
 
 启用后，模型会学习一个 `z∈[0,1]^N` 对因子维进行软选择。
+
+> [!NOTE]
+> 本项目的 backbone 是 Pre-LN Transformer（每个 block 开头有 `LayerNorm`），因此 gate/mask 若放在 block 之前会被 LN 近似抵消。
+> 当前实现将 `factor_gate`（FiLM）与 `feature_selection` mask 都放在每个 block 的 `LayerNorm` 之后再应用，保证有效。
 
 - `use_feature_selection`（bool，默认 True）：是否启用 `DifferentiableFeatureSelector`。
 - `selection_reg_lambda`（float，默认 1e-5）：特征选择正则系数。
@@ -74,7 +100,16 @@ reg_loss = z.sum(dim=-1).mean()  # 平均每个样本选择了多少个特征
 ```
 值域为 `[0, N]`，对特征数量 N 不敏感。
 
-### 5) Loss / Training Objective (Cross-Sectional Ranking)
+#### FiLM + STG 是否冗余（推荐消融）
+
+`feature_selection`（STG）和 `factor_gate`（FiLM/AdaLN）控制的粒度不同，但很多任务上效果会重叠。
+
+- 推荐先以 **FiLM=on, STG=off** 作为默认基线（更简洁、更稳），再做四组消融对比：
+  - `use_regime_factor_gate={False,True}`
+  - `use_feature_selection={False,True}`
+- 若目标是“全局因子裁剪/稀疏解释”，再考虑打开 STG，并把 `selection_reg_lambda` 从 `1e-5` 起步，避免早期塌缩。
+
+### 6) Loss / Training Objective (Cross-Sectional Ranking)
 
 Main objective is list-wise ranking (ListMLE), with optional pairwise/top-bottom and Huber regression.
 
@@ -93,7 +128,7 @@ Main objective is list-wise ranking (ListMLE), with optional pairwise/top-bottom
 - `rank_topk` (int, default 5): K for RankNet top/bottom K.
 - `huber_delta` (float, default 1.0): Huber delta.
 
-### 6) Regime Encoder（市场状态表征）
+### 7) Regime Encoder（市场状态表征）
 
 模型的 router 输入来自 `RegimeContextEncoder`：
 
@@ -112,7 +147,7 @@ Main objective is list-wise ranking (ListMLE), with optional pairwise/top-bottom
 
 实现位置：`module/architecture/regime_encoder.py`。
 
-### 7) 因子聚合（pooling）
+### 8) 因子聚合（pooling）
 
 最后一时间步的因子表示 `h_last[B,N,D]` 需要聚合成股票表示 `h_pooled[B,D]`：
 
@@ -149,4 +184,3 @@ No multiplication with `loss_weights` keys required.
 ### 不同预测周期的建议
 - **t+1**：`regime_internal_mode="short"`，`router_temperature≈1.0`，`router_noise` 可小（0~0.1）。
 - **t+5**：优先启用 `market_state_path`，或用 `regime_internal_mode="long", regime_internal_lag=5`。
-

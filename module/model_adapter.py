@@ -1025,11 +1025,18 @@ class QlibQuantMoE(Model):
         return None
 
     # ---------- Spatio-Temporal Visualization ----------
-    def _collect_gate_series(self, dataset: DatasetH, segment: str = "test") -> pd.Series:
+    def _collect_daily_diag_series(self, dataset: DatasetH, segment: str = "test") -> Dict[str, pd.Series]:
         """
-        收集指定 segment 上的日度 gate time_ratio 序列。
-        为了和报告里的 keyed object 对齐：
-        - 返回 Series，index 为自然日期（datetime），value 为该日的平均 time_ratio。
+        Collect daily diagnostic series on the given segment.
+
+        Returns
+        -------
+        Dict[str, pd.Series]
+            Keys (if available):
+            - time_ratio: router time-expert ratio (avg over layers & samples per day)
+            - gate_entropy: router gate entropy (avg over layers & samples per day)
+            - time_tau / time_half_life: regime-adaptive time-scale diagnostics
+            - factor_gate_*: regime-adaptive factor gate diagnostics
         """
         assert self.net is not None
         self._ensure_market_state()
@@ -1037,19 +1044,28 @@ class QlibQuantMoE(Model):
         tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
         idx = tsds.get_index()
         if not isinstance(idx, pd.MultiIndex) or "datetime" not in (idx.names or []):
-            return pd.Series(dtype=float)
+            return {}
         dates = pd.to_datetime(idx.get_level_values("datetime")).normalize()
 
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
 
-        # Important:
         # Router can use batch-level "layer summary" (market mean/std). Therefore we must NOT mix dates
-        # inside a batch; otherwise the gate series becomes meaningless.
+        # inside a batch; otherwise day-level diagnostics become meaningless.
         df_idx = pd.DataFrame({"datetime": dates})
         df_idx["int_idx"] = np.arange(len(df_idx), dtype=int)
         by_day = df_idx.groupby("datetime", sort=True)["int_idx"].apply(lambda x: x.to_numpy(dtype=int))
 
-        sum_by_day: Dict[pd.Timestamp, float] = defaultdict(float)
+        metric_keys = (
+            "time_tau",
+            "time_half_life",
+            "factor_gate_mean",
+            "factor_gate_std",
+            "factor_gate_entropy",
+            "factor_gate_topk_mass_5",
+            "factor_gate_topk_mass_10",
+        )
+
+        sum_by_day: Dict[pd.Timestamp, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
         cnt_by_day: Dict[pd.Timestamp, int] = defaultdict(int)
 
         for dt, row_idx in by_day.items():
@@ -1071,29 +1087,59 @@ class QlibQuantMoE(Model):
 
                 bx = torch.stack(xs, dim=0)
                 bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
+                bsz = int(bx_t.shape[0])
+                if bsz <= 0:
+                    continue
 
                 macro_t = None
                 if self._market_state is not None:
-                    m = self._macro_from_dates([pd.Timestamp(dt)] * int(bx_t.shape[0]))
+                    m = self._macro_from_dates([pd.Timestamp(dt)] * bsz)
                     macro_t = torch.nan_to_num(m, 0.0).to(self.device).float()
 
                 with torch.no_grad():
                     out = self.net(bx_t, f_ids, macro_features=macro_t)
 
-                if out.gate_weights:
-                    gw = torch.stack(out.gate_weights, dim=0)  # [L,B,2]
-                    tr = gw[:, :, 0].mean(dim=0).detach().cpu().numpy()  # [B]
-                    sum_by_day[pd.Timestamp(dt)] += float(np.sum(tr))
-                    cnt_by_day[pd.Timestamp(dt)] += int(tr.size)
+                cnt_by_day[pd.Timestamp(dt)] += bsz
+
+                # Router diagnostics (time_ratio / gate_entropy)
+                if getattr(out, "gate_weights", None):
+                    try:
+                        gw = torch.stack(out.gate_weights, dim=0)  # [L,B,2]
+                        tr = gw[:, :, 0].mean(dim=0).detach().cpu().numpy()  # [B]
+                        sum_by_day[pd.Timestamp(dt)]["time_ratio"] += float(np.sum(tr))
+                    except Exception:
+                        pass
+                elif getattr(out, "avg_time_ratio", None) is not None:
+                    sum_by_day[pd.Timestamp(dt)]["time_ratio"] += float(out.avg_time_ratio) * bsz
+
+                if getattr(out, "avg_gate_entropy", None) is not None:
+                    sum_by_day[pd.Timestamp(dt)]["gate_entropy"] += float(out.avg_gate_entropy) * bsz
+
+                # Model-provided diagnostics (batch-mean scalars) -> accumulate by sample count
+                m = getattr(out, "metrics", None) or {}
+                for k in metric_keys:
+                    if k in m:
+                        sum_by_day[pd.Timestamp(dt)][k] += float(m[k]) * bsz
 
         if not cnt_by_day:
-            return pd.Series(dtype=float)
+            return {}
 
-        gate_series = pd.Series(
-            {dt: (sum_by_day[dt] / max(1, cnt_by_day[dt])) for dt in sorted(cnt_by_day.keys())},
-            dtype=float,
-        ).sort_index()
-        return gate_series
+        dts_sorted = sorted(cnt_by_day.keys())
+        out_series: Dict[str, pd.Series] = {}
+        for k in ("time_ratio", "gate_entropy", *metric_keys):
+            data = {dt: (sum_by_day[dt][k] / max(1, cnt_by_day[dt])) for dt in dts_sorted if k in sum_by_day[dt]}
+            if data:
+                out_series[k] = pd.Series(data, dtype=float).sort_index()
+        return out_series
+
+    def _collect_gate_series(self, dataset: DatasetH, segment: str = "test") -> pd.Series:
+        """
+        收集指定 segment 上的日度 gate time_ratio 序列。
+        为了和报告里的 keyed object 对齐：
+        - 返回 Series，index 为自然日期（datetime），value 为该日的平均 time_ratio。
+        """
+        series_map = self._collect_daily_diag_series(dataset, segment=segment)
+        return series_map.get("time_ratio", pd.Series(dtype=float))
 
     def _collect_attention_maps(
         self,
@@ -1294,6 +1340,49 @@ class QlibQuantMoE(Model):
         return fig
 
     @staticmethod
+    def _plot_series(series: pd.Series, *, title: str, y_label: str):
+        fig, ax = plt.subplots(figsize=(8, 3))
+        series.plot(ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel("date")
+        ax.set_ylabel(y_label)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        return fig
+
+    @staticmethod
+    def _plot_tau_vs_time_ratio(time_ratio: pd.Series, time_tau: pd.Series, *, title: str):
+        df = pd.concat(
+            [
+                pd.Series(time_ratio, name="time_ratio"),
+                pd.Series(time_tau, name="time_tau"),
+            ],
+            axis=1,
+            join="inner",
+        ).dropna()
+        df = df.sort_index()
+
+        fig, ax1 = plt.subplots(figsize=(8, 3))
+        ax2 = ax1.twinx()
+
+        l1 = ax1.plot(df.index, df["time_ratio"], color="C0", label="time_ratio")
+        l2 = ax2.plot(df.index, df["time_tau"], color="C1", label="time_tau")
+
+        ax1.set_title(title)
+        ax1.set_xlabel("date")
+        ax1.set_ylabel("time_ratio")
+        ax2.set_ylabel("time_tau")
+        ax1.grid(True, alpha=0.3)
+
+        lines = (l1 or []) + (l2 or [])
+        labels = [ln.get_label() for ln in lines]
+        if lines:
+            ax1.legend(lines, labels, loc="upper left", frameon=False)
+
+        fig.tight_layout()
+        return fig
+
+    @staticmethod
     def _plot_attention_map(
         attn: np.ndarray,
         *,
@@ -1325,7 +1414,9 @@ class QlibQuantMoE(Model):
     ):
         """
         在当前 Qlib Recorder 中导出:
-        1) gate time_ratio 日度序列 (Series + Fig + optional PNG)
+        1) router / regime-adaptive diagnostics 日度序列 (Series + Fig + optional PNG)
+           - gate time_ratio (backward compatible key: f"{prefix}_gate_series")
+           - optional: gate_entropy / time_tau / time_half_life / factor_gate_* (if enabled in model)
         2) 若干日期的 attention heatmaps (raw dict + figs + optional PNGs)
 
         - raw attention stored as:   f"{prefix}_attn_maps"
@@ -1342,7 +1433,8 @@ class QlibQuantMoE(Model):
             except Exception:
                 local_dir = None
 
-        gate_series = self._collect_gate_series(dataset, segment=segment)
+        daily_series = self._collect_daily_diag_series(dataset, segment=segment)
+        gate_series = daily_series.get("time_ratio", pd.Series(dtype=float))
         attn_maps = self._collect_attention_maps(
             dataset,
             segment=segment,
@@ -1354,10 +1446,14 @@ class QlibQuantMoE(Model):
 
         # save raw objects first (so report can still work even if fig saving fails)
         try:
+            extra_series_objs = {
+                f"{prefix}_{k}_series": v for k, v in daily_series.items() if k != "time_ratio" and v is not None
+            }
             recorder.save_objects(
                 **{
                     f"{prefix}_gate_series": gate_series,
                     f"{prefix}_attn_maps": attn_maps,
+                    **extra_series_objs,
                 }
             )
         except Exception as e:
@@ -1374,6 +1470,38 @@ class QlibQuantMoE(Model):
             plt.close(fig_gate)
         except Exception as e:
             print(f">>> [Visual] save gate fig failed: {e}")
+
+        # other daily diagnostics (if any): figs + pngs
+        try:
+            for k, s in daily_series.items():
+                if k == "time_ratio" or s is None or len(s) == 0:
+                    continue
+                title = f"{k} ({segment})"
+                y_label = k
+                fig = self._plot_series(s, title=title, y_label=y_label)
+                recorder.save_objects(**{f"{prefix}_{k}_series_fig": fig})
+                if local_dir is not None:
+                    fn = f"{prefix}_{k}_series_{segment}.png"
+                    fig.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
+                    recorder.save_objects(**{f"{prefix}_{k}_png": fn})
+                plt.close(fig)
+        except Exception as e:
+            print(f">>> [Visual] save diag figs failed: {e}")
+
+        # tau vs time_ratio combined plot (for paper narrative)
+        try:
+            tr = daily_series.get("time_ratio", None)
+            tau = daily_series.get("time_tau", None)
+            if tr is not None and tau is not None and len(tr) > 0 and len(tau) > 0:
+                fig = self._plot_tau_vs_time_ratio(tr, tau, title=f"tau vs time_ratio ({segment})")
+                recorder.save_objects(**{f"{prefix}_tau_vs_time_ratio_fig": fig})
+                if local_dir is not None:
+                    fn = f"{prefix}_tau_vs_time_ratio_{segment}.png"
+                    fig.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
+                    recorder.save_objects(**{f"{prefix}_tau_vs_time_ratio_png": fn})
+                plt.close(fig)
+        except Exception as e:
+            print(f">>> [Visual] save tau_vs_time_ratio fig failed: {e}")
 
         # attention heatmaps: figs + pngs
         attn_pngs: Dict[str, Dict[str, str]] = {}
