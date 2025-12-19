@@ -65,4 +65,4 @@ This document summarizes the current end-to-end design for the cross-sectional s
 - Train sampler is sampling; internal regime or layer summaries reflect sampled subset, not full day.
 - Label mismatch: train uses rank-label (DK_L), eval/report uses raw label (DK_I); must be stated in paper.
 - Rolling/zscore/Δstate/TS introduce early NaNs; with `market_state_strict=True` you need sufficient warmup coverage or disable strict.
-- Feature selection reg uses `z.mean()` (so penalty scales with N^-1); switch to `z.sum()` if you need absolute count-style sparsity.
+- Feature selection reg uses `z.sum(dim=-1).mean()` (≈ avg selected features per sample); tune `selection_reg_lambda` accordingly (typical `1e-5~1e-4`).

@@ -1036,48 +1036,63 @@ class QlibQuantMoE(Model):
 
         tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
         idx = tsds.get_index()
-        dates = pd.to_datetime(idx.get_level_values("datetime"))
+        if not isinstance(idx, pd.MultiIndex) or "datetime" not in (idx.names or []):
+            return pd.Series(dtype=float)
+        dates = pd.to_datetime(idx.get_level_values("datetime")).normalize()
 
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
 
-        all_dates: List[pd.Timestamp] = []
-        all_time_ratio: List[float] = []
+        # Important:
+        # Router can use batch-level "layer summary" (market mean/std). Therefore we must NOT mix dates
+        # inside a batch; otherwise the gate series becomes meaningless.
+        df_idx = pd.DataFrame({"datetime": dates})
+        df_idx["int_idx"] = np.arange(len(df_idx), dtype=int)
+        by_day = df_idx.groupby("datetime", sort=True)["int_idx"].apply(lambda x: x.to_numpy(dtype=int))
 
-        batch_x: List[torch.Tensor] = []
-        batch_dates: List[pd.Timestamp] = []
+        sum_by_day: Dict[pd.Timestamp, float] = defaultdict(float)
+        cnt_by_day: Dict[pd.Timestamp, int] = defaultdict(int)
 
-        for i in range(len(tsds)):
-            raw_x, _ = self._extract_sample(tsds[i])
-            x_np = self._as_numpy(raw_x)
-            batch_x.append(torch.from_numpy(np.asarray(x_np)).float())
-            batch_dates.append(dates[i])
+        for dt, row_idx in by_day.items():
+            row_idx = np.asarray(row_idx, dtype=int)
+            n = int(row_idx.size)
+            if n <= 0:
+                continue
 
-            if len(batch_x) == self.batch_size or i == len(tsds) - 1:
-                bx = torch.stack(batch_x, dim=0).to(self.device)
+            for start in range(0, n, self.batch_size):
+                chunk = row_idx[start : start + self.batch_size]
+                xs: List[torch.Tensor] = []
+                for i in chunk:
+                    raw_x, _ = self._extract_sample(tsds[int(i)])
+                    x_np = self._as_numpy(raw_x)
+                    xs.append(torch.from_numpy(np.asarray(x_np)).float())
+
+                if not xs:
+                    continue
+
+                bx = torch.stack(xs, dim=0)
+                bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
+
                 macro_t = None
                 if self._market_state is not None:
-                    m = self._macro_from_dates(batch_dates)
+                    m = self._macro_from_dates([pd.Timestamp(dt)] * int(bx_t.shape[0]))
                     macro_t = torch.nan_to_num(m, 0.0).to(self.device).float()
-                
+
                 with torch.no_grad():
-                    # Note: date_ids removed - regime signal is computed from internal statistics
-                    out = self.net(bx, f_ids, macro_features=macro_t)
+                    out = self.net(bx_t, f_ids, macro_features=macro_t)
 
                 if out.gate_weights:
-                    # gate_weights: List[num_layers] of [B, 2]
                     gw = torch.stack(out.gate_weights, dim=0)  # [L,B,2]
                     tr = gw[:, :, 0].mean(dim=0).detach().cpu().numpy()  # [B]
-                    all_time_ratio.extend(tr.tolist())
-                    all_dates.extend(batch_dates)
+                    sum_by_day[pd.Timestamp(dt)] += float(np.sum(tr))
+                    cnt_by_day[pd.Timestamp(dt)] += int(tr.size)
 
-                batch_x.clear()
-                batch_dates.clear()
-
-        if not all_dates:
+        if not cnt_by_day:
             return pd.Series(dtype=float)
 
-        df = pd.DataFrame({"datetime": all_dates, "time_ratio": all_time_ratio})
-        gate_series = df.groupby("datetime")["time_ratio"].mean().sort_index()
+        gate_series = pd.Series(
+            {dt: (sum_by_day[dt] / max(1, cnt_by_day[dt])) for dt in sorted(cnt_by_day.keys())},
+            dtype=float,
+        ).sort_index()
         return gate_series
 
     def _collect_attention_maps(

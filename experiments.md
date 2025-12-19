@@ -15,7 +15,7 @@
 - `n_layers`: 2~4
 - `n_heads`: 4
 - `use_feature_selection`: True
-- `selection_reg_lambda`: 1e-3
+- `selection_reg_lambda`: 1e-5~1e-4（`reg_loss=z.sum(dim=-1).mean()` 后建议用更小系数）
 - `selection_temperature`: 0.1
 - `selection_noise_std`: 0.5
 - `use_alibi`: True
@@ -57,7 +57,7 @@
 - `n_layers`: 3~4
 - `n_heads`: 4
 - `use_feature_selection`: True
-- `selection_reg_lambda`: 1e-3
+- `selection_reg_lambda`: 1e-5~1e-4（`reg_loss=z.sum(dim=-1).mean()` 后建议用更小系数）
 - `selection_temperature`: 0.1
 - `selection_noise_std`: 0.5
 - `use_alibi`: True
