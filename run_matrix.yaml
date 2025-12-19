@@ -1,0 +1,143 @@
+version: 1
+
+# This file is the single source of truth for KDD sweep bookkeeping:
+# - what to run (universe × setting × seed)
+# - where to find the MLflow run (experiment_name + run_id)
+# - which config overrides define the setting
+#
+# Fill `run_ids` after runs complete. The aggregator script uses this file.
+
+mlruns_dir: mlruns
+
+# KDD target: 5 seeds
+seeds: [42, 43, 44, 45, 46]
+
+task:
+  horizon: t+5
+  label_expr: "Ref($close, -5) / Ref($close, -1) - 1"
+
+universes:
+  csi300:
+    instruments: csi300
+    market_state_path: market_state_csi300.pkl
+    # If you run via `work_flow.py` without modifications, the default is:
+    #   experiment_name="Official_Alignment_RST_MoE"
+    # You can change this to a dedicated KDD experiment name if you also change your runner.
+    experiment_name: Official_Alignment_RST_MoE
+  csi800:
+    instruments: csi800
+    market_state_path: market_state_csi800.pkl
+    experiment_name: Official_Alignment_RST_MoE
+
+# Default knobs (used for planning; keep fixed once you start the sweep)
+defaults:
+  trainer_config:
+    lr: 5.0e-4
+    n_epochs: 40
+    early_stop: 5
+    batch_size: 128
+    num_workers: 4
+    seed: null  # filled per seed
+    use_warmup: true
+    warmup_ratio: 0.05
+    warmup_steps: 0
+    market_state_shift: 0
+    market_state_strict: true
+  model_config:
+    d_model: 128
+    n_layers: 4
+    n_heads: 4
+    d_ff: 256
+    dropout: 0.1
+    use_alibi: false
+    # Router (MoE)
+    router_use_layer_summary: true
+    router_noise: 0.1
+    router_temperature: 0.8
+    router_z_loss_coef: 0.01
+    # Ranking objective
+    listmle_tau: 0.8
+    pooling_alpha: 0.7
+    # Regime-adaptive embedding defaults (t+5)
+    use_regime_time_embedding: true
+    time_tau_init: 5.0
+    use_regime_factor_gate: true
+    factor_gate_scale: 0.5
+    # Keep STG off by default; enable only for dedicated ablation
+    use_feature_selection: false
+    selection_reg_lambda: 1.0e-5
+    selection_temperature: 0.1
+    selection_noise_std: 0.5
+
+# Settings = minimal ablations that isolate contributions.
+# NOTE: “Structural routing controls” (time-only/factor-only/fixed-gate/no-regime-router) are NOT listed here
+# because they require explicit code support (e.g., a router_mode flag). Add them after implementing.
+run_groups:
+  # -------------------------
+  # Conditioning ablations
+  # -------------------------
+  - setting: base
+    description: "No regime-adaptive embeddings/gates (router still learns)."
+    overrides:
+      model_config:
+        use_regime_time_embedding: false
+        use_regime_factor_gate: false
+        use_feature_selection: false
+    runs:
+      - universe: csi300
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+      - universe: csi800
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+
+  - setting: time_emb_only
+    description: "Regime-adaptive time embedding only."
+    overrides:
+      model_config:
+        use_regime_time_embedding: true
+        use_regime_factor_gate: false
+        use_feature_selection: false
+    runs:
+      - universe: csi300
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+      - universe: csi800
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+
+  - setting: film_only
+    description: "Regime-adaptive factor FiLM only."
+    overrides:
+      model_config:
+        use_regime_time_embedding: false
+        use_regime_factor_gate: true
+        use_feature_selection: false
+    runs:
+      - universe: csi300
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+      - universe: csi800
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+
+  - setting: full
+    description: "Default RST-MoE conditioning: time embedding + factor FiLM (STG off)."
+    overrides:
+      model_config:
+        use_regime_time_embedding: true
+        use_regime_factor_gate: true
+        use_feature_selection: false
+    runs:
+      - universe: csi300
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+      - universe: csi800
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+
+  - setting: full_plus_stg
+    description: "Full + STG feature selection (expect higher tuning sensitivity)."
+    overrides:
+      model_config:
+        use_regime_time_embedding: true
+        use_regime_factor_gate: true
+        use_feature_selection: true
+        selection_reg_lambda: 1.0e-5
+    runs:
+      - universe: csi300
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
+      - universe: csi800
+        run_ids: {42: null, 43: null, 44: null, 45: null, 46: null}
