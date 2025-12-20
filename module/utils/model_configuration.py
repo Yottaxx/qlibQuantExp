@@ -47,7 +47,7 @@ class QuantMoEConfig(PretrainedConfig):
             loss_weights: Optional[Dict[str, float]] = None,
             rank_topk: int = 5,
             huber_delta: float = 1.0,
-            listmle_tau: float = 1.0,  # ★ 新增：ListMLE 温度
+            listmle_tau: float = 0.8,  # ★ 新增：ListMLE 温度
             # context encoder
             use_external_macro: bool = False,
             d_macro_input: int = 0,
