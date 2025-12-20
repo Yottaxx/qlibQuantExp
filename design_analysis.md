@@ -46,7 +46,7 @@ flowchart TB
     
     subgraph Training
         P[FixedDailyBatchSampler]
-        Q[ListMLE Loss + IC Monitoring]
+        Q[Main Loss (MSE/IC/ListMLE) + IC Monitoring]
         R[Cosine LR Schedule]
     end
     
@@ -120,7 +120,9 @@ fused = w_time * out_time + w_factor * out_factor
 
 > **Note**: Internal mode 依赖 batch 内的统计假设（假设 batch = 同日截面），对于非标准采样器可能不准确。
 
-### 2.4 ListMLE Loss (losses.py)
+### 2.4 ListMLE Loss (losses.py, optional)
+
+> 主 loss 由 `main_loss` 配置选择（`mse` / `ic` / `listmle`）；ListMLE 仍保留为可选方案。
 
 **核心 Loss**:
 ```python
@@ -376,7 +378,7 @@ except Exception:
 |--------|------|
 | **Regime-Adaptive MoE** | 创新性强，将非稳态视为结构问题而非噪声 |
 | **Dual Expert (Time/Factor)** | 符合金融直觉（趋势 vs 截面选股） |
-| **ListMLE Loss** | 适合 ranking 任务，比 MSE 更合理 |
+| **Main Loss (MSE/IC/ListMLE)** | 主损失可配置；ListMLE 适合 ranking，MSE/IC 更易对齐监控 |
 | **Macro Feature Pipeline** | 完整的预计算+lookup机制，避免训练时 I/O |
 | **时间对齐文档** | macro_feature.md 详细说明了 shift/past_only 的正确用法 |
 

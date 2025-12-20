@@ -46,13 +46,13 @@ class QlibQuantMoE(Model):
     - Warmup + cosine LR scheduler (transformers.get_cosine_schedule_with_warmup)。
     - Recorder logs:
         * train/* & valid/*：
-            - loss_total / loss_listmle / loss_ic / loss_aux / loss_sparsity
+            - loss_total / loss_main / loss_listmle / loss_mse / loss_ic / loss_aux / loss_sparsity
             - ic_pearson_batch / rank_ic_batch（训练：batch 内现算）
             - ic_pearson_daily / rank_ic_daily（验证：按日全截面聚合后现算）
             - ic_raw / rank_ic（兼容旧名字：训练时=*_batch，验证时=*_daily）
             - gate_entropy / time_ratio / active_feat_ratio
         * train_curve 对象：
-            - epoch, train_listmle, train_ic, valid_listmle, valid_rank_ic, valid_ic
+            - epoch, train_main, train_listmle, train_mse, train_ic, valid_main, valid_rank_ic, valid_ic
     """
 
     def __init__(self, model_config: dict = None, trainer_config: dict = None, **kwargs):
@@ -550,12 +550,18 @@ class QlibQuantMoE(Model):
 
     def _log_metrics(self, step: int, prefix: str, metrics: Dict[str, float]) -> None:
         """
+        - loss_main    → 额外记 {prefix}/main
         - loss_listmle → 额外记 {prefix}/listmle
+        - loss_mse     → 额外记 {prefix}/mse
         - loss_ic      → 额外记 {prefix}/ic = -loss_ic （loss_ic = -IC）
         """
         m = dict(metrics)
+        if "loss_main" in m:
+            m.setdefault("main", m["loss_main"])
         if "loss_listmle" in m:
             m.setdefault("listmle", m["loss_listmle"])
+        if "loss_mse" in m:
+            m.setdefault("mse", m["loss_mse"])
         if "loss_ic" in m:
             # loss_ic = -IC, so monitored IC should be -loss_ic within [-1, 1]
             m.setdefault("ic", -float(m["loss_ic"]))
@@ -875,12 +881,19 @@ class QlibQuantMoE(Model):
         # 训练曲线缓存，用于报告里的“训练过程诊断”
         rec = R.get_recorder()
         train_curve = None
+        main_loss = str(self.model_config.get("main_loss", "mse")).lower()
+        if main_loss == "mle":
+            main_loss = "listmle"
         if rec is not None:
             train_curve = {
                 "epoch": [],
+                "train_main": [],
                 "train_listmle": [],
+                "train_mse": [],
                 "train_ic": [],
+                "valid_main": [],
                 "valid_listmle": [],
+                "valid_mse": [],
                 "valid_rank_ic": [],
                 "valid_ic": [],
             }
@@ -918,14 +931,24 @@ class QlibQuantMoE(Model):
             # 记录训练曲线
             if train_curve is not None:
                 train_curve["epoch"].append(int(epoch + 1))
+                # main loss
+                main_key = f"loss_{main_loss}"
+                train_curve["train_main"].append(
+                    float(tr.get("loss_main", tr.get(main_key, np.nan)))
+                )
                 # train
                 train_curve["train_listmle"].append(float(tr.get("loss_listmle", np.nan)))
+                train_curve["train_mse"].append(float(tr.get("loss_mse", np.nan)))
                 train_curve["train_ic"].append(
                     float(-tr["loss_ic"]) if "loss_ic" in tr else float("nan")
                 )
                 # valid
                 if va is not None:
+                    train_curve["valid_main"].append(
+                        float(va.get("loss_main", va.get(main_key, np.nan)))
+                    )
                     train_curve["valid_listmle"].append(float(va.get("loss_listmle", np.nan)))
+                    train_curve["valid_mse"].append(float(va.get("loss_mse", np.nan)))
                     train_curve["valid_rank_ic"].append(
                         float(va.get("rank_ic", np.nan)) if "rank_ic" in va else float("nan")
                     )
@@ -933,7 +956,9 @@ class QlibQuantMoE(Model):
                         float(-va["loss_ic"]) if "loss_ic" in va else float("nan")
                     )
                 else:
+                    train_curve["valid_main"].append(float("nan"))
                     train_curve["valid_listmle"].append(float("nan"))
+                    train_curve["valid_mse"].append(float("nan"))
                     train_curve["valid_rank_ic"].append(float("nan"))
                     train_curve["valid_ic"].append(float("nan"))
 

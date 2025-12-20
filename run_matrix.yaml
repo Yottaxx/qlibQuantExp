@@ -56,6 +56,7 @@ defaults:
     router_temperature: 0.8
     router_z_loss_coef: 0.01
     # Ranking objective
+    main_loss: mse
     listmle_tau: 0.8
     pooling_alpha: 0.7
     # Regime-adaptive embedding defaults (t+5)

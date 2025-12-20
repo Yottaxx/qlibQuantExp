@@ -14,7 +14,7 @@ RST-MoE + Qlib Official Workflow (Paper-Ready Version)
    - gate 曲线统计（均值 / std / 分位数）
    - attention map 的局部性指标
 5. 自动生成一份 Markdown 版「论文级实验报告」：kdd_report.md
-   - 增加“训练过程诊断”：train/listmle vs valid/rank_ic 曲线 + 文本总结
+   - 增加“训练过程诊断”：train/main_loss vs valid/rank_ic 曲线 + 文本总结
 """
 from typing import Optional, List, Tuple, Dict
 
@@ -92,6 +92,7 @@ model_conf = {
         "model_config": {
             "d_model": 8,
             "n_layers": 2,
+            "main_loss": "mse",
             "use_feature_selection": True,
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
@@ -204,16 +205,23 @@ def _safe_get_perf_value(perf: pd.DataFrame, key_candidates):
     return np.nan
 
 
-def _load_train_curves(rec):
+def _load_train_curves(rec, *, main_loss: Optional[str] = None):
     """
     从 Recorder 中读取训练曲线对象 train_curve（如果存在），并生成：
-    - df_tc: DataFrame(epoch, train_listmle, train_ic, valid_listmle, valid_rank_ic, valid_ic)
+    - df_tc: DataFrame(epoch, train_main, train_listmle, train_mse, train_ic, valid_main, valid_rank_ic, valid_ic)
     - train_summary_lines: 文本总结
     - fig_name: 图片文件名（相对路径），用于 Markdown 引用
     """
     local_dir: Path = rec.get_local_dir()
-    fig_name = "train_curves_listmle_rankic.png"
+    if main_loss is not None:
+        main_loss = str(main_loss).lower().strip()
+        if main_loss == "mle":
+            main_loss = "listmle"
+    fig_suffix = main_loss or "main"
+    fig_name = f"train_curves_{fig_suffix}_rankic.png"
     fig_path = local_dir / fig_name
+    loss_label_map = {"listmle": "ListMLE", "mse": "MSE", "ic": "IC"}
+    loss_label = loss_label_map.get(main_loss, "Main")
 
     train_curve = None
     try:
@@ -233,13 +241,20 @@ def _load_train_curves(rec):
             # --- plot curves ---
             try:
                 fig, ax1 = plt.subplots(figsize=(6, 3))
+                y_key = None
+                for cand in ("train_main", f"train_{main_loss}" if main_loss else None, "train_listmle"):
+                    if cand and cand in df_tc.columns:
+                        y_key = cand
+                        break
+                y_val = df_tc.get(y_key, np.nan) if y_key else np.nan
+
                 ax1.plot(
                     df_tc["epoch"],
-                    df_tc.get("train_listmle", np.nan),
-                    label="train ListMLE loss",
+                    y_val,
+                    label=f"train {loss_label} loss",
                 )
                 ax1.set_xlabel("epoch")
-                ax1.set_ylabel("train ListMLE loss")
+                ax1.set_ylabel(f"train {loss_label} loss")
 
                 ax2 = ax1.twinx()
                 ax2.plot(
@@ -269,14 +284,19 @@ def _load_train_curves(rec):
                     f"- Peak valid RankIC ≈ {best_ric:.4f} at epoch {best_epoch}"
                 )
 
-            if "train_listmle" in df_tc.columns and "valid_rank_ic" in df_tc.columns:
-                x = -df_tc["train_listmle"]
+            if "valid_rank_ic" in df_tc.columns:
+                if "train_main" in df_tc.columns:
+                    x = -df_tc["train_main"]
+                elif main_loss and f"train_{main_loss}" in df_tc.columns:
+                    x = -df_tc[f"train_{main_loss}"]
+                else:
+                    x = -df_tc.get("train_listmle", np.nan)
                 y = df_tc["valid_rank_ic"]
                 mask = np.isfinite(x) & np.isfinite(y)
                 if mask.sum() > 2 and np.std(x[mask]) > 0 and np.std(y[mask]) > 0:
                     corr = np.corrcoef(x[mask], y[mask])[0, 1]
                     train_summary_lines.append(
-                        f"- Corr(-train ListMLE, valid RankIC) ≈ {corr:.3f}"
+                        f"- Corr(-train {loss_label}, valid RankIC) ≈ {corr:.3f}"
                     )
         except Exception as e:
             print(f"[Report] Failed to summarize training curves: {e}")
@@ -526,6 +546,7 @@ def _format_setup_from_conf(run_conf: Dict) -> str:
     - **Model**:
       - class: {mc.get("class")}
       - d_model={model_k.get("d_model")}, n_layers={model_k.get("n_layers")}, n_heads={model_k.get("n_heads")}
+      - main_loss={model_k.get("main_loss", "mse")}
       - use_feature_selection={model_k.get("use_feature_selection")}
       - use_alibi={model_k.get("use_alibi")}
     - **Training**:
@@ -547,7 +568,7 @@ def generate_paper_report(
 ):
     """
     汇总当前 Recorder 中的：
-      - 训练过程诊断：ListMLE 收敛 vs RankIC
+      - 训练过程诊断：main_loss 收敛 vs RankIC
       - IC / RankIC 序列
       - 回测关键指标
       - gate time_ratio 序列统计
@@ -558,6 +579,13 @@ def generate_paper_report(
     report_path = local_dir / "kdd_report.md"
 
     run_conf = _load_run_conf(rec)
+    mk = ((run_conf or {}).get("model_conf") or {}).get("kwargs") or {}
+    model_k = mk.get("model_config", {}) or {}
+    main_loss = str(model_k.get("main_loss", "mse")).lower()
+    if main_loss == "mle":
+        main_loss = "listmle"
+    loss_label_map = {"listmle": "ListMLE", "mse": "MSE", "ic": "IC"}
+    main_loss_label = loss_label_map.get(main_loss, "Main")
 
     # ---------- 1. Signal 层指标 ----------
     sar = SigAnaRecord(rec)
@@ -797,8 +825,8 @@ def generate_paper_report(
     if not factor_attn_summary_lines:
         factor_attn_summary_lines = ["- (no factor-attention maps found; check export_visuals call)"]
 
-    # ---------- 4. 训练过程诊断（ListMLE vs RankIC） ----------
-    df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec)
+    # ---------- 4. 训练过程诊断（main_loss vs RankIC） ----------
+    df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec, main_loss=main_loss)
 
     # ---------- 4.5 Qlib 官方分析图（必须生成，缺输入直接报错） ----------
     qlib_graphs = export_qlib_official_graphs(rec, dataset=dataset, segment=segment, prefix="qlib", strict=True)
@@ -843,15 +871,15 @@ def generate_paper_report(
     lines.append("## 3. Training Dynamics & Portfolio Backtest\n")
 
     # 3.1 训练过程诊断
-    lines.append("### 3.1 Training Dynamics (ListMLE vs. RankIC)\n")
+    lines.append(f"### 3.1 Training Dynamics ({main_loss_label} vs. RankIC)\n")
     lines.append(
-        "训练阶段采用 **ListMLE 主 loss**（基于 rank-label 的 list-wise 排序），"
-        "这里展示 train/listmle 与 valid/rank_ic 随 epoch 的演化，并粗略量化二者的相关性：\n"
+        f"训练阶段采用 **{main_loss_label} 主 loss**（基于 rank-label），"
+        f"这里展示 train/{main_loss} 与 valid/rank_ic 随 epoch 的演化，并粗略量化二者的相关性：\n"
     )
     lines.extend(train_summary_lines)
     lines.append("")
     if train_fig_name is not None:
-        lines.append(f"![Training dynamics (ListMLE vs RankIC)]({train_fig_name})\n")
+        lines.append(f"![Training dynamics ({main_loss_label} vs RankIC)]({train_fig_name})\n")
 
     # 3.2 组合回测
     lines.append("### 3.2 Portfolio Backtest (2017-2020, CSI300 universe)\n")
@@ -975,8 +1003,8 @@ def generate_paper_report(
     lines.append(
         "RST-MoE 在官方 Alpha158 / CSI300 框架下，兼顾了稳健的日频预测性能 "
         "（IC / RankIC / 信息比）和可解释的时空解耦结构（gate 曲线 + attention 局部性），"
-        "同时通过 ListMLE 训练曲线与 RankIC 的联动，展示了从 rank-label → list-wise 优化 → "
-        "截面预测 → 组合收益的一条清晰传导链。\n"
+        f"同时通过 {main_loss_label} 训练曲线与 RankIC 的联动，展示了从 rank-label → "
+        f"{main_loss_label} 优化 → 截面预测 → 组合收益的一条清晰传导链。\n"
     )
 
     # 写入 Markdown 文件

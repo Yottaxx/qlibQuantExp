@@ -34,7 +34,7 @@ This document summarizes the current end-to-end design for the cross-sectional s
 - Pooling & head: AdaptivePooling (`pooling_alpha` mixes attention/mean) on last time step, then linear head → stock score.
 
 ## Losses & Metrics
-- Main: ListMLE (`listmle_tau` temperature, clamped to avoid NaN).
+- Main: configurable via `main_loss` (default: MSE on rank-label). Options: MSE / IC / ListMLE (`listmle_tau` for ListMLE).
 - Aux losses (directly controlled by coefficients, not via `loss_weights`):
   - Router z-loss: `router_z_loss_coef` (default 0.01) prevents router collapse.
   - Feature selection sparsity: `selection_reg_lambda` (default 1e-5) encourages sparse selection.

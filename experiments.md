@@ -33,6 +33,7 @@
 - `router_temperature`: 1.0
 - `router_z_loss_coef`: 1e-3
 - `pooling_alpha`: 0.7
+- `main_loss`: "mse"  （默认主 loss，可切换为 "ic" 或 "listmle"）
 - `listmle_tau`: 1.0
 - `rank_topk`: 5
 - `huber_delta`: 1.0
@@ -79,6 +80,7 @@
 - `router_temperature`: 0.7~1.0  （更锋利 gate）
 - `router_z_loss_coef`: 1e-3
 - `pooling_alpha`: 0.7
+- `main_loss`: "mse"  （默认主 loss，可切换为 "ic" 或 "listmle"）
 - `listmle_tau`: 0.8~1.0  （可稍小以增强排序尖锐度）
 - `rank_topk`: 5
 - `huber_delta`: 1.0
@@ -93,7 +95,7 @@
 - `use_warmup`: True, `warmup_ratio`: 0.05
 - `num_workers`: 按机器设置
 - `market_state_path`: `market_state_csi300.pkl` 或 `market_state_csi800.pkl`
-- `market_state_shift`: 0 或 1（1 可避免同日信息泄露）
+- `market_state_shift`: 0（t+1/t+5，T+k 预测；仅同日预测 T→T 才用 1）
 - `market_state_strict`: True（推荐论文用），若早期 NaN 太多，可临时 False
 
 ### Macro State 预计算命令（示例：CSI300）
@@ -105,7 +107,6 @@ python scripts/precompute_market_state.py \
   --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --market_ts_past_only \
   --zscore_windows 20,60,120 \
   --roll_mean 20 \
   --weight_field '$amount' \
@@ -124,7 +125,6 @@ python scripts/precompute_market_state.py \
   --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --market_ts_past_only \
   --zscore_windows 20,60,120 \
   --roll_mean 20 \
   --weight_field '$amount' \
@@ -137,4 +137,4 @@ python scripts/precompute_market_state.py \
 
 ```
 
-> Note: `--warmup_trading_days -1` automatically extends the precompute start backward, ensuring rolling/zscore/Δstate/TS features are defined at training start. If early data fields are missing, use an explicit number or set `market_state_strict=False`.
+> Note: `--warmup_trading_days -1` automatically extends the precompute start backward, ensuring rolling/zscore/Δstate/TS features are defined at training start. For t+1/t+5 (T+k) prediction, **do not** add `--market_ts_past_only` and keep `market_state_shift=0`; only same-day prediction needs the shift. If early data fields are missing, use an explicit number or set `market_state_strict=False`.

@@ -43,6 +43,7 @@ class QuantMoEConfig(PretrainedConfig):
             selection_temperature: float = 0.1,
             selection_noise_std: float = 0.5,
             # Loss & ranking
+            main_loss: str = "mse",
             loss_weights: Optional[Dict[str, float]] = None,
             rank_topk: int = 5,
             huber_delta: float = 1.0,
@@ -94,11 +95,21 @@ class QuantMoEConfig(PretrainedConfig):
         self.selection_temperature = selection_temperature
 
         self.selection_noise_std = selection_noise_std
+        main_loss = str(main_loss).lower().strip()
+        if main_loss == "mle":
+            main_loss = "listmle"
+        allowed_main_loss = {"mse", "ic", "listmle"}
+        if main_loss not in allowed_main_loss:
+            raise ValueError(
+                f"Unsupported main_loss: {main_loss}. Supported: {sorted(allowed_main_loss)}"
+            )
+        self.main_loss = main_loss
         # 默认 Loss 权重
         # 注意：aux 和 reg 已移除，直接由 router_z_loss_coef 和 selection_reg_lambda 控制
         self.loss_weights = loss_weights if loss_weights is not None else {
             "listmle": 1.0,
-            "ic": 0.0,     # 不进入 total_loss，仅做监控
+            "mse": 1.0,
+            "ic": 1.0,
             "rank": 0.0,
             "huber": 0.0,
         }

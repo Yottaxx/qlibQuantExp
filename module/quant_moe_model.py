@@ -310,15 +310,16 @@ class QuantMoEModel(PreTrainedModel):
 
                 w = self.config.loss_weights
 
-                # 主 loss：ListMLE（list-wise）
+                # 基础 loss 组件
                 l_listmle = QuantLossFunctions.listmle_loss(
                     p,
                     y,
                     tau=getattr(self.config, "listmle_tau", 1.0),
                 )
 
-                # IC 作为 metric，只做监控，不进 total_loss
+                # IC / MSE（可作为主 loss 或监控）
                 l_ic = QuantLossFunctions.cs_ic_loss(p, y)
+                l_mse = QuantLossFunctions.cs_mse_loss(p, y)
 
                 # 其他辅助 loss（可选）
                 l_rank = None
@@ -338,9 +339,23 @@ class QuantMoEModel(PreTrainedModel):
                 )
                 l_reg = reg_loss * self.config.selection_reg_lambda
 
-                # ★ total_loss：ListMLE + 辅助 loss
+                main_loss = str(getattr(self.config, "main_loss", "listmle")).lower()
+                if main_loss == "mle":
+                    main_loss = "listmle"
+                loss_map = {
+                    "listmle": l_listmle,
+                    "mse": l_mse,
+                    "ic": l_ic,
+                }
+                if main_loss not in loss_map:
+                    raise RuntimeError(
+                        f"Unsupported main_loss: {main_loss}. Supported: {sorted(loss_map)}"
+                    )
+                l_main = loss_map[main_loss]
+
+                # ★ total_loss：主 loss + 辅助 loss
                 total_loss = (
-                    w.get("listmle", 1.0) * l_listmle
+                    w.get(main_loss, 1.0) * l_main
                     + l_aux  # 直接加，不再乘 w["aux"]
                     + l_reg  # 直接加，不再乘 w["reg"]
                 )
@@ -351,7 +366,9 @@ class QuantMoEModel(PreTrainedModel):
 
                 metrics = {
                     "loss_total": float(total_loss.detach().item()),
+                    "loss_main": float(l_main.detach().item()),
                     "loss_listmle": float(l_listmle.detach().item()),
+                    "loss_mse": float(l_mse.detach().item()),
                     "loss_ic": float(l_ic.detach().item()),
                     "loss_aux": float(l_aux.detach().item()),
                     "loss_sparsity": float(l_reg.detach().item()),
