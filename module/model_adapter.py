@@ -133,6 +133,20 @@ class QlibQuantMoE(Model):
         tag = "planned" if stage.startswith("plan") else "resolved"
 
         mc = self.model_config
+        resolved = None
+        if self.net is not None:
+            resolved = getattr(self.net, "config", None)
+        if resolved is None:
+            try:
+                resolved = QuantMoEConfig(**mc)
+            except Exception:
+                resolved = None
+
+        def cfg_get(key, default=None):
+            if resolved is not None and hasattr(resolved, key):
+                return getattr(resolved, key)
+            return mc.get(key, default)
+
         on_off = lambda v: "on" if bool(v) else "off"
 
         dims = []
@@ -145,30 +159,30 @@ class QlibQuantMoE(Model):
             dims.append("num_alphas=auto")
 
         if self.market_state_path:
-            macro_dim = mc.get("d_macro_input", 0)
+            macro_dim = cfg_get("d_macro_input", 0)
             dim_str = str(macro_dim) if int(macro_dim or 0) > 0 else "auto"
             macro_desc = (
                 f"external({Path(self.market_state_path).name}, dim={dim_str}, "
                 f"shift={self.market_state_shift}, strict={self.market_state_strict})"
             )
         else:
-            mode = mc.get("regime_internal_mode", "long")
-            lag = mc.get("regime_internal_lag", 5)
+            mode = cfg_get("regime_internal_mode", "long")
+            lag = cfg_get("regime_internal_lag", 5)
             macro_desc = f"internal({mode}, lag={lag})"
 
         model_parts = [
-            f"loss={mc.get('main_loss', 'mse')}",
-            f"d_model={mc.get('d_model', 'n/a')}",
-            f"layers={mc.get('n_layers', 'n/a')}",
-            f"heads={mc.get('n_heads', 'n/a')}",
+            f"loss={cfg_get('main_loss', 'mse')}",
+            f"d_model={cfg_get('d_model', 'n/a')}",
+            f"layers={cfg_get('n_layers', 'n/a')}",
+            f"heads={cfg_get('n_heads', 'n/a')}",
             ", ".join(dims),
-            f"time_emb={on_off(mc.get('use_regime_time_embedding', False))}",
-            f"factor_gate={on_off(mc.get('use_regime_factor_gate', False))}",
-            f"feat_sel={on_off(mc.get('use_feature_selection', False))}",
-            f"alibi={on_off(mc.get('use_alibi', False))}",
+            f"time_emb={on_off(cfg_get('use_regime_time_embedding', False))}",
+            f"factor_gate={on_off(cfg_get('use_regime_factor_gate', False))}",
+            f"feat_sel={on_off(cfg_get('use_feature_selection', False))}",
+            f"alibi={on_off(cfg_get('use_alibi', False))}",
             f"macro={macro_desc}",
         ]
-        macro_drop = float(mc.get("regime_macro_dropout", 0.0) or 0.0)
+        macro_drop = float(cfg_get("regime_macro_dropout", 0.0) or 0.0)
         if macro_drop > 0:
             model_parts.append(f"macro_drop={macro_drop:g}")
         print(f">>> [Config:{tag}] model: " + ", ".join(model_parts))

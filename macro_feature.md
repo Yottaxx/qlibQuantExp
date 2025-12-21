@@ -54,6 +54,24 @@ python scripts/precompute_market_state.py \
 # For T+k prediction (k>=1), the default (no shift) is correct.
 ```
 
+### CSI300 (full profile, richer but higher-dim)
+
+```bash
+python scripts/precompute_market_state.py \
+  --out market_state_csi300.pkl \
+  --pca_dim 16 \
+  --state_delta_lags 1,5,10 \
+  --add_market_ts \
+  --market_ts_windows 5,20,60 \
+  --zscore_windows 20,60 \
+  --roll_mean 20 \
+  --weight_field '$amount' \
+  --filter_robust_z 6 \
+  --filter_max_bad_frac 0.05 \
+  --macro_scale robust \
+  --no_norm
+```
+
 ### CSI800 (kaiming profile, recommended when --no_norm)
 
 ```bash
@@ -70,6 +88,25 @@ python scripts/precompute_market_state.py \
   --macro_scale robust \
   --no_norm 
 
+```
+
+### CSI800 (full profile, richer but higher-dim)
+
+```bash
+python scripts/precompute_market_state.py \
+  --out market_state_csi800.pkl \
+  --instruments csi800 \
+  --pca_dim 32 \
+  --state_delta_lags 1,5,10 \
+  --add_market_ts \
+  --market_ts_windows 5,20,60 \
+  --zscore_windows 20,60,120 \
+  --roll_mean 20 \
+  --weight_field '$amount' \
+  --filter_robust_z 6 \
+  --filter_max_bad_frac 0.05 \
+  --macro_scale robust \
+  --no_norm
 ```
 
 Outputs:
@@ -383,7 +420,7 @@ For the label `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5):
 > For Internal Regime mode (`use_external_macro=False`), use `batch_size >= 64` to ensure meaningful correlation/crowding statistics.
 
 ```bash
-# Precompute command for T+1 to T+5 prediction
+# Precompute (kaiming profile, recommended when --no_norm)
 python scripts/precompute_market_state.py \
   --out market_state_csi300.pkl \
   --pca_dim 16 \
@@ -393,6 +430,22 @@ python scripts/precompute_market_state.py \
   --filter_robust_z 6 \
   --filter_max_bad_frac 0.05 \
   --macro_profile kaiming \
+  --macro_scale robust \
+  --no_norm
+  # Note: NO --market_ts_past_only flag (correct for T+k prediction)
+
+# Precompute (full profile, higher-dim)
+python scripts/precompute_market_state.py \
+  --out market_state_csi300.pkl \
+  --pca_dim 16 \
+  --state_delta_lags 1,5,10 \
+  --add_market_ts \
+  --market_ts_windows 5,20,60 \
+  --zscore_windows 20,60 \
+  --roll_mean 20 \
+  --weight_field '$amount' \
+  --filter_robust_z 6 \
+  --filter_max_bad_frac 0.05 \
   --macro_scale robust \
   --no_norm
   # Note: NO --market_ts_past_only flag (correct for T+k prediction)
