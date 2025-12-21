@@ -111,6 +111,75 @@ class QlibQuantMoE(Model):
         self._warned_keys.add(key)
         print(msg)
 
+    def log_config_summary(
+        self,
+        *,
+        stage: str = "resolved",
+        total_steps: Optional[int] = None,
+        warmup_steps: Optional[int] = None,
+    ) -> None:
+        stage = (stage or "resolved").strip().lower()
+        tag = "planned" if stage.startswith("plan") else "resolved"
+
+        mc = self.model_config
+        on_off = lambda v: "on" if bool(v) else "off"
+
+        dims = []
+        if "context_len" in mc:
+            dims.append(f"context_len={mc.get('context_len')}")
+        if "num_alphas" in mc:
+            dims.append(f"num_alphas={mc.get('num_alphas')}")
+        if not dims:
+            dims.append("context_len=auto")
+            dims.append("num_alphas=auto")
+
+        if self.market_state_path:
+            macro_dim = mc.get("d_macro_input", 0)
+            dim_str = str(macro_dim) if int(macro_dim or 0) > 0 else "auto"
+            macro_desc = (
+                f"external({Path(self.market_state_path).name}, dim={dim_str}, "
+                f"shift={self.market_state_shift}, strict={self.market_state_strict})"
+            )
+        else:
+            mode = mc.get("regime_internal_mode", "long")
+            lag = mc.get("regime_internal_lag", 5)
+            macro_desc = f"internal({mode}, lag={lag})"
+
+        model_parts = [
+            f"loss={mc.get('main_loss', 'mse')}",
+            f"d_model={mc.get('d_model', 'n/a')}",
+            f"layers={mc.get('n_layers', 'n/a')}",
+            f"heads={mc.get('n_heads', 'n/a')}",
+            ", ".join(dims),
+            f"time_emb={on_off(mc.get('use_regime_time_embedding', False))}",
+            f"factor_gate={on_off(mc.get('use_regime_factor_gate', False))}",
+            f"feat_sel={on_off(mc.get('use_feature_selection', False))}",
+            f"alibi={on_off(mc.get('use_alibi', False))}",
+            f"macro={macro_desc}",
+        ]
+        print(f">>> [Config:{tag}] model: " + ", ".join(model_parts))
+
+        if self.use_warmup:
+            if total_steps is not None and warmup_steps is not None:
+                warmup_desc = f"on({warmup_steps}/{total_steps})"
+            elif self.warmup_steps > 0:
+                warmup_desc = f"on(steps={self.warmup_steps})"
+            else:
+                warmup_desc = f"on(ratio={self.warmup_ratio:g})"
+        else:
+            warmup_desc = "off"
+
+        trainer_parts = [
+            f"lr={self.lr:g}",
+            f"epochs={self.epochs}",
+            f"batch={self.batch_size}",
+            f"early_stop={self.early_stop}",
+            f"warmup={warmup_desc}",
+            f"seed={self.random_seed}",
+            f"workers={self.num_workers}",
+        ]
+        print(f">>> [Config:{tag}] trainer: " + ", ".join(trainer_parts))
+
     def _sanity_check_batch(
         self,
         bx: torch.Tensor,
@@ -224,6 +293,11 @@ class QlibQuantMoE(Model):
             return
         df = load_market_state_df(self.market_state_path)
         self._market_state = make_market_state_lookup(df, shift=self.market_state_shift)
+        print(
+            ">>> [MarketState] loaded "
+            f"{self.market_state_path} (dates={len(df)}, dim={df.shape[1]}), "
+            f"shift={self.market_state_shift}, strict={self.market_state_strict}"
+        )
         # auto-config model to accept macro features
         self.model_config["use_external_macro"] = True
         self.model_config["d_macro_input"] = int(self._market_state.dim)
@@ -541,7 +615,6 @@ class QlibQuantMoE(Model):
         self.model_config.update({"context_len": T, "num_alphas": F})
         conf = QuantMoEConfig(**self.model_config)
         self.net = QuantMoEModel(conf).to(self.device)
-        print(f">>> [Auto-Config] context_len={T}, num_alphas={F}")
 
     @staticmethod
     def _avg(meters: Dict[str, float], n: int) -> Dict[str, float]:
@@ -865,6 +938,8 @@ class QlibQuantMoE(Model):
             self._sanity_check_batch(bx0, by0, bmacro0, f_ids=f_ids, optimizer=optimizer)
 
         # Warmup scheduler
+        total_training_steps = None
+        warmup_steps = None
         if self.use_warmup:
             try:
                 num_update_steps_per_epoch = len(train_loader)
@@ -882,13 +957,14 @@ class QlibQuantMoE(Model):
                 num_warmup_steps=warmup_steps,
                 num_training_steps=total_training_steps,
             )
-            print(
-                f">>> [Schedule] use warmup: total_steps={total_training_steps}, "
-                f"warmup_steps={warmup_steps}"
-            )
         else:
             scheduler = None
-            print(">>> [Schedule] warmup disabled")
+
+        self.log_config_summary(
+            stage="resolved",
+            total_steps=total_training_steps,
+            warmup_steps=warmup_steps,
+        )
 
         best_state = None
         best_score = float("-inf")

@@ -109,7 +109,7 @@ model_conf = {
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
             "market_state_path": "market_state_csi300.pkl",
             "market_state_shift": 0,
-            "market_state_strict": False,
+            "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
             "use_warmup": True,
             "warmup_ratio": 0.05,
@@ -1042,20 +1042,17 @@ if __name__ == "__main__":
                 "port_conf": copy.deepcopy(port_conf),
             }
         )
-        print(">>> [Phase 0] Planned Model Config (before auto-detect)...")
-        try:
-            print(model_conf["kwargs"]["model_config"])
-        except Exception:
-            print(model_conf)
+        if hasattr(model, "log_config_summary"):
+            model.log_config_summary(stage="planned")
+        else:
+            print(">>> [Phase 0] Planned Model Config (before auto-detect)...")
+            try:
+                print(model_conf["kwargs"]["model_config"])
+            except Exception:
+                print(model_conf)
         # 2.2 训练
         print(">>> [Phase 1] Training Model...")
         model.fit(dataset)
-        # After fit(), the adapter has initialized `model.net` with auto-detected dims.
-        try:
-            print(">>> [Phase 1] Resolved Model Config (after auto-detect)...")
-            print(model.net.config.to_dict())
-        except Exception:
-            pass
         R.save_objects(model=model)
 
         # 2.3 导出 gate / attention 可视化诊断
