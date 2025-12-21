@@ -45,7 +45,7 @@ data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 2,  # 时序窗口，对应模型 context_len
+        "step_len": 4,  # 时序窗口，对应模型 context_len
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
@@ -92,24 +92,24 @@ model_conf = {
         "model_config": {
             "d_model": 8,
             "n_layers": 2,
-            "main_loss": "mse",
-            "use_feature_selection": True,
+            "main_loss": "ic",
+            "use_feature_selection": False,
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
             "lr": 5e-4,
             "n_epochs": 20,
-            "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "batch_size": 4,  # 对应 FixedDailyBatchSampler 的日度 batch
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
             "early_stop": 5,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            # "market_state_path": "market_state_csi300.pkl",
-            # "market_state_shift": 0,
-            # "market_state_strict": True,
+            "market_state_path": "market_state_csi300.pkl",
+            "market_state_shift": 0,
+            "market_state_strict": False,
             # Warmup 配置（与 adapter 中的默认值一致）：
             "use_warmup": True,
             "warmup_ratio": 0.05,

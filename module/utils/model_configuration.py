@@ -38,22 +38,22 @@ class QuantMoEConfig(PretrainedConfig):
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
             router_use_layer_summary: bool = True,  # add per-layer market summary token to router input
             use_alibi: bool = False,
-            use_feature_selection: bool = True,
+            use_feature_selection: bool = False,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
             selection_temperature: float = 0.1,
             selection_noise_std: float = 0.5,
             # Loss & ranking
-            main_loss: str = "mse",
+            main_loss: str = "ic",
             loss_weights: Optional[Dict[str, float]] = None,
             rank_topk: int = 5,
             huber_delta: float = 1.0,
             listmle_tau: float = 0.8,  # ★ 新增：ListMLE 温度
             # context encoder
-            use_external_macro: bool = False,
+            use_external_macro: bool = True,
             d_macro_input: int = 0,
             # internal regime stats (used when use_external_macro=False)
-            regime_internal_mode: str = "short",  # "short" (t+1-ish) or "long" (t+5-ish)
-            regime_internal_lag: int = 1,         # effective when mode="long"
+            regime_internal_mode: str = "long",  # "short" (t+1-ish) or "long" (t+5-ish)
+            regime_internal_lag: int = 5,         # effective when mode="long"
             regime_internal_use_batch_stats: bool = True,
             regime_internal_tail_threshold: float = 2.0,
             # pooling

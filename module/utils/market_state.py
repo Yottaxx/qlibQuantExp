@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -95,16 +98,47 @@ def lookup_market_state(
     Map dates -> [B, dim] array.
     """
     out = []
+    nan_inf_dates: List[pd.Timestamp] = []
+    missing_dates: List[pd.Timestamp] = []
+    
     for d in dates:
         dt = pd.Timestamp(d).normalize()
         if dt.tz is not None:
             dt = dt.tz_convert(None)
         v = lookup.by_date.get(dt, None)
         if v is None:
+            missing_dates.append(dt)
             if strict:
-                raise KeyError(f"market state missing for date {dt}")
+                continue  # will raise after collecting all
             v = np.full((lookup.dim,), np.nan, dtype=np.float32)
-        elif strict and (not np.isfinite(v).all()):
-            raise KeyError(f"market state contains NaN/Inf for date {dt}")
+        elif not np.isfinite(v).all():
+            nan_inf_dates.append(dt)
         out.append(v)
+    
+    # Log NaN/Inf dates regardless of strict mode
+    if nan_inf_dates:
+        logger.warning(
+            f"[market_state] Found {len(nan_inf_dates)} dates with NaN/Inf values: "
+            f"{[str(d) for d in nan_inf_dates]}"
+        )
+    
+    # Log missing dates regardless of strict mode
+    if missing_dates:
+        logger.warning(
+            f"[market_state] Found {len(missing_dates)} missing dates: "
+            f"{[str(d) for d in missing_dates]}"
+        )
+    
+    # Raise errors in strict mode
+    if strict:
+        if missing_dates:
+            raise KeyError(
+                f"market state missing for {len(missing_dates)} date(s): {missing_dates}"
+            )
+        if nan_inf_dates:
+            raise KeyError(
+                f"market state contains NaN/Inf for {len(nan_inf_dates)} date(s): {nan_inf_dates}"
+            )
+    
     return np.stack(out, axis=0)
+

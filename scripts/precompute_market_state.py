@@ -106,8 +106,20 @@ def _corr_summaries(x: np.ndarray) -> Dict[str, float]:
 
 
 def _agg_global(x: np.ndarray, w: Optional[np.ndarray]) -> Dict[str, float]:
+    """
+    Compute global distribution statistics across all stocks and factors.
+    
+    Args:
+        x: Feature matrix of shape [n_stocks, n_features]
+        w: Optional per-stock weights of shape [n_stocks]
+    
+    Returns:
+        Dict with mean_abs, std, breadth, tail_2sigma statistics
+    """
     x = np.asarray(x, dtype=float)
+    
     if w is None:
+        # Unweighted case: simple statistics over all finite values
         arr = x.reshape(-1)
         arr = arr[np.isfinite(arr)]
         if arr.size == 0:
@@ -124,29 +136,65 @@ def _agg_global(x: np.ndarray, w: Optional[np.ndarray]) -> Dict[str, float]:
             "market_state_tail_2sigma": float(np.mean(np.abs(arr) > 2.0)),
         }
 
+    # Weighted case: compute per-stock statistics first, then aggregate
     w = np.asarray(w, dtype=float)
     w = np.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0)
     w = np.clip(w, 0.0, np.inf)
-    w = w / max(w.sum(), 1e-12)
-    ww = np.repeat(w[:, None], x.shape[1], axis=1).reshape(-1)
-    arr = x.reshape(-1)
-    m = np.isfinite(arr)
-    arr = arr[m]
-    ww = ww[m]
-    if arr.size == 0:
+    
+    if w.sum() <= 0:
+        # Fall back to unweighted if weights are all zero
+        arr = x.reshape(-1)
+        arr = arr[np.isfinite(arr)]
+        if arr.size == 0:
+            return {
+                "market_state_mean_abs": np.nan,
+                "market_state_std": np.nan,
+                "market_state_breadth": np.nan,
+                "market_state_tail_2sigma": np.nan,
+            }
+        return {
+            "market_state_mean_abs": float(np.mean(np.abs(arr))),
+            "market_state_std": float(np.std(arr)),
+            "market_state_breadth": float(np.mean(arr > 0)),
+            "market_state_tail_2sigma": float(np.mean(np.abs(arr) > 2.0)),
+        }
+    
+    # Normalize weights
+    w = w / w.sum()
+    
+    # Compute per-stock statistics (mean across features for each stock)
+    # Then aggregate with stock weights
+    n_stocks, n_features = x.shape
+    
+    # Per-stock mean absolute value (average across features)
+    stock_mean_abs = np.nanmean(np.abs(x), axis=1)  # [n_stocks]
+    # Per-stock std (std across features)
+    stock_std = np.nanstd(x, axis=1)  # [n_stocks]
+    # Per-stock breadth (fraction of positive values)
+    stock_breadth = np.nanmean(x > 0, axis=1)  # [n_stocks]
+    # Per-stock tail (fraction of |x| > 2)
+    stock_tail = np.nanmean(np.abs(x) > 2.0, axis=1)  # [n_stocks]
+    
+    # Filter out stocks with all NaN features
+    valid_mask = np.isfinite(stock_mean_abs)
+    if valid_mask.sum() == 0:
         return {
             "market_state_mean_abs": np.nan,
             "market_state_std": np.nan,
             "market_state_breadth": np.nan,
             "market_state_tail_2sigma": np.nan,
         }
-    ww = ww / max(ww.sum(), 1e-12)
-    mean_abs = float(np.sum(np.abs(arr) * ww))
-    mu = float(np.sum(arr * ww))
-    var = float(np.sum(((arr - mu) ** 2) * ww))
-    std = float(np.sqrt(max(var, 0.0)))
-    breadth = float(np.sum((arr > 0).astype(float) * ww))
-    tail = float(np.sum((np.abs(arr) > 2.0).astype(float) * ww))
+    
+    # Renormalize weights for valid stocks only
+    w_valid = w[valid_mask]
+    w_valid = w_valid / max(w_valid.sum(), 1e-12)
+    
+    # Weighted aggregation across stocks
+    mean_abs = float(np.sum(stock_mean_abs[valid_mask] * w_valid))
+    std = float(np.sum(stock_std[valid_mask] * w_valid))
+    breadth = float(np.sum(stock_breadth[valid_mask] * w_valid))
+    tail = float(np.sum(stock_tail[valid_mask] * w_valid))
+    
     return {
         "market_state_mean_abs": mean_abs,
         "market_state_std": std,
@@ -297,27 +345,33 @@ def _auto_warmup_lookback_days(
     market_ts_past_only: bool,
 ) -> int:
     """
-    Roughly how many prior trading days we need so that the earliest training dates
-    do not become NaN when generating past-only rolling/zscore/delta/TS features.
+    Estimate how many prior trading days we need so the earliest training date
+    has no NaN in any generated macro features, accounting for chained windows.
     """
     lags = [int(x) for x in (state_delta_lags or []) if int(x) > 0]
-    wins = [int(x) for x in (zscore_windows or []) if int(x) > 1]
-    if int(roll_mean) > 1:
-        wins.append(int(roll_mean))
-    if add_market_ts:
-        mt = [int(x) for x in (market_ts_windows or []) if int(x) > 1]
-        wins.extend(mt)
-        # market_ret_1d itself needs 1 prior day
-        lags.append(1)
+    z_wins = [int(x) for x in (zscore_windows or []) if int(x) > 1]
+    mt_wins = [int(x) for x in (market_ts_windows or []) if int(x) > 1]
 
-    need = 0
-    if lags:
-        need = max(need, max(lags))
-    if wins:
-        # rolling uses min_periods=w and we also shift(1), so need at least w + 1 prior days
-        need = max(need, max(wins) + 1)
-    if add_market_ts and market_ts_past_only:
-        need = max(need, 1)
+    # Base lookback from features computed directly on daily states.
+    base_lb = max(lags) if lags else 0
+    if add_market_ts:
+        mt_lb = max([1] + mt_wins)  # market_ret_1d needs 1 prior day
+        if market_ts_past_only:
+            mt_lb += 1
+        base_lb = max(base_lb, mt_lb)
+
+    need = base_lb
+    r = int(roll_mean or 0)
+    max_z = max(z_wins) if z_wins else 0
+
+    # Rolling mean and zscore are applied after delta/market_ts are added, so they chain.
+    if r > 1:
+        need = max(need, base_lb + (r - 1))
+    if max_z > 1:
+        need = max(need, base_lb + (max_z - 1))
+    if r > 1 and max_z > 1:
+        need = max(need, base_lb + (r - 1) + (max_z - 1))
+
     return int(max(need, 0))
 
 

@@ -42,7 +42,7 @@ defaults:
     warmup_ratio: 0.05
     warmup_steps: 0
     market_state_shift: 0
-    market_state_strict: true
+    market_state_strict: false
   model_config:
     d_model: 128
     n_layers: 4
