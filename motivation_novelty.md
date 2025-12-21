@@ -37,6 +37,18 @@ We also condition representations via:
 
 All macro features are computed up to day T and used to predict T+1..T+k (no look-ahead; PCA fit on train only).
 
+## 4.5 Distinction from Standard MoE (vs Switch Transformer / V-MoE / ST-MoE)
+
+| Aspect | Standard MoE | RST-MoE |
+|--------|--------------|---------|
+| **Expert Architecture** | Homogeneous (same FFN structure) | **Heterogeneous** (time-attention vs factor-attention) |
+| **Routing Signal** | Token-level query vectors | **Market-level regime embedding** |
+| **Routing Granularity** | Per-token routing | Per-sample routing (same for all tokens) |
+| **Domain Bias** | Generic (NLP/Vision) | **Finance-specific** (temporal vs cross-sectional) |
+| **Conditioning** | None | **FiLM post-LN** + **τ-gated time embedding** |
+
+**Key Difference**: We do not simply increase capacity via more experts; we **structurally separate** two fundamental financial inductive biases (time vs factor) and let regime signals control their mixture.
+
 ## 5. Novelty (precise and testable)
 1) Structural specialization with soft routing: axis-specific experts mixed by regime signals,
    not a single backbone with input gating.

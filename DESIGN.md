@@ -20,18 +20,22 @@ This document summarizes the current end-to-end design for the cross-sectional s
 
 ## Model (QuantMoEModel)
 - Embedding: value projection + factor ID embedding + regime-adaptive time embedding (lag table modulated by `time_tau(regime)`); dropout.
+  - **Time Embedding Details**: τ-gated exponential decay over lag positions; `time_tau_init` (default 5.0) sets initial scale; `time_tau_min/max` bound the learned τ; `time_decay_normalize=True` keeps mean(w)=1 across regimes.
 - Optional regime-adaptive factor gate (FiLM/AdaLN): per-sample, per-factor `gamma/beta` applied **after each block’s LayerNorm** (so it isn’t canceled by Pre-LN); permutation-equivariant w.r.t factor order.
+  - **FiLM Details**: `factor_gate_scale` (default 0.5) bounds γ ∈ [1-scale, 1+scale]; zero-init for identity-start (ResNet-style).
 - Optional feature selector (STG-style):
   - Params: `use_feature_selection`, `selection_temperature`, `selection_noise_std`, `selection_reg_lambda`.
   - Applied after each block’s LayerNorm (factor-axis mask), so it affects attention rather than being canceled by Pre-LN.
 - Regime encoder:
   - External macro: `use_external_macro=True`, `d_macro_input` auto-set by adapter.
   - Internal stats: market-level (batch stats) or per-sample fallback; modes `regime_internal_mode={short,long}`, `regime_internal_lag`, `regime_internal_use_batch_stats`, `regime_internal_tail_threshold`.
+  - **Batch Requirement**: Internal mode requires `batch_size >= 128` for stable covariance estimation (N=158 factors).
 - Router (per layer):
   - Inputs: regime embedding (+ optional `router_use_layer_summary` from layer hidden mean/std).
-  - Options: `router_noise` (logit noise, train only), `router_temperature`, `router_z_loss_coef`.
+  - Options: `router_noise` (default 0.1, logit noise for exploration), `router_temperature` (default 1.0, softmax sharpness), `router_z_loss_coef` (default 0.01, prevents collapse).
+  - **z-loss Theory**: Penalizes large logit magnitudes to prevent router from collapsing to single expert; monitor `time_ratio ∈ [0.3, 0.7]`.
   - Experts: time expert (per-factor temporal) + factor expert (per-time factor mixing); ALiBi optional on time axis (`use_alibi`).
-- Pooling & head: AdaptivePooling (`pooling_alpha` mixes attention/mean) on last time step, then linear head → stock score.
+- Pooling & head: AdaptivePooling (`pooling_alpha` default 0.7 mixes attention/mean) on last time step, then linear head → stock score.
 
 ## Losses & Metrics
 - Main: configurable via `main_loss` (default: MSE on rank-label). Options: MSE / IC / ListMLE (`listmle_tau` for ListMLE).

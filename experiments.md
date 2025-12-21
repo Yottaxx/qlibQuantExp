@@ -31,7 +31,7 @@
 - `router_use_layer_summary`: True  （轻量层内摘要，提高 gate 自适应）
 - `router_noise`: 0.05  （小噪声探索）
 - `router_temperature`: 1.0
-- `router_z_loss_coef`: 1e-3
+- `router_z_loss_coef`: 0.01  （防止 collapse，与代码默认值一致）
 - `pooling_alpha`: 0.7
 - `main_loss`: "mse"  （默认主 loss，可切换为 "ic" 或 "listmle"）
 - `listmle_tau`: 1.0
@@ -78,13 +78,12 @@
 - `router_use_layer_summary`: True
 - `router_noise`: 0.1  （更大探索）
 - `router_temperature`: 0.7~1.0  （更锋利 gate）
-- `router_z_loss_coef`: 1e-3
+- `router_z_loss_coef`: 0.01  （防止 collapse）
 - `pooling_alpha`: 0.7
 - `main_loss`: "mse"  （默认主 loss，可切换为 "ic" 或 "listmle"）
 - `listmle_tau`: 0.8~1.0  （可稍小以增强排序尖锐度）
 - `rank_topk`: 5
 - `huber_delta`: 1.0
-- `router_z_loss_coef`: 0.01  (increase if router collapses)
 
 ### Trainer (`trainer_config`)
 - `lr`: 5e-4

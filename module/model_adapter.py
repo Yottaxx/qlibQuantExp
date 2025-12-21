@@ -735,6 +735,22 @@ class QlibQuantMoE(Model):
                 meters["gate_entropy"] += float(out.avg_gate_entropy)
             if getattr(out, "avg_time_ratio", None) is not None:
                 meters["time_ratio"] += float(out.avg_time_ratio)
+                # Router Collapse Warning: detect extreme time_ratio
+                tr = float(out.avg_time_ratio)
+                if train and (tr < 0.1 or tr > 0.9):
+                    self._warn_once(
+                        "router_collapse",
+                        f">>> [Warn] Router may be collapsing: time_ratio={tr:.3f}. "
+                        f"Expected range [0.2, 0.8]. Consider increasing router_z_loss_coef.",
+                    )
+            if getattr(out, "avg_gate_entropy", None) is not None:
+                ge = float(out.avg_gate_entropy)
+                if train and ge < 0.2:
+                    self._warn_once(
+                        "router_low_entropy",
+                        f">>> [Warn] Router entropy too low: {ge:.3f}. "
+                        f"May indicate collapse to single expert. Check router_z_loss_coef.",
+                    )
             if getattr(out, "selected_mask", None) is not None:
                 meters["active_feat_ratio"] += float(out.selected_mask.mean().item())
 

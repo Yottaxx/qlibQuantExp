@@ -100,7 +100,7 @@ model_conf = {
         "trainer_config": {
             "lr": 5e-4,
             "n_epochs": 20,
-            "batch_size": 4,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
