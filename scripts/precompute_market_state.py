@@ -362,15 +362,16 @@ def _auto_warmup_lookback_days(
 
     need = base_lb
     r = int(roll_mean or 0)
-    max_z = max(z_wins) if z_wins else 0
+    z_chain = sum((w - 1) for w in z_wins)
 
-    # Rolling mean and zscore are applied after delta/market_ts are added, so they chain.
+    # Rolling mean and zscore are applied after delta/market_ts are added, and zscore windows
+    # are applied sequentially to the growing state_df, so the warmup chains additively.
     if r > 1:
         need = max(need, base_lb + (r - 1))
-    if max_z > 1:
-        need = max(need, base_lb + (max_z - 1))
-    if r > 1 and max_z > 1:
-        need = max(need, base_lb + (r - 1) + (max_z - 1))
+    if z_chain > 0:
+        need = max(need, base_lb + z_chain)
+    if r > 1 and z_chain > 0:
+        need = max(need, base_lb + (r - 1) + z_chain)
 
     return int(max(need, 0))
 
