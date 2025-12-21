@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import random
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Text, Tuple, Union
@@ -110,6 +111,16 @@ class QlibQuantMoE(Model):
             return
         self._warned_keys.add(key)
         print(msg)
+
+    def _set_global_seed(self, seed: Optional[int]) -> None:
+        if seed is None:
+            return
+        seed = int(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
     def log_config_summary(
         self,
@@ -879,6 +890,8 @@ class QlibQuantMoE(Model):
 
     # ---------- Qlib API ----------
     def fit(self, dataset: DatasetH, evals_result=dict()):
+        if "seed" in self.trainer_config:
+            self._set_global_seed(self.random_seed)
         self._ensure_market_state()
         # 1) Train schema & TSDS
         train_tsds = self._validate_train_schema(dataset)
