@@ -146,6 +146,7 @@ Main objective is configurable via `main_loss` (default **MSE** on rank-label), 
 参数：
 - `use_external_macro`（bool，默认 False）：是否使用外部 macro features。
 - `d_macro_input`（int，默认 0）：macro 特征维度（启用 macro 时必填；适配器可自动推断）。
+- `regime_macro_dropout`（float，默认 0.0）：macro MLP 内部的小幅 dropout（用于稳健化宏观状态编码）。
 - `regime_internal_mode`（str，默认 `"short"`）：内部统计的尺度模式：
   - `"short"`：短尺度（更贴近 t+1）
   - `"long"`：长尺度（更贴近 t+5，需要配合 `regime_internal_lag`）

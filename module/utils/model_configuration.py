@@ -51,6 +51,7 @@ class QuantMoEConfig(PretrainedConfig):
             # context encoder
             use_external_macro: bool = True,
             d_macro_input: int = 0,
+            regime_macro_dropout: float = 0.0,
             # internal regime stats (used when use_external_macro=False)
             regime_internal_mode: str = "long",  # "short" (t+1-ish) or "long" (t+5-ish)
             regime_internal_lag: int = 5,         # effective when mode="long"
@@ -120,6 +121,7 @@ class QuantMoEConfig(PretrainedConfig):
 
         self.use_external_macro = use_external_macro
         self.d_macro_input = d_macro_input
+        self.regime_macro_dropout = regime_macro_dropout
 
         self.regime_internal_mode = regime_internal_mode
         self.regime_internal_lag = regime_internal_lag

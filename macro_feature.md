@@ -20,6 +20,8 @@ The pipeline is:
   - Optional **rolling z-score** features for stability across horizons (`*_z20`, `*_z60`, …) — up to day T by default
   - Optional robust filtering and weighting (`--filter_*`, `--weight_field`)
   - Optional “raw-ish” feature mode without `RobustZScoreNorm` (`--no_norm`)
+  - Optional macro **profile slimming** (`--macro_profile=kaiming`) to keep only core stats + PCA + raw market TS
+  - Optional macro **scale normalization** (`--macro_scale={zscore,robust}`) fit on train by default (recommended with `--no_norm`)
 - `module/model_adapter.py` already supports passing `macro_features` everywhere (train/valid/predict/visuals) via:
   - `trainer_config.market_state_path`
   - `trainer_config.market_state_shift`
@@ -32,20 +34,19 @@ The pipeline is:
 
 This script reuses `work_flow.py:data_conf` and builds a separate dataset with `step_len=1` to get **per-day** features, then aggregates across the whole universe each day.
 
-### CSI300 (example)
+### CSI300 (kaiming profile, recommended when --no_norm)
 
 ```bash
 python scripts/precompute_market_state.py \
   --out market_state_csi300.pkl \
   --pca_dim 16 \
-  --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --zscore_windows 20,60 \
-  --roll_mean 20 \
   --weight_field '$amount' \
   --filter_robust_z 6 \
   --filter_max_bad_frac 0.05 \
+  --macro_profile kaiming \
+  --macro_scale robust \
   --no_norm 
 
 # Note: --market_ts_past_only is NOT included by default.
@@ -53,21 +54,20 @@ python scripts/precompute_market_state.py \
 # For T+k prediction (k>=1), the default (no shift) is correct.
 ```
 
-### CSI800 (example)
+### CSI800 (kaiming profile, recommended when --no_norm)
 
 ```bash
 python scripts/precompute_market_state.py \
   --out market_state_csi800.pkl \
   --instruments csi800 \
   --pca_dim 32 \
-  --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --zscore_windows 20,60,120 \
-  --roll_mean 20 \
   --weight_field '$amount' \
   --filter_robust_z 6 \
   --filter_max_bad_frac 0.05 \
+  --macro_profile kaiming \
+  --macro_scale robust \
   --no_norm 
 
 ```
@@ -112,6 +112,14 @@ Outputs:
   - `train` (recommended for paper/strict backtests): fit PCA on train days only, then transform valid/test (no look-ahead)
   - `all`: legacy behavior (fit on all days; not recommended for strict evaluation)
 
+### Macro Profile & Scale
+- `--macro_profile`: `full` or `kaiming`
+  - `full`: keep all generated columns
+  - `kaiming`: keep only core scalars + PCA + **raw** market TS (drops roll/zscore/delta for a compact, high-signal state)
+- `--macro_scale`: `none` (default), `zscore`, or `robust`
+  - Fit on train by default and applied to all dates; recommended when using `--no_norm`
+- `--macro_scale_fit_on`: `train` or `all` (default uses `--pca_fit_on`)
+
 ### Cross-period Standardization
 - `--zscore_windows`: comma-separated windows, e.g. `20,60,120`
   - Generates `*_z{window}` columns using rolling mean/std computed **up to day T** (default, for T+k prediction).
@@ -143,6 +151,14 @@ Enable macro features by adding these keys to `trainer_config`:
   "market_state_path": "market_state_csi300.pkl",
   "market_state_shift": 0,
   "market_state_strict": True,
+}
+```
+
+Optional model-side regularization:
+
+```python
+"model_config": {
+  "regime_macro_dropout": 0.1,
 }
 ```
 
@@ -203,7 +219,7 @@ This scenario is **rare** in practice (most quant strategies predict at least T+
 ## Practical Advice (CSI800 / Long Horizon)
 
 - CSI800 is larger and noisier: prefer `--weight_field '$amount'` and robust filtering.
-- For t+5/t+20, always include `--zscore_windows` (e.g. `20,60,120`) to stabilize regimes across periods.
+- For t+5/t+20: if you use the **full profile**, add `--zscore_windows` (e.g. `20,60,120`); if you use the **kaiming profile**, keep zscore off and rely on `--macro_scale=robust`.
 - If you keep `CSRankNorm` on labels, market-state features should carry more slow-moving information (correlation/crowding + PCA regime) to help the router distinguish regimes.
 - **Do not** use `--market_ts_past_only` or `market_state_shift=1` unless you have a same-day prediction task.
 
@@ -344,7 +360,8 @@ For the label `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5):
 - [x] No `--market_ts_past_only` flag when running precompute
 - [x] `shift_stats=False` in `_rolling_zscore()` (default)
 - [x] `roll_mean` NOT shifted (default behavior)
-- [x] Warmup period extended to cover rolling windows
+- [x] Warmup period extended to cover rolling windows (if enabled)
+- [x] `--macro_profile=kaiming` and `--macro_scale=robust` when using `--no_norm`
 
 ### Example Complete Configuration
 
@@ -370,14 +387,14 @@ For the label `Ref($close, -5) / Ref($close, -1) - 1` (T+1 to T+5):
 python scripts/precompute_market_state.py \
   --out market_state_csi300.pkl \
   --pca_dim 16 \
-  --state_delta_lags 1,5,10 \
   --add_market_ts \
   --market_ts_windows 5,20,60 \
-  --zscore_windows 20,60 \
-  --roll_mean 20 \
   --weight_field '$amount' \
   --filter_robust_z 6 \
-  --filter_max_bad_frac 0.05
+  --filter_max_bad_frac 0.05 \
+  --macro_profile kaiming \
+  --macro_scale robust \
+  --no_norm
   # Note: NO --market_ts_past_only flag (correct for T+k prediction)
 ```
 

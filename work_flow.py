@@ -95,6 +95,7 @@ model_conf = {
             "main_loss": "ic",
             "use_feature_selection": False,
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
+            "regime_macro_dropout": 0.1,
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {

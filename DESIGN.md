@@ -29,6 +29,7 @@ This document summarizes the current end-to-end design for the cross-sectional s
 - Regime encoder:
   - External macro: `use_external_macro=True`, `d_macro_input` auto-set by adapter.
   - Internal stats: market-level (batch stats) or per-sample fallback; modes `regime_internal_mode={short,long}`, `regime_internal_lag`, `regime_internal_use_batch_stats`, `regime_internal_tail_threshold`.
+  - Optional macro regularization: `regime_macro_dropout` (small dropout inside macro MLP).
   - **Batch Requirement**: Internal mode requires `batch_size >= 128` for stable covariance estimation (N=158 factors).
 - Router (per layer):
   - Inputs: regime embedding (+ optional `router_use_layer_summary` from layer hidden mean/std).
@@ -58,6 +59,8 @@ This document summarizes the current end-to-end design for the cross-sectional s
   - Market TS (past-only if chosen): return/vol/momentum/drawdown from benchmark close (`--add_market_ts`, `--market_ts_windows`).
   - Rolling/z-score (past-only): `--roll_mean`, `--zscore_windows`.
   - Filters: robust z, trade/suspension, weighting; optional `--no_norm` to skip feature z-score.
+  - Profile slimming: `--macro_profile=kaiming` keeps only core stats + PCA + raw market TS (drops roll/zscore/delta).
+  - Scale normalization: `--macro_scale={zscore,robust}` fit on train by default (recommended with `--no_norm`).
 - Warmup: `--warmup_trading_days` (default auto) extends precompute start earlier so rolling/zscore/Δstate/TS are defined at training start.
 - Dates normalized (no tz); strict lookup can raise on missing/NaN.
 - Adapter auto-sets `d_macro_input = n_columns` of state file.

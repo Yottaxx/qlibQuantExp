@@ -15,6 +15,7 @@ class RegimeContextEncoder(nn.Module):
         internal_lag: int = 1,
         internal_use_batch_stats: bool = True,
         internal_tail_threshold: float = 2.0,
+        dropout: float = 0.0,
         eps: float = 1e-6,
     ):
         super().__init__()
@@ -34,9 +35,11 @@ class RegimeContextEncoder(nn.Module):
         self.d_input = d_macro if use_external_macro else 4
 
         # 将低维统计特征映射到 d_model
+        drop_p = float(dropout) if dropout is not None else 0.0
         self.encoder = nn.Sequential(
             nn.Linear(self.d_input, d_model // 2),
             nn.Tanh(),  # Tanh 适合处理统计值的归一化
+            nn.Dropout(drop_p),
             nn.Linear(d_model // 2, d_model),
             nn.LayerNorm(d_model)  # 必须 Norm，防止统计值波动过大
         )

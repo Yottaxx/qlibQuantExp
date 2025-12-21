@@ -300,6 +300,63 @@ def _parse_int_list(s: str) -> List[int]:
     return [int(x) for x in (s or "").split(",") if str(x).strip()]
 
 
+KAIMING_CORE_COLS = [
+    "market_state_mean_abs",
+    "market_state_std",
+    "market_state_breadth",
+    "market_state_tail_2sigma",
+    "market_state_corr_mean_abs",
+    "market_state_corr_fro",
+    "market_state_corr_pc1_ratio",
+]
+
+
+def _apply_macro_profile(df: pd.DataFrame, profile: str) -> pd.DataFrame:
+    profile = str(profile or "full").strip().lower()
+    if profile == "full":
+        return df
+    if profile != "kaiming":
+        raise ValueError(f"Unknown macro_profile: {profile} (use 'full' or 'kaiming')")
+
+    keep: List[str] = []
+    cols = list(df.columns)
+    for c in cols:
+        if c in KAIMING_CORE_COLS:
+            keep.append(c)
+            continue
+        if c.startswith("market_state_pca_"):
+            keep.append(c)
+            continue
+        if c.startswith("market_"):
+            # Keep only raw market ts (no roll_mean / zscore variants).
+            if "_roll_mean" in c or "_z" in c:
+                continue
+            keep.append(c)
+            continue
+
+    keep = [c for c in keep if c in df.columns]
+    return df[keep]
+
+
+def _fit_macro_scale(df: pd.DataFrame, method: str) -> tuple[pd.Series, pd.Series]:
+    method = str(method or "none").strip().lower()
+    if method == "none":
+        raise ValueError("_fit_macro_scale called with method='none'")
+    if method == "zscore":
+        center = df.mean(axis=0, skipna=True)
+        scale = df.std(axis=0, skipna=True, ddof=0)
+    elif method == "robust":
+        center = df.median(axis=0, skipna=True)
+        mad = (df.sub(center, axis=1)).abs().median(axis=0, skipna=True)
+        scale = mad * 1.4826
+    else:
+        raise ValueError(f"Unknown macro_scale method: {method}")
+
+    scale = scale.where(scale > 1e-12, 1.0)
+    center = center.fillna(0.0)
+    return center, scale
+
+
 def _market_ts_features(close: pd.Series, windows: List[int], *, past_only: bool = False) -> pd.DataFrame:
     """
     Build compact market-level time-series features from a benchmark close series.
@@ -472,6 +529,27 @@ def main():
         "--market_ts_past_only",
         action="store_true",
         help="Use past-only market TS features (shift by 1 day). Only enable for same-day prediction (T→T). For T+k prediction (k>=1), keep disabled (default).",
+    )
+    ap.add_argument(
+        "--macro_profile",
+        type=str,
+        default="full",
+        choices=["full", "kaiming"],
+        help="Macro column profile. 'kaiming' keeps a compact, high-signal subset.",
+    )
+    ap.add_argument(
+        "--macro_scale",
+        type=str,
+        default="none",
+        choices=["none", "zscore", "robust"],
+        help="Unify macro column scales over time using train-only statistics.",
+    )
+    ap.add_argument(
+        "--macro_scale_fit_on",
+        type=str,
+        default=None,
+        choices=["train", "all"],
+        help="Fit macro scale on 'train' or 'all'. Default uses pca_fit_on.",
     )
     ap.add_argument(
         "--warmup_trading_days",
@@ -832,6 +910,31 @@ def main():
         z = _rolling_zscore(state_df, w, shift_stats=False)
         z.columns = [f"{c}_z{w}" for c in z.columns]
         state_df = pd.concat([state_df, z], axis=1)
+
+    # Macro column profile (optional slimming)
+    before_cols = state_df.shape[1]
+    state_df = _apply_macro_profile(state_df, args.macro_profile)
+    after_cols = state_df.shape[1]
+    if after_cols != before_cols:
+        print(f"[INFO] Macro profile '{args.macro_profile}': {before_cols} -> {after_cols} columns")
+
+    # Macro scale normalization (optional, train-only by default)
+    macro_scale = str(args.macro_scale or "none").lower()
+    if macro_scale != "none":
+        scale_fit_on = (args.macro_scale_fit_on or args.pca_fit_on).strip().lower()
+        if scale_fit_on not in {"train", "all"}:
+            raise ValueError(f"macro_scale_fit_on must be 'train' or 'all', got: {scale_fit_on}")
+        if scale_fit_on == "train":
+            if train_start is None or train_end is None:
+                raise RuntimeError("--macro_scale_fit_on=train requires a valid train segment range.")
+            scale_df = state_df.loc[fit_mask]
+            scale_desc = f"train[{train_start.date()}..{train_end.date()}]"
+        else:
+            scale_df = state_df
+            scale_desc = "all"
+        center, scale = _fit_macro_scale(scale_df, macro_scale)
+        state_df = (state_df - center) / scale
+        print(f"[INFO] Macro scale '{macro_scale}' fit on {scale_desc}")
 
     # Save PCA params for reproducibility (and to make leakage checks explicit)
     try:

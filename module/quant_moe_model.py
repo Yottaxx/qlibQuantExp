@@ -76,6 +76,7 @@ class QuantMoEModel(PreTrainedModel):
             internal_lag=getattr(config, "regime_internal_lag", 1),
             internal_use_batch_stats=getattr(config, "regime_internal_use_batch_stats", True),
             internal_tail_threshold=getattr(config, "regime_internal_tail_threshold", 2.0),
+            dropout=float(getattr(config, "regime_macro_dropout", 0.0) or 0.0),
         )
 
         # 4) MoE 主干

@@ -168,6 +168,9 @@ class QlibQuantMoE(Model):
             f"alibi={on_off(mc.get('use_alibi', False))}",
             f"macro={macro_desc}",
         ]
+        macro_drop = float(mc.get("regime_macro_dropout", 0.0) or 0.0)
+        if macro_drop > 0:
+            model_parts.append(f"macro_drop={macro_drop:g}")
         print(f">>> [Config:{tag}] model: " + ", ".join(model_parts))
 
         if self.use_warmup:

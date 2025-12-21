@@ -64,11 +64,26 @@ defaults:
     time_tau_init: 5.0
     use_regime_factor_gate: true
     factor_gate_scale: 0.5
+    # Macro encoder regularization
+    regime_macro_dropout: 0.1
     # Keep STG off by default; enable only for dedicated ablation
     use_feature_selection: false
     selection_reg_lambda: 1.0e-5
     selection_temperature: 0.1
     selection_noise_std: 0.5
+
+# Macro precompute defaults (for consistency across sweep runs)
+macro_precompute:
+  profile: kaiming
+  scale: robust
+  no_norm: true
+  pca_dim: 16
+  pca_fit_on: train
+  state_delta_lags: []
+  add_market_ts: true
+  market_ts_windows: [5, 20, 60]
+  zscore_windows: []
+  roll_mean: 0
 
 # Settings = minimal ablations that isolate contributions.
 # NOTE: “Structural routing controls” (time-only/factor-only/fixed-gate/no-regime-router) are NOT listed here
