@@ -53,6 +53,10 @@ class FixedDailyBatchSampler(Sampler):
                 # Upsample: Randomly pick with replacement to fill batch
                 batch_indices = self.rng.choice(daily_indices, self.batch_size, replace=True)
 
+            # Shuffle in-batch order for better gradient diversity
+            if self.shuffle:
+                batch_indices = self.rng.permutation(batch_indices)
+
             yield batch_indices
 
     def __len__(self):

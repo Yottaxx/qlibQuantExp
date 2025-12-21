@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -190,7 +191,7 @@ def check_delta_features(df: pd.DataFrame) -> Dict[str, any]:
     }
 
 
-def check_zscore_features(df: pd.DataFrame) -> Dict[str, any]:
+def check_zscore_features(df: pd.DataFrame, *, warmup: Optional[int] = None) -> Dict[str, any]:
     """Validate rolling z-score features."""
     z_cols = [c for c in df.columns if "_z20" in c or "_z60" in c or "_z120" in c]
     
@@ -199,9 +200,9 @@ def check_zscore_features(df: pd.DataFrame) -> Dict[str, any]:
     
     z_df = df[z_cols]
     
-    # Z-score should be roughly N(0,1) after warmup
-    # Check on later dates (after warmup)
-    warmup = 120
+    # Z-score should be roughly N(0,1) after warmup.
+    # Use expected warmup when provided to avoid false alarms.
+    warmup = max(0, int(warmup)) if warmup is not None else 120
     if len(z_df) > warmup:
         post_warmup = z_df.iloc[warmup:]
         means = post_warmup.mean().abs()
@@ -216,11 +217,40 @@ def check_zscore_features(df: pd.DataFrame) -> Dict[str, any]:
     
     return {
         "n_zscore_columns": len(z_cols),
+        "warmup": int(warmup),
         "nan_pct": float(z_df.isna().mean().mean() * 100),
         "suspicious_large_mean": large_mean[:5],
         "suspicious_small_std": small_std[:5],
         "suspicious_large_std": large_std[:5],
     }
+
+
+def _extract_ints(pattern: str, text: str) -> List[int]:
+    return [int(x) for x in re.findall(pattern, text)]
+
+
+def infer_expected_warmup(df: pd.DataFrame) -> int:
+    """
+    Infer warmup length from column naming patterns.
+    This mirrors the chained windows used in precompute (base + roll_mean + zscore chain).
+    """
+    max_need = 0
+    for col in df.columns:
+        base = 0
+        for lag in _extract_ints(r"_d(\d+)", col):
+            base = max(base, lag)
+        for lag in _extract_ints(r"market_ret_(\d+)d", col):
+            base = max(base, lag)
+        for lag in _extract_ints(r"market_(?:vol|mom|dd)_(\d+)", col):
+            base = max(base, lag)
+
+        roll_chain = sum(w - 1 for w in _extract_ints(r"_roll_mean(\d+)", col) if w > 1)
+        z_chain = sum(w - 1 for w in _extract_ints(r"_z(\d+)", col) if w > 1)
+
+        need = base + roll_chain + z_chain
+        if need > max_need:
+            max_need = need
+    return int(max_need)
 
 
 def check_market_ts_features(df: pd.DataFrame) -> Dict[str, any]:
@@ -259,7 +289,7 @@ def check_market_ts_features(df: pd.DataFrame) -> Dict[str, any]:
     }
 
 
-def check_warmup_coverage(df: pd.DataFrame, expected_warmup: int = 60) -> Dict[str, any]:
+def check_warmup_coverage(df: pd.DataFrame, expected_warmup: Optional[int] = None) -> Dict[str, any]:
     """Check if warmup period has appropriate NaN patterns."""
     # Columns that should have NaN in warmup period
     warmup_cols = [c for c in df.columns if "_z" in c or "_d" in c or "roll_mean" in c]
@@ -267,6 +297,16 @@ def check_warmup_coverage(df: pd.DataFrame, expected_warmup: int = 60) -> Dict[s
     if not warmup_cols:
         return {"status": "NO_WARMUP_COLUMNS"}
     
+    if expected_warmup is None:
+        expected_warmup = infer_expected_warmup(df)
+    expected_warmup = int(expected_warmup)
+    if expected_warmup <= 0:
+        return {
+            "expected_warmup": expected_warmup,
+            "first_row_nan_pct": 0.0,
+            "warmup_nan_pct": 0.0,
+        }
+
     warmup_df = df[warmup_cols].iloc[:expected_warmup]
     
     # Check first row should be mostly NaN for derived features
@@ -319,9 +359,11 @@ def check_pca_sidecar(pkl_path: Path) -> Dict[str, any]:
     return results
 
 
-def generate_report(df: pd.DataFrame, pkl_path: Path) -> str:
+def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Optional[int] = None) -> str:
     """Generate a comprehensive analysis report."""
     report = []
+    if expected_warmup is None:
+        expected_warmup = infer_expected_warmup(df)
     
     # 1. Basic stats
     print_section("1. BASIC STATISTICS")
@@ -377,7 +419,7 @@ def generate_report(df: pd.DataFrame, pkl_path: Path) -> str:
     
     # 7. Z-score features
     print_section("7. ROLLING Z-SCORE FEATURES")
-    z_info = check_zscore_features(df)
+    z_info = check_zscore_features(df, warmup=expected_warmup)
     for k, v in z_info.items():
         print(f"  {k}: {v}")
     
@@ -389,7 +431,7 @@ def generate_report(df: pd.DataFrame, pkl_path: Path) -> str:
     
     # 9. Warmup coverage
     print_section("9. WARMUP PERIOD COVERAGE")
-    warmup_info = check_warmup_coverage(df)
+    warmup_info = check_warmup_coverage(df, expected_warmup=expected_warmup)
     for k, v in warmup_info.items():
         print(f"  {k}: {v}")
     
@@ -462,6 +504,8 @@ def main():
     parser = argparse.ArgumentParser(description="Analyze macro feature data quality")
     parser.add_argument("--path", type=str, default="market_state_csi300.pkl",
                         help="Path to market_state pkl file")
+    parser.add_argument("--expected_warmup", type=int, default=None,
+                        help="Override expected warmup (trading days). If omitted, infer from columns.")
     parser.add_argument("--sample_date", type=str, default=None,
                         help="Show detailed data for a specific date (e.g., 2020-01-02)")
     args = parser.parse_args()
@@ -480,7 +524,7 @@ def main():
     df = pd.read_pickle(pkl_path)
     df.index = pd.to_datetime(df.index)
     
-    generate_report(df, pkl_path)
+    generate_report(df, pkl_path, expected_warmup=args.expected_warmup)
     
     # Optional: show data for a specific date
     if args.sample_date:
