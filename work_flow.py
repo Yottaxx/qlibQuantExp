@@ -214,7 +214,7 @@ def _load_train_curves(rec, *, main_loss: Optional[str] = None):
     - train_summary_lines: 文本总结
     - fig_name: 图片文件名（相对路径），用于 Markdown 引用
     """
-    local_dir: Path = rec.get_local_dir()
+    local_dir: Path = Path(rec.get_local_dir())
     if main_loss is not None:
         main_loss = str(main_loss).lower().strip()
         if main_loss == "mle":
@@ -386,7 +386,7 @@ def export_qlib_official_graphs(
         return {}
     import inspect
 
-    local_dir: Path = rec.get_local_dir()
+    local_dir: Path = Path(rec.get_local_dir())
     out: Dict[str, List[str]] = {}
 
     # Inputs from recorder (created by PortAnaRecord / SignalRecord)
@@ -559,7 +559,6 @@ def _format_setup_from_conf(run_conf: Dict) -> str:
       - benchmark={bt_k.get("benchmark")}, deal_price={ex_k.get("deal_price")}, cost(open/close)={ex_k.get("open_cost")}/{ex_k.get("close_cost")}
     """
     return textwrap.dedent(setup_txt).strip()
-
 
 def generate_paper_report(
     rec,
