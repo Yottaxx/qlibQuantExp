@@ -55,7 +55,9 @@ data_conf = {
                 "fit_start_time": "2008-01-01",
                 "fit_end_time": "2014-12-31",
                 "instruments": "csi300",
-                # 推理预处理：去极值 + 填充
+                # 推理预处理（DK_I，用于特征预处理）：
+                # - 特征：去极值 + 填充
+                # 注意：DropnaLabel 不能放在 infer_processors 中（Qlib 限制）
                 "infer_processors": [
                     {
                         "class": "RobustZScoreNorm",
@@ -63,23 +65,16 @@ data_conf = {
                     },
                     {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
                 ],
-                # 深度模型：防止 Dropna 打断时间序列
-                # DropnaLabel: 移除 NaN 标签
-                # DropExtremeLabel: 移除截面 top/bottom 5% 极端值（处理涨跌停等异常，对齐 MASTER 论文）
-                # CSZScoreNorm: 截面 ZScore 标准化（线性变换，保留相对大小，等价于优化 Pearson IC）
+                # 训练预处理（train 使用 DK_L）：
+                # - DropnaLabel: 移除 NaN 标签
+                # - DropExtremeLabel: 移除截面 top/bottom 2.5% 极端值（处理涨跌停，对齐 MASTER）
+                # - CSZScoreNorm: 截面 ZScore 标准化
+                # 注意：valid/test 使用 DK_I，不会 drop extreme，评估在全部数据上进行
                 "learn_processors": [
                     {"class": "DropnaLabel"},
-                    {
-                        "class": "DropExtremeLabel",
-                        "kwargs": {
-                            "fields_group": "label",
-                            "qcut_min": 0.05,
-                            "qcut_max": 0.95,
-                        },
-                    },
-                    {"class": "CSZScoreNorm", "kwargs": {"fields_group": "label"}},
+                    {"class": "CSZScoreNorm", "kwargs": {"fields_group": "label", "method": "robust"}},
                 ],
-                # Label: 下五日收益（在 learn_processors 中做 DropExtreme + CSZScoreNorm）
+                # Label: 下五日收益
                 "label": ["Ref($close, -5) / Ref($close, -1) - 1"],
             },
         },
@@ -99,9 +94,9 @@ model_conf = {
     "module_path": "module.model_adapter",
     "kwargs": {
         "model_config": {
-            "d_model": 8,
+            "d_model": 128,
             "n_layers": 2,
-            "main_loss": "ic",
+            "main_loss": "mse",
             "use_feature_selection": False,
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
             "regime_macro_dropout": 0.1,
@@ -126,6 +121,8 @@ model_conf = {
             "warmup_ratio": 0.05,
             "warmup_steps": 0,
             "debug_sanity_check":True,
+            # Valid 只允许 DK_I：
+            "strict_valid_data_key":True
         },
     },
 }

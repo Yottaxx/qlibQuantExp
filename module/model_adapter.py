@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import random
 from collections import defaultdict
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Text, Tuple, Union
 
@@ -69,6 +70,13 @@ class QlibQuantMoE(Model):
 
         self.early_stop = int(self.trainer_config.get("early_stop", 0) or 0)
         self.min_delta = float(self.trainer_config.get("min_delta", 1e-6))
+        # Gradient accumulation (micro-batch = one date cross-section; accumulate across K dates)
+        self.grad_accum_steps = max(1, int(self.trainer_config.get("grad_accum_steps", 5)))
+        # Validation data_key policy
+        # - Default: DK_I (infer), aligned with Qlib official workflows
+        # - If strict_valid_data_key=True, validation will NOT fall back to DK_L.
+        self.valid_data_key = str(self.trainer_config.get("valid_data_key", DataHandlerLP.DK_I))
+        self.strict_valid_data_key = bool(self.trainer_config.get("strict_valid_data_key", False))
 
         # Optional: precomputed market daily state as macro_features
         # - market_state_path: path to DataFrame(index=datetime, columns=state_dims)
@@ -202,6 +210,7 @@ class QlibQuantMoE(Model):
             f"lr={self.lr:g}",
             f"epochs={self.epochs}",
             f"batch={self.batch_size}",
+            f"accum={self.grad_accum_steps}",
             f"early_stop={self.early_stop}",
             f"warmup={warmup_desc}",
             f"seed={self.random_seed}",
@@ -318,7 +327,8 @@ class QlibQuantMoE(Model):
         trainer_attrs = [
             ("lr", self.lr, "Learning rate"),
             ("epochs", self.epochs, "Number of epochs"),
-            ("batch_size", self.batch_size, "Batch size (days)"),
+            ("batch_size", self.batch_size, "Batch size (stocks/day)"),
+            ("grad_accum_steps", self.grad_accum_steps, "Accumulate K days/step"),
             ("early_stop", self.early_stop, "Early stop patience"),
             ("use_warmup", self.use_warmup, "Enable LR warmup"),
             ("warmup_config", warmup_val, "Warmup steps/ratio"),
@@ -909,6 +919,8 @@ class QlibQuantMoE(Model):
         skip_no_loss = 0
         opt_steps = 0
         daily_buffer = defaultdict(lambda: {"p": [], "y": []}) if not train else None
+        accum_steps = self.grad_accum_steps if (train and optimizer is not None) else 1
+        accum_count = 0
 
         iterator = pbar if pbar is not None else loader
         for step, batch in enumerate(iterator):
@@ -942,7 +954,7 @@ class QlibQuantMoE(Model):
                 if macro_t is not None:
                     macro_t = macro_t[valid]
 
-            if train and optimizer is not None:
+            if train and optimizer is not None and accum_count == 0:
                 optimizer.zero_grad(set_to_none=True)
 
             with torch.set_grad_enabled(train):
@@ -954,18 +966,36 @@ class QlibQuantMoE(Model):
                     if not torch.isfinite(loss):
                         skip_nan_loss += 1
                         continue
-                    loss.backward()
-                    grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
-                    optimizer.step()
-                    opt_steps += 1
-                    if scheduler is not None:
-                        scheduler.step()
-                    self.global_step += 1
-                    if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
-                        self._warn_once(
-                            "zero_grad_norm",
-                            f">>> [Warn] grad_norm≈0 ({grad_norm:.3e}); parameters may not be updating.",
-                        )
+                    # Accumulate gradients across K (shuffled) daily cross-section microbatches.
+                    # Scale to approximate mean gradient (large-batch) rather than sum.
+                    (loss / float(accum_steps)).backward()
+                    accum_count += 1
+
+                    do_step = accum_count >= accum_steps
+                    if do_step:
+                        # If the last update has fewer than K microbatches, rescale grads so the
+                        # effective gradient is still an average over the available microbatches.
+                        rem = accum_count
+                        if rem > 0 and rem < accum_steps:
+                            scale = float(accum_steps) / float(rem)
+                            for p in self.net.parameters():
+                                if p.grad is None:
+                                    continue
+                                p.grad.mul_(scale)
+
+                        grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
+                        optimizer.step()
+                        opt_steps += 1
+                        if scheduler is not None:
+                            scheduler.step()
+                        self.global_step += 1
+                        optimizer.zero_grad(set_to_none=True)
+                        accum_count = 0
+                        if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
+                            self._warn_once(
+                                "zero_grad_norm",
+                                f">>> [Warn] grad_norm≈0 ({grad_norm:.3e}); parameters may not be updating.",
+                            )
                 elif train and optimizer is not None and loss is None:
                     skip_no_loss += 1
 
@@ -1067,6 +1097,28 @@ class QlibQuantMoE(Model):
         if pbar is not None:
             pbar.close()
 
+        # Flush last partial gradient accumulation (if the epoch ends before reaching K).
+        if train and optimizer is not None and accum_count > 0:
+            scale = float(accum_steps) / float(accum_count) if accum_count < accum_steps else 1.0
+            if scale != 1.0:
+                for p in self.net.parameters():
+                    if p.grad is None:
+                        continue
+                    p.grad.mul_(scale)
+            grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
+            optimizer.step()
+            opt_steps += 1
+            if scheduler is not None:
+                scheduler.step()
+            self.global_step += 1
+            optimizer.zero_grad(set_to_none=True)
+            accum_count = 0
+            if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
+                self._warn_once(
+                    "zero_grad_norm",
+                    f">>> [Warn] grad_norm≈0 ({grad_norm:.3e}); parameters may not be updating.",
+                )
+
         avg = self._avg(meters, n_batches)
         if train and optimizer is not None and opt_steps == 0:
             self._warn_once(
@@ -1112,10 +1164,17 @@ class QlibQuantMoE(Model):
         train_tsds = self._validate_train_schema(dataset)
         train_loader = self._make_daily_loader(train_tsds, shuffle=True, train=True)
 
-        # 2) Valid set (DK_I)
+        # 2) Valid set (default: DK_I)
         valid_loader = None
         valid_err: Optional[Exception] = None
-        for data_key in (DataHandlerLP.DK_I, DataHandlerLP.DK_L):
+        valid_data_keys: List[str] = [self.valid_data_key]
+        if not self.strict_valid_data_key:
+            for k in (DataHandlerLP.DK_I, DataHandlerLP.DK_L):
+                k = str(k)
+                if k not in valid_data_keys:
+                    valid_data_keys.append(k)
+
+        for data_key in valid_data_keys:
             try:
                 valid_tsds = dataset.prepare("valid", col_set=["feature", "label"], data_key=data_key)
                 # Sanity check: ensure label exists (or is packed in x) when we want valid metrics.
@@ -1140,7 +1199,13 @@ class QlibQuantMoE(Model):
                 valid_loader = None
 
         if valid_loader is None and valid_err is not None:
-            print(f">>> [Valid] disabled: failed to prepare valid loader ({valid_err})")
+            if self.strict_valid_data_key:
+                print(
+                    f">>> [Valid] disabled: failed to prepare valid loader under data_key={self.valid_data_key} "
+                    f"({valid_err})"
+                )
+            else:
+                print(f">>> [Valid] disabled: failed to prepare valid loader ({valid_err})")
 
         # 3) Init network from first batch
         first = next(iter(train_loader))
@@ -1173,7 +1238,9 @@ class QlibQuantMoE(Model):
                 num_update_steps_per_epoch = len(train_loader)
             except Exception:
                 num_update_steps_per_epoch = 1
-            total_training_steps = max(1, self.epochs * num_update_steps_per_epoch)
+            # Scheduler steps should match optimizer.step() calls (not microbatches) when using grad accumulation.
+            num_optimizer_steps_per_epoch = int(math.ceil(float(num_update_steps_per_epoch) / float(self.grad_accum_steps)))
+            total_training_steps = max(1, self.epochs * max(1, num_optimizer_steps_per_epoch))
 
             if self.warmup_steps > 0:
                 warmup_steps = self.warmup_steps

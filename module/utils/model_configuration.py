@@ -36,7 +36,7 @@ class QuantMoEConfig(PretrainedConfig):
             router_noise: float = 0.1,       # logit noise std (training only)
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
-            router_use_layer_summary: bool = True,  # add per-layer market summary token to router input
+            router_use_layer_summary: bool = False,  # add per-layer market summary token to router input
             use_alibi: bool = False,
             use_feature_selection: bool = False,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
