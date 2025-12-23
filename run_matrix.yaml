@@ -36,6 +36,7 @@ defaults:
     n_epochs: 40
     early_stop: 5
     batch_size: 128
+    grad_accum_steps: 5
     num_workers: 4
     seed: null  # filled per seed
     use_warmup: true
