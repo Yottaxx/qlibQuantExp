@@ -320,7 +320,11 @@ class QuantMoEModel(PreTrainedModel):
 
                 # IC / MSE（可作为主 loss 或监控）
                 l_ic = QuantLossFunctions.cs_ic_loss(p, y)
-                l_mse = QuantLossFunctions.cs_mse_loss(p, y)
+                l_mse = QuantLossFunctions.cs_mse_loss(
+                    p,
+                    y,
+                    normalize=bool(getattr(self.config, "mse_normalize", False)),
+                )
 
                 # 其他辅助 loss（可选）
                 l_rank = None

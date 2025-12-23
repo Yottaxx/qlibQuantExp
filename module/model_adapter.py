@@ -149,6 +149,12 @@ class QlibQuantMoE(Model):
 
         on_off = lambda v: "on" if bool(v) else "off"
 
+        # For "resolved" stage, print full config table directly (no redundant summary)
+        if tag == "resolved" and resolved is not None:
+            self._print_full_config(resolved, total_steps=total_steps, warmup_steps=warmup_steps)
+            return
+
+        # For "planned" stage (before training), print brief summary
         dims = []
         if "context_len" in mc:
             dims.append(f"context_len={mc.get('context_len')}")
@@ -188,12 +194,7 @@ class QlibQuantMoE(Model):
         print(f">>> [Config:{tag}] model: " + ", ".join(model_parts))
 
         if self.use_warmup:
-            if total_steps is not None and warmup_steps is not None:
-                warmup_desc = f"on({warmup_steps}/{total_steps})"
-            elif self.warmup_steps > 0:
-                warmup_desc = f"on(steps={self.warmup_steps})"
-            else:
-                warmup_desc = f"on(ratio={self.warmup_ratio:g})"
+            warmup_desc = f"on(ratio={self.warmup_ratio:g})"
         else:
             warmup_desc = "off"
 
@@ -204,9 +205,141 @@ class QlibQuantMoE(Model):
             f"early_stop={self.early_stop}",
             f"warmup={warmup_desc}",
             f"seed={self.random_seed}",
-            f"workers={self.num_workers}",
         ]
         print(f">>> [Config:{tag}] trainer: " + ", ".join(trainer_parts))
+    
+    def _print_full_config(
+        self,
+        config,
+        *,
+        total_steps: Optional[int] = None,
+        warmup_steps: Optional[int] = None,
+    ) -> None:
+        """Print complete model configuration in a structured table format."""
+        print("\n" + "=" * 80)
+        print("COMPLETE MODEL CONFIGURATION (Resolved)")
+        print("=" * 80)
+        
+        # Group config attributes by category
+        categories = {
+            "Architecture": [
+                ("d_model", "Hidden dimension"),
+                ("n_heads", "Attention heads"),
+                ("n_layers", "Number of layers"),
+                ("d_ff", "FFN dimension"),
+                ("num_alphas", "Number of factors (N)"),
+                ("context_len", "Sequence length (T)"),
+                ("dropout", "Dropout rate"),
+                ("initializer_range", "Weight init std"),
+            ],
+            "Loss & Training": [
+                ("main_loss", "Primary loss function"),
+                ("loss_weights", "Loss weight dict"),
+                ("listmle_tau", "ListMLE temperature"),
+                ("rank_topk", "RankNet top-k"),
+                ("huber_delta", "Huber delta"),
+                ("mse_normalize", "MSE normalize flag"),
+            ],
+            "Regime-Adaptive Time Embedding": [
+                ("use_regime_time_embedding", "Enable time embedding"),
+                ("time_tau_min", "Min tau (short memory)"),
+                ("time_tau_max", "Max tau (long memory)"),
+                ("time_tau_init", "Initial tau"),
+                ("time_emb_init_std", "Time emb init std"),
+                ("time_decay_normalize", "Normalize decay weights"),
+            ],
+            "Regime-Adaptive Factor Gate": [
+                ("use_regime_factor_gate", "Enable factor gate (FiLM)"),
+                ("factor_gate_scale", "Gate scale (γ range)"),
+                ("factor_gate_shift_scale", "Gate shift scale (β)"),
+            ],
+            "MoE Router": [
+                ("router_noise", "Logit noise std"),
+                ("router_temperature", "Softmax temperature"),
+                ("router_z_loss_coef", "Z-loss coefficient"),
+                ("router_use_layer_summary", "Use layer summary token"),
+            ],
+            "Feature Selection": [
+                ("use_feature_selection", "Enable feature selection"),
+                ("selection_reg_lambda", "Sparsity regularization"),
+                ("selection_temperature", "Gumbel temperature"),
+                ("selection_noise_std", "Selection noise std"),
+            ],
+            "Positional Encoding": [
+                ("use_alibi", "Use ALiBi bias"),
+            ],
+            "Regime Context Encoder": [
+                ("use_external_macro", "Use external macro features"),
+                ("d_macro_input", "Macro input dimension"),
+                ("regime_macro_dropout", "Macro dropout"),
+                ("regime_internal_mode", "Internal mode (short/long)"),
+                ("regime_internal_lag", "Internal lag steps"),
+                ("regime_internal_use_batch_stats", "Use batch statistics"),
+                ("regime_internal_tail_threshold", "Tail threshold"),
+            ],
+            "Pooling": [
+                ("pooling_alpha", "Attention vs mean weight"),
+            ],
+        }
+        
+        for cat_name, attrs in categories.items():
+            print(f"\n--- {cat_name} ---")
+            print(f"{'Parameter':<35} {'Value':<30} {'Description':<25}")
+            print("-" * 90)
+            for attr_name, desc in attrs:
+                value = getattr(config, attr_name, "N/A")
+                # Format value for display
+                if isinstance(value, dict):
+                    value_str = str({k: v for k, v in value.items() if v != 0})
+                elif isinstance(value, float):
+                    value_str = f"{value:g}"
+                elif isinstance(value, bool):
+                    value_str = "✓ ON" if value else "✗ OFF"
+                else:
+                    value_str = str(value)
+                print(f"{attr_name:<35} {value_str:<30} {desc:<25}")
+        
+        # Print trainer config
+        print(f"\n--- Trainer Configuration ---")
+        print(f"{'Parameter':<35} {'Value':<30} {'Description':<25}")
+        print("-" * 90)
+        
+        # Build warmup description
+        if self.use_warmup:
+            if total_steps is not None and warmup_steps is not None:
+                warmup_val = f"{warmup_steps}/{total_steps} steps"
+            elif self.warmup_steps > 0:
+                warmup_val = f"{self.warmup_steps} steps"
+            else:
+                warmup_val = f"{self.warmup_ratio:g} ratio"
+        else:
+            warmup_val = "disabled"
+        
+        trainer_attrs = [
+            ("lr", self.lr, "Learning rate"),
+            ("epochs", self.epochs, "Number of epochs"),
+            ("batch_size", self.batch_size, "Batch size (days)"),
+            ("early_stop", self.early_stop, "Early stop patience"),
+            ("use_warmup", self.use_warmup, "Enable LR warmup"),
+            ("warmup_config", warmup_val, "Warmup steps/ratio"),
+            ("total_steps", total_steps or "N/A", "Total training steps"),
+            ("random_seed", self.random_seed, "Random seed"),
+            ("num_workers", self.num_workers, "DataLoader workers"),
+            ("label_dim", self.label_dim, "Label dimension"),
+            ("market_state_path", Path(self.market_state_path).name if self.market_state_path else "None", "Market state file"),
+            ("market_state_shift", self.market_state_shift, "Market state shift"),
+            ("market_state_strict", self.market_state_strict, "Strict market state"),
+        ]
+        for name, value, desc in trainer_attrs:
+            if isinstance(value, float):
+                value_str = f"{value:g}"
+            elif isinstance(value, bool):
+                value_str = "✓ ON" if value else "✗ OFF"
+            else:
+                value_str = str(value)
+            print(f"{name:<35} {value_str:<30} {desc:<25}")
+        
+        print("=" * 80 + "\n")
 
     def _sanity_check_batch(
         self,
@@ -355,6 +488,68 @@ class QlibQuantMoE(Model):
     def _maybe_warn_market_state(self):
         if self.market_state_path and self._market_state is None:
             print(">>> [MarketState] market_state_path is set but not loaded yet; call fit/predict will load it.")
+
+    def _print_model_summary(self) -> None:
+        """Print model architecture and parameter statistics after initialization."""
+        if self.net is None:
+            return
+        
+        print("\n" + "=" * 80)
+        print("MODEL ARCHITECTURE SUMMARY")
+        print("=" * 80)
+        
+        # Print full model structure
+        print(self.net)
+        
+        print("\n" + "-" * 80)
+        print("PARAMETER STATISTICS BY MODULE")
+        print("-" * 80)
+        
+        # Collect parameter stats by top-level module
+        module_stats = {}
+        total_params = 0
+        trainable_params = 0
+        
+        for name, param in self.net.named_parameters():
+            # Extract top-level module name
+            top_level = name.split(".")[0]
+            num_params = param.numel()
+            is_trainable = param.requires_grad
+            
+            if top_level not in module_stats:
+                module_stats[top_level] = {"total": 0, "trainable": 0, "layers": []}
+            
+            module_stats[top_level]["total"] += num_params
+            module_stats[top_level]["layers"].append((name, list(param.shape), num_params, is_trainable))
+            
+            total_params += num_params
+            if is_trainable:
+                module_stats[top_level]["trainable"] += num_params
+                trainable_params += num_params
+        
+        # Print summary table
+        print(f"{'Module':<25} {'Params':<15} {'Trainable':<15} {'%Total':<10}")
+        print("-" * 65)
+        
+        for mod_name, stats in sorted(module_stats.items(), key=lambda x: -x[1]["total"]):
+            pct = 100.0 * stats["total"] / total_params if total_params > 0 else 0
+            print(f"{mod_name:<25} {stats['total']:<15,} {stats['trainable']:<15,} {pct:<10.1f}%")
+        
+        print("-" * 65)
+        print(f"{'TOTAL':<25} {total_params:<15,} {trainable_params:<15,} {'100.0':<10}%")
+        
+        # Print detailed layer breakdown (optional, can be verbose)
+        print("\n" + "-" * 80)
+        print("DETAILED LAYER BREAKDOWN")
+        print("-" * 80)
+        print(f"{'Layer Name':<50} {'Shape':<25} {'Params':<12}")
+        print("-" * 87)
+        
+        for name, param in self.net.named_parameters():
+            shape_str = str(list(param.shape))
+            print(f"{name:<50} {shape_str:<25} {param.numel():<12,}")
+        
+        print("=" * 80 + "\n")
 
     @staticmethod
     def _extract_sample(s: Any) -> Tuple[Any, Optional[Any]]:
@@ -643,6 +838,9 @@ class QlibQuantMoE(Model):
         self.model_config.update({"context_len": T, "num_alphas": F})
         conf = QuantMoEConfig(**self.model_config)
         self.net = QuantMoEModel(conf).to(self.device)
+        
+        # Print model architecture and parameter statistics
+        self._print_model_summary()
 
     @staticmethod
     def _avg(meters: Dict[str, float], n: int) -> Dict[str, float]:

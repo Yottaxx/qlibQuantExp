@@ -45,6 +45,7 @@ class QuantMoEConfig(PretrainedConfig):
             # Loss & ranking
             main_loss: str = "ic",
             loss_weights: Optional[Dict[str, float]] = None,
+            mse_normalize: bool = False,
             rank_topk: int = 5,
             huber_delta: float = 1.0,
             listmle_tau: float = 0.8,  # ★ 新增：ListMLE 温度
@@ -118,6 +119,7 @@ class QuantMoEConfig(PretrainedConfig):
         self.listmle_tau = listmle_tau
         self.rank_topk = rank_topk
         self.huber_delta = huber_delta
+        self.mse_normalize = bool(mse_normalize)
 
         self.use_external_macro = use_external_macro
         self.d_macro_input = d_macro_input

@@ -54,7 +54,13 @@ class QuantLossFunctions:
         return F.huber_loss(pred.flatten(), target.flatten(), delta=delta)
 
     @staticmethod
-    def cs_mse_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def cs_mse_loss(
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        *,
+        normalize: bool = False,
+        eps: float = 1e-6,
+    ) -> torch.Tensor:
         """
         Cross-Sectional MSE Loss.
         pred, target: [B]
@@ -65,7 +71,14 @@ class QuantLossFunctions:
         mask = torch.isfinite(pred) & torch.isfinite(target)
         if mask.sum() < 1:
             return torch.tensor(0.0, device=pred.device)
-        return F.mse_loss(pred[mask], target[mask])
+        p = pred[mask]
+        y = target[mask]
+        if normalize:
+            p = p - p.mean()
+            y = y - y.mean()
+            p = p / (p.std(unbiased=False) + eps)
+            y = y / (y.std(unbiased=False) + eps)
+        return F.mse_loss(p, y)
 
     @staticmethod
     def listmle_loss(pred: torch.Tensor, target: torch.Tensor, tau: float = 1.0) -> torch.Tensor:

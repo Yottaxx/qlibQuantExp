@@ -64,13 +64,22 @@ data_conf = {
                     {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
                 ],
                 # 深度模型：防止 Dropna 打断时间序列
-                # 这里的 DropnaLabel 只会在截面上丢掉没有 label 的样本，不破坏时间窗口；
-                # CSRankNorm 对 label 做日内截面 rank 标准化，相当于 rank-label。
+                # DropnaLabel: 移除 NaN 标签
+                # DropExtremeLabel: 移除截面 top/bottom 5% 极端值（处理涨跌停等异常，对齐 MASTER 论文）
+                # CSZScoreNorm: 截面 ZScore 标准化（线性变换，保留相对大小，等价于优化 Pearson IC）
                 "learn_processors": [
                     {"class": "DropnaLabel"},
-                    {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
+                    {
+                        "class": "DropExtremeLabel",
+                        "kwargs": {
+                            "fields_group": "label",
+                            "qcut_min": 0.05,
+                            "qcut_max": 0.95,
+                        },
+                    },
+                    {"class": "CSZScoreNorm", "kwargs": {"fields_group": "label"}},
                 ],
-                # Label: 下五日收益（在 learn_processors 中会被做成 rank-label）
+                # Label: 下五日收益（在 learn_processors 中做 DropExtreme + CSZScoreNorm）
                 "label": ["Ref($close, -5) / Ref($close, -1) - 1"],
             },
         },
@@ -380,6 +389,10 @@ def export_qlib_official_graphs(
     """
     try:
         import qlib.contrib.report as qcr
+        # 显式导入子模块，否则 getattr(qcr, 'analysis_position') 会失败
+        # Python namespace package 不会自动将子模块暴露为父模块属性
+        import qlib.contrib.report.analysis_position  # noqa: F401
+        import qlib.contrib.report.analysis_model  # noqa: F401
     except Exception as e:
         if strict:
             raise RuntimeError(f"Failed to import qlib.contrib.report: {e}") from e
@@ -424,23 +437,41 @@ def export_qlib_official_graphs(
     if isinstance(label_df, pd.DataFrame) and isinstance(pred_df, pd.DataFrame):
         pred_label = pd.concat([label_df, pred_df], axis=1, sort=True).reindex(label_df.index)
 
+
     positions = None
     try:
         positions = rec.load_object("portfolio_analysis/positions_normal_1day.pkl")
     except Exception:
         positions = None
 
+    # available 字典必须包含 qlib graph 函数参数名的所有变体
+    # 根据 qlib 源码分析，各函数参数名如下：
+    #   report_graph:            report_df
+    #   score_ic_graph:          pred_label
+    #   cumulative_return_graph: position, report_normal, label_data
+    #   risk_analysis_graph:     analysis_df, report_normal_df (opt)
+    #   rank_label_graph:        position, label_data
+    #   model_performance_graph: pred_label
     available = {
+        # 原始 key
         "report_normal_df": report_normal_df,
         "analysis_df": analysis_df,
         "pred_label": pred_label,
         "positions": positions,
+        # === 别名映射 (qlib 函数实际参数名) ===
+        "report_df": report_normal_df,      # report_graph 需要
+        "position": positions,               # cumulative_return_graph, rank_label_graph 需要
+        "report_normal": report_normal_df,   # cumulative_return_graph 需要
+        "label_data": label_df,              # cumulative_return_graph, rank_label_graph 需要
     }
 
     def _auto_call(fn):
         sig = inspect.signature(fn)
         kwargs = {}
         for name, p in sig.parameters.items():
+            # 跳过 **kwargs 类型参数
+            if p.kind == inspect.Parameter.VAR_KEYWORD:
+                continue
             if name in available and available[name] is not None:
                 kwargs[name] = available[name]
             elif p.default is inspect._empty and p.kind in (
@@ -708,7 +739,10 @@ def generate_paper_report(
         "gate_entropy",
         "time_tau",
         "time_half_life",
+        "factor_gate_mean",
+        "factor_gate_std",
         "factor_gate_entropy",
+        "factor_gate_topk_mass_5",
         "factor_gate_topk_mass_10",
     ]:
         try:
@@ -744,7 +778,10 @@ def generate_paper_report(
     gate_entropy_stats_str = _series_stats(diag_series.get("gate_entropy", None))
     time_tau_stats_str = _series_stats(diag_series.get("time_tau", None))
     time_half_life_stats_str = _series_stats(diag_series.get("time_half_life", None))
+    factor_gate_mean_stats_str = _series_stats(diag_series.get("factor_gate_mean", None))
+    factor_gate_std_stats_str = _series_stats(diag_series.get("factor_gate_std", None))
     factor_gate_entropy_stats_str = _series_stats(diag_series.get("factor_gate_entropy", None))
+    factor_gate_topk5_stats_str = _series_stats(diag_series.get("factor_gate_topk_mass_5", None))
     factor_gate_topk10_stats_str = _series_stats(diag_series.get("factor_gate_topk_mass_10", None))
 
     def _row_normalize(a: np.ndarray) -> np.ndarray:
@@ -947,18 +984,31 @@ def generate_paper_report(
         lines.append(f"![tau vs time_ratio]({tau_vs_time_ratio_png})\n")
 
     lines.append("### 4.1.2 Regime-Adaptive Factor Gate (concentration)\n")
+    lines.append(f"- factor_gate_mean stats on test set: {factor_gate_mean_stats_str}\n")
+    lines.append(f"- factor_gate_std stats on test set: {factor_gate_std_stats_str}\n")
     lines.append(f"- factor_gate_entropy stats on test set: {factor_gate_entropy_stats_str}\n")
+    lines.append(f"- factor_gate_topk_mass_5 stats on test set: {factor_gate_topk5_stats_str}\n")
     lines.append(f"- factor_gate_topk_mass_10 stats on test set: {factor_gate_topk10_stats_str}\n")
+    fn = diag_pngs.get("factor_gate_mean", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![factor_gate_mean series]({fn})\n")
+    fn = diag_pngs.get("factor_gate_std", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![factor_gate_std series]({fn})\n")
     fn = diag_pngs.get("factor_gate_entropy", None)
     if fn and (local_dir / fn).exists():
         lines.append(f"![factor_gate_entropy series]({fn})\n")
+    fn = diag_pngs.get("factor_gate_topk_mass_5", None)
+    if fn and (local_dir / fn).exists():
+        lines.append(f"![factor_gate_topk_mass_5 series]({fn})\n")
     fn = diag_pngs.get("factor_gate_topk_mass_10", None)
     if fn and (local_dir / fn).exists():
         lines.append(f"![factor_gate_topk_mass_10 series]({fn})\n")
     factor_gate_interp = """
+    - `factor_gate_mean` / `factor_gate_std`：regime-adaptive factor gate 权重的日均值/标准差，反映因子重加权的整体幅度和波动。
     - `factor_gate_entropy` 是把 per-sample 的 factor gate 归一化后得到的分布熵（再除以 log(N) 做归一化到 0~1）。
       越低表示 gate 越“集中”，即 regime 对因子组合的重加权更强、更具结构性。
-    - `factor_gate_topk_mass_10` 表示前 10 个因子（按 gate 权重排序）的累计质量占比；越高说明越稀疏/越集中。
+    - `factor_gate_topk_mass_5` / `factor_gate_topk_mass_10` 表示前 5 / 10 个因子（按 gate 权重排序）的累计质量占比；越高说明越稀疏/越集中。
     """
     lines.append(textwrap.dedent(factor_gate_interp).strip() + "\n")
 
