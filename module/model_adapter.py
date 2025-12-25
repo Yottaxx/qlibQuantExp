@@ -1872,16 +1872,28 @@ class QlibQuantMoE(Model):
             print(f">>> [Visual] save_objects(raw) failed: {e}")
 
         # gate curve: fig + png
+        fig_gate = None
         try:
             fig_gate = self._plot_gate_series(gate_series, title=f"Gate Time Ratio ({segment})")
-            recorder.save_objects(**{f"{prefix}_gate_series_fig": fig_gate})
+            try:
+                recorder.save_objects(**{f"{prefix}_gate_series_fig": fig_gate})
+            except Exception:
+                pass
             if local_dir is not None:
                 gate_png = f"{prefix}_gate_series_{segment}.png"
-                fig_gate.savefig(local_dir / gate_png, dpi=150, bbox_inches="tight")
-                recorder.save_objects(**{f"{prefix}_gate_png": gate_png})
-            plt.close(fig_gate)
+                try:
+                    fig_gate.savefig(local_dir / gate_png, dpi=150, bbox_inches="tight")
+                    try:
+                        recorder.save_objects(**{f"{prefix}_gate_png": gate_png})
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f">>> [Visual] save gate png failed: {e}")
         except Exception as e:
-            print(f">>> [Visual] save gate fig failed: {e}")
+            print(f">>> [Visual] build gate fig failed: {e}")
+        finally:
+            if fig_gate is not None:
+                plt.close(fig_gate)
 
         # other daily diagnostics (if any): figs + pngs
         try:
@@ -1890,13 +1902,26 @@ class QlibQuantMoE(Model):
                     continue
                 title = f"{k} ({segment})"
                 y_label = k
-                fig = self._plot_series(s, title=title, y_label=y_label)
-                recorder.save_objects(**{f"{prefix}_{k}_series_fig": fig})
-                if local_dir is not None:
-                    fn = f"{prefix}_{k}_series_{segment}.png"
-                    fig.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
-                    recorder.save_objects(**{f"{prefix}_{k}_png": fn})
-                plt.close(fig)
+                fig = None
+                try:
+                    fig = self._plot_series(s, title=title, y_label=y_label)
+                    try:
+                        recorder.save_objects(**{f"{prefix}_{k}_series_fig": fig})
+                    except Exception:
+                        pass
+                    if local_dir is not None:
+                        fn = f"{prefix}_{k}_series_{segment}.png"
+                        try:
+                            fig.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
+                            try:
+                                recorder.save_objects(**{f"{prefix}_{k}_png": fn})
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            print(f">>> [Visual] save diag png failed ({k}): {e}")
+                finally:
+                    if fig is not None:
+                        plt.close(fig)
         except Exception as e:
             print(f">>> [Visual] save diag figs failed: {e}")
 
@@ -1905,20 +1930,33 @@ class QlibQuantMoE(Model):
             tr = daily_series.get("time_ratio", None)
             tau = daily_series.get("time_tau", None)
             if tr is not None and tau is not None and len(tr) > 0 and len(tau) > 0:
-                fig = self._plot_tau_vs_time_ratio(tr, tau, title=f"tau vs time_ratio ({segment})")
-                recorder.save_objects(**{f"{prefix}_tau_vs_time_ratio_fig": fig})
-                if local_dir is not None:
-                    fn = f"{prefix}_tau_vs_time_ratio_{segment}.png"
-                    fig.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
-                    recorder.save_objects(**{f"{prefix}_tau_vs_time_ratio_png": fn})
-                plt.close(fig)
+                fig = None
+                try:
+                    fig = self._plot_tau_vs_time_ratio(tr, tau, title=f"tau vs time_ratio ({segment})")
+                    try:
+                        recorder.save_objects(**{f"{prefix}_tau_vs_time_ratio_fig": fig})
+                    except Exception:
+                        pass
+                    if local_dir is not None:
+                        fn = f"{prefix}_tau_vs_time_ratio_{segment}.png"
+                        try:
+                            fig.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
+                            try:
+                                recorder.save_objects(**{f"{prefix}_tau_vs_time_ratio_png": fn})
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            print(f">>> [Visual] save tau_vs_time_ratio png failed: {e}")
+                finally:
+                    if fig is not None:
+                        plt.close(fig)
         except Exception as e:
             print(f">>> [Visual] save tau_vs_time_ratio fig failed: {e}")
 
         # attention heatmaps: figs + pngs
         attn_pngs: Dict[str, Dict[str, str]] = {}
-        try:
-            for dt_str, maps in attn_maps.items():
+        for dt_str, maps in (attn_maps or {}).items():
+            try:
                 # backward compatibility: maps might be [T,T]
                 if isinstance(maps, dict):
                     time_attn = maps.get("time", None)
@@ -1928,38 +1966,58 @@ class QlibQuantMoE(Model):
                     factor_attn = None
 
                 if time_attn is not None:
-                    fig_t = self._plot_attention_map(
-                        np.asarray(time_attn),
-                        title=f"Time Attention ({dt_str})",
-                        x_label="time (j)",
-                        y_label="time (i)",
-                        figsize=(4, 4),
-                    )
-                    key_t = f"{prefix}_attn_time_{dt_str}"
-                    recorder.save_objects(**{key_t: fig_t})
-                    if local_dir is not None:
-                        fn_t = f"{prefix}_attn_time_{dt_str}.png"
-                        fig_t.savefig(local_dir / fn_t, dpi=150, bbox_inches="tight")
-                        attn_pngs.setdefault(dt_str, {})["time"] = fn_t
-                    plt.close(fig_t)
+                    fig_t = None
+                    try:
+                        fig_t = self._plot_attention_map(
+                            np.asarray(time_attn),
+                            title=f"Time Attention ({dt_str})",
+                            x_label="time (j)",
+                            y_label="time (i)",
+                            figsize=(4, 4),
+                        )
+                        key_t = f"{prefix}_attn_time_{dt_str}"
+                        try:
+                            recorder.save_objects(**{key_t: fig_t})
+                        except Exception:
+                            pass
+                        if local_dir is not None:
+                            fn_t = f"{prefix}_attn_time_{dt_str}.png"
+                            try:
+                                fig_t.savefig(local_dir / fn_t, dpi=150, bbox_inches="tight")
+                                attn_pngs.setdefault(dt_str, {})["time"] = fn_t
+                            except Exception as e:
+                                print(f">>> [Visual] save attn png failed (time, {dt_str}): {e}")
+                    finally:
+                        if fig_t is not None:
+                            plt.close(fig_t)
 
                 if factor_attn is not None:
-                    fig_f = self._plot_attention_map(
-                        np.asarray(factor_attn),
-                        title=f"Factor Attention ({dt_str})",
-                        x_label="factor (j)",
-                        y_label="factor (i)",
-                        figsize=(6, 6),
-                    )
-                    key_f = f"{prefix}_attn_factor_{dt_str}"
-                    recorder.save_objects(**{key_f: fig_f})
-                    if local_dir is not None:
-                        fn_f = f"{prefix}_attn_factor_{dt_str}.png"
-                        fig_f.savefig(local_dir / fn_f, dpi=150, bbox_inches="tight")
-                        attn_pngs.setdefault(dt_str, {})["factor"] = fn_f
-                    plt.close(fig_f)
-        except Exception as e:
-            print(f">>> [Visual] save attn figs failed: {e}")
+                    fig_f = None
+                    try:
+                        fig_f = self._plot_attention_map(
+                            np.asarray(factor_attn),
+                            title=f"Factor Attention ({dt_str})",
+                            x_label="factor (j)",
+                            y_label="factor (i)",
+                            figsize=(6, 6),
+                        )
+                        key_f = f"{prefix}_attn_factor_{dt_str}"
+                        try:
+                            recorder.save_objects(**{key_f: fig_f})
+                        except Exception:
+                            pass
+                        if local_dir is not None:
+                            fn_f = f"{prefix}_attn_factor_{dt_str}.png"
+                            try:
+                                fig_f.savefig(local_dir / fn_f, dpi=150, bbox_inches="tight")
+                                attn_pngs.setdefault(dt_str, {})["factor"] = fn_f
+                            except Exception as e:
+                                print(f">>> [Visual] save attn png failed (factor, {dt_str}): {e}")
+                    finally:
+                        if fig_f is not None:
+                            plt.close(fig_f)
+            except Exception as e:
+                print(f">>> [Visual] save attn figs failed ({dt_str}): {e}")
 
         if attn_pngs:
             try:
