@@ -16,7 +16,7 @@ RST-MoE + Qlib Official Workflow (Paper-Ready Version)
 5. 自动生成一份 Markdown 版「论文级实验报告」：kdd_report.md
    - 增加“训练过程诊断”：train/main_loss vs valid/rank_ic 曲线 + 文本总结
 """
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -913,6 +913,238 @@ def generate_paper_report(
     factor_gate_topk5_stats_str = _series_stats(diag_series.get("factor_gate_topk_mass_5", None))
     factor_gate_topk10_stats_str = _series_stats(diag_series.get("factor_gate_topk_mass_10", None))
 
+    # ---------- 3.5 Regime bucket evaluation (market_state) ----------
+    regime_bucket_lines: List[str] = []
+    regime_bucket_saved: Dict[str, Any] = {}
+
+    def _normalize_dt_index(s: pd.Series) -> pd.Series:
+        s = s.copy()
+        s.index = pd.to_datetime(s.index).normalize()
+        if getattr(s.index, "tz", None) is not None:
+            s.index = s.index.tz_convert(None)
+        s = s[~s.index.duplicated(keep="last")]
+        return s.sort_index()
+
+    def _resolve_market_state_path(path_str: str) -> Optional[Path]:
+        if not path_str:
+            return None
+        cand = []
+        p0 = Path(str(path_str)).expanduser()
+        cand.append(p0)
+        cand.append(local_dir / str(path_str))
+        try:
+            cand.append(Path(__file__).resolve().parent / str(path_str))
+        except Exception:
+            pass
+        for p in cand:
+            try:
+                if p.exists():
+                    return p
+            except Exception:
+                continue
+        return None
+
+    def _bucket_tercile(s: pd.Series) -> Optional[pd.Series]:
+        s = pd.to_numeric(s, errors="coerce")
+        if s.dropna().nunique() < 2:
+            return None
+        try:
+            codes = pd.qcut(s, q=3, labels=False, duplicates="drop")
+        except Exception:
+            return None
+        if codes is None:
+            return None
+        # codes may have NaNs, keep them
+        max_code = int(pd.to_numeric(codes, errors="coerce").max()) if codes.notna().any() else -1
+        n_bins = max_code + 1
+        if n_bins <= 0:
+            return None
+        if n_bins == 1:
+            labels = ["All"]
+        elif n_bins == 2:
+            labels = ["Low", "High"]
+        else:
+            labels = ["Low", "Mid", "High"][:n_bins]
+
+        def _map_code(v):
+            if pd.isna(v):
+                return np.nan
+            i = int(v)
+            if i < 0 or i >= len(labels):
+                return np.nan
+            return labels[i]
+
+        return codes.map(_map_code)
+
+    def _series_ir(x: pd.Series) -> float:
+        x = pd.to_numeric(x, errors="coerce").dropna()
+        if len(x) < 2:
+            return np.nan
+        m = float(x.mean())
+        sd = float(x.std())
+        return (m / sd) if sd > 0 else np.nan
+
+    # Load market_state file (if configured) and compute per-regime performance/diagnostics.
+    try:
+        trainer_k = mk.get("trainer_config", {}) or {}
+        ms_path = trainer_k.get("market_state_path", None)
+        ms_file = _resolve_market_state_path(str(ms_path)) if ms_path else None
+        if ms_file is not None:
+            # load & align index
+            if ms_file.suffix in {".pkl", ".pickle"}:
+                ms_df = pd.read_pickle(ms_file)
+            elif ms_file.suffix in {".parquet"}:
+                ms_df = pd.read_parquet(ms_file)
+            elif ms_file.suffix in {".csv"}:
+                ms_df = pd.read_csv(ms_file, index_col=0)
+            else:
+                raise ValueError(f"Unsupported market_state file type: {ms_file.suffix}")
+
+            if not isinstance(ms_df, pd.DataFrame) or ms_df.empty:
+                raise ValueError("market_state file must contain a non-empty DataFrame")
+
+            ms_df = ms_df.copy()
+            ms_df.index = pd.to_datetime(ms_df.index).normalize()
+            if getattr(ms_df.index, "tz", None) is not None:
+                ms_df.index = ms_df.index.tz_convert(None)
+            ms_df.sort_index(inplace=True)
+
+            shift = int(trainer_k.get("market_state_shift", 0) or 0)
+            if shift:
+                ms_df = ms_df.shift(shift)
+
+            # Core interpretable regime dimensions (if present).
+            feat_pc1 = "market_state_corr_pc1_ratio"
+            feat_tail = "market_state_tail_2sigma"
+            feat_corr = "market_state_corr_mean_abs"
+            feat_vol = "market_vol_20"
+
+            available_feats = [c for c in [feat_pc1, feat_tail, feat_corr, feat_vol] if c in ms_df.columns]
+            if available_feats:
+                # Performance series on the same dates
+                perf_df = pd.DataFrame(index=pd.Index([], name="datetime"))
+                if isinstance(ic, pd.Series) and len(ic) > 0:
+                    perf_df["ic"] = _normalize_dt_index(ic)
+                if isinstance(ric, pd.Series) and len(ric) > 0:
+                    perf_df["rank_ic"] = _normalize_dt_index(ric)
+
+                # Optional model diagnostics to correlate with regimes
+                if isinstance(gate_series, pd.Series) and len(gate_series) > 0:
+                    perf_df["time_ratio"] = _normalize_dt_index(gate_series)
+                for k in ["gate_entropy", "time_tau", "time_half_life"]:
+                    s = diag_series.get(k, None)
+                    if isinstance(s, pd.Series) and len(s) > 0:
+                        perf_df[k] = _normalize_dt_index(s)
+
+                # Join and keep test dates only
+                joined = perf_df.join(ms_df[available_feats], how="inner")
+                joined = joined.replace([np.inf, -np.inf], np.nan)
+                joined = joined.dropna(subset=[c for c in ["ic", "rank_ic"] if c in joined.columns], how="all")
+
+                if not joined.empty and ("rank_ic" in joined.columns or "ic" in joined.columns):
+                    regime_bucket_lines.append("### 2.X Regime Bucket Evaluation (test segment)\n")
+                    regime_bucket_lines.append(
+                        "基于 `market_state`（与训练时相同的宏观状态文件）对 test 交易日做分桶，"
+                        "观察不同市场状态下的预测质量与路由行为差异。\n"
+                    )
+
+                    # 1) Joint 2x2 regime by (PC1 ratio) x (Tail intensity), using median split.
+                    if feat_pc1 in joined.columns and feat_tail in joined.columns:
+                        pc1 = pd.to_numeric(joined[feat_pc1], errors="coerce")
+                        tail = pd.to_numeric(joined[feat_tail], errors="coerce")
+                        pc1_med = float(pc1.dropna().median()) if pc1.notna().any() else np.nan
+                        tail_med = float(tail.dropna().median()) if tail.notna().any() else np.nan
+
+                        regime = pd.Series(index=joined.index, dtype=object)
+                        pc1_high = pc1 >= pc1_med
+                        tail_high = tail >= tail_med
+                        regime.loc[pc1_high & tail_high] = "High-PC1 / High-Tail"
+                        regime.loc[pc1_high & ~tail_high] = "High-PC1 / Low-Tail"
+                        regime.loc[~pc1_high & tail_high] = "Low-PC1 / High-Tail"
+                        regime.loc[~pc1_high & ~tail_high] = "Low-PC1 / Low-Tail"
+
+                        g = joined.copy()
+                        g["regime_2x2"] = regime
+                        rows = []
+                        for name, sub in g.groupby("regime_2x2"):
+                            if name is None or (isinstance(name, float) and not np.isfinite(name)):
+                                continue
+                            row = {"Regime": str(name), "Days": int(len(sub))}
+                            if "rank_ic" in sub.columns:
+                                row["RankIC_mean"] = float(sub["rank_ic"].mean())
+                                row["RankIC_IR"] = _series_ir(sub["rank_ic"])
+                            if "ic" in sub.columns:
+                                row["IC_mean"] = float(sub["ic"].mean())
+                                row["IC_IR"] = _series_ir(sub["ic"])
+                            if "time_ratio" in sub.columns:
+                                row["time_ratio_mean"] = float(pd.to_numeric(sub["time_ratio"], errors="coerce").mean())
+                            if "gate_entropy" in sub.columns:
+                                row["gate_entropy_mean"] = float(pd.to_numeric(sub["gate_entropy"], errors="coerce").mean())
+                            if "time_tau" in sub.columns:
+                                row["time_tau_mean"] = float(pd.to_numeric(sub["time_tau"], errors="coerce").mean())
+                            rows.append(row)
+
+                        df_2x2 = pd.DataFrame(rows)
+                        if not df_2x2.empty:
+                            df_2x2 = df_2x2.sort_values(["Regime"]).reset_index(drop=True)
+                            regime_bucket_lines.append(
+                                f"- 2×2 分桶：`{feat_pc1}` median={pc1_med:.4g}, `{feat_tail}` median={tail_med:.4g}\n"
+                            )
+                            regime_bucket_lines.append(df_2x2.to_markdown(index=False) + "\n")
+                            regime_bucket_saved["regime_2x2"] = df_2x2
+
+                    # 2) Univariate terciles for a few key features.
+                    univariate_feats = [
+                        (feat_pc1, "Market-mode strength (PC1 ratio)"),
+                        (feat_tail, "Tail intensity (|x|>2)"),
+                        (feat_corr, "Crowding (mean abs corr)"),
+                        (feat_vol, "Benchmark vol (20d)"),
+                    ]
+                    for feat, title in univariate_feats:
+                        if feat not in joined.columns:
+                            continue
+                        b = _bucket_tercile(joined[feat])
+                        if b is None:
+                            continue
+                        tmp = joined.copy()
+                        tmp["bucket"] = b
+                        rows = []
+                        for name, sub in tmp.groupby("bucket"):
+                            if name is None or (isinstance(name, float) and not np.isfinite(name)):
+                                continue
+                            row = {"Bucket": str(name), "Days": int(len(sub))}
+                            if "rank_ic" in sub.columns:
+                                row["RankIC_mean"] = float(sub["rank_ic"].mean())
+                                row["RankIC_IR"] = _series_ir(sub["rank_ic"])
+                            if "ic" in sub.columns:
+                                row["IC_mean"] = float(sub["ic"].mean())
+                                row["IC_IR"] = _series_ir(sub["ic"])
+                            if "time_ratio" in sub.columns:
+                                row["time_ratio_mean"] = float(pd.to_numeric(sub["time_ratio"], errors="coerce").mean())
+                            rows.append(row)
+                        df_u = pd.DataFrame(rows)
+                        if df_u.empty:
+                            continue
+                        # Stable order: Low->Mid->High where possible
+                        order = ["Low", "Mid", "High", "All"]
+                        df_u["_ord"] = df_u["Bucket"].map(lambda x: order.index(x) if x in order else 99)
+                        df_u = df_u.sort_values(["_ord", "Bucket"]).drop(columns=["_ord"]).reset_index(drop=True)
+                        regime_bucket_lines.append(f"- Terciles by `{feat}` ({title})\n")
+                        regime_bucket_lines.append(df_u.to_markdown(index=False) + "\n")
+                        regime_bucket_saved[f"terciles__{feat}"] = df_u
+
+                    # Save for later aggregation
+                    if regime_bucket_saved:
+                        try:
+                            rec.save_objects(regime_bucket_eval=regime_bucket_saved)
+                        except Exception:
+                            pass
+    except Exception as e:
+        regime_bucket_lines = [
+            "### 2.X Regime Bucket Evaluation (test segment)\n",
+            f"- Failed to compute regime buckets: {e}\n",
+        ]
+
     def _row_normalize(a: np.ndarray) -> np.ndarray:
         a = np.asarray(a, dtype=float)
         if a.ndim == 3:
@@ -1034,6 +1266,10 @@ def generate_paper_report(
     - 注：采用 Newey–West(HAC) t-stat 以处理日度序列的自相关/异方差。
     """
     lines.append(textwrap.dedent(perf_txt).strip() + "\n")
+
+    if regime_bucket_lines:
+        lines.extend(regime_bucket_lines)
+        lines.append("")
 
     lines.append("## 3. Training Dynamics & Portfolio Backtest\n")
 
