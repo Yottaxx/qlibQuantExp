@@ -147,17 +147,30 @@ def export_qlib_official_graphs(
     - It always attempts to save `qlib_official_graphs` and `qlib_official_graphs_errors` (possibly empty),
       so that downstream code can safely call `rec.load_object(...)` without KeyError.
     """
+    out: Dict[str, List[str]] = {}
+    errors: Dict[str, str] = {}
+
     try:
         import qlib.contrib.report as qcr
-        import qlib.contrib.report.analysis_position  # noqa: F401
-        import qlib.contrib.report.analysis_model  # noqa: F401
     except Exception as e:
         if strict:
             raise RuntimeError(f"Failed to import qlib.contrib.report: {e}") from e
-        # Still persist empty outputs for stable downstream load.
         try:
             rec.save_objects(qlib_official_graphs={})
-            rec.save_objects(qlib_official_graphs_errors={"__import__": str(e)})
+            rec.save_objects(qlib_official_graphs_errors={"__import_report__": str(e)})
+        except Exception:
+            pass
+        return {}
+
+    # analysis_position is the core dependency for most graphs.
+    try:
+        import qlib.contrib.report.analysis_position  # noqa: F401
+    except Exception as e:
+        if strict:
+            raise RuntimeError(f"Failed to import qlib.contrib.report.analysis_position: {e}") from e
+        try:
+            rec.save_objects(qlib_official_graphs={})
+            rec.save_objects(qlib_official_graphs_errors={"__import_analysis_position__": str(e)})
         except Exception:
             pass
         return {}
@@ -171,8 +184,13 @@ def export_qlib_official_graphs(
     except Exception:
         pass
 
-    out: Dict[str, List[str]] = {}
-    errors: Dict[str, str] = {}
+    # analysis_model is optional: it requires extra deps (e.g. statsmodels). If missing, we still export
+    # analysis_position graphs and record a per-graph error for analysis_model graphs.
+    analysis_model_import_error: Optional[str] = None
+    try:
+        import qlib.contrib.report.analysis_model  # noqa: F401
+    except Exception as e:
+        analysis_model_import_error = str(e)
 
     # Inputs from recorder (created by PortAnaRecord / SignalRecord)
     report_normal_df = None
@@ -347,8 +365,22 @@ def export_qlib_official_graphs(
             "analysis_model.model_performance_graph",
         ]
 
+    if analysis_model_import_error is not None:
+        for g in list(graph_names):
+            if str(g).startswith("analysis_model."):
+                errors[g] = f"Skipped: failed to import qlib.contrib.report.analysis_model ({analysis_model_import_error})"
+        graph_names = [g for g in graph_names if not str(g).startswith("analysis_model.")]
+
     for gname in graph_names:
-        fn = _resolve_graph_fn(gname)
+        try:
+            fn = _resolve_graph_fn(gname)
+        except Exception as e:
+            msg = f"Failed to resolve Qlib graph '{gname}': {e}"
+            if strict:
+                raise RuntimeError(msg) from e
+            errors[gname] = msg
+            warnings.warn(msg)
+            continue
         file_prefix = f"{prefix}_{gname.replace('.', '_')}"
         try:
             graph_output = _auto_call(fn)
@@ -535,4 +567,3 @@ def save_graph_figures(
                 pass
 
     return out
-

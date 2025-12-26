@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,43 @@ logger = logging.getLogger(__name__)
 class MarketStateLookup:
     dim: int
     by_date: Dict[pd.Timestamp, np.ndarray]
+
+
+def resolve_market_state_path(
+    path: str | Path,
+    *,
+    search_dirs: Sequence[str | Path] | None = None,
+) -> Optional[Path]:
+    """
+    Resolve `market_state_path` across a few candidate roots.
+
+    Notes
+    -----
+    - `path` may be absolute or relative.
+    - `search_dirs` are tried in order (useful for recorder local_dir / script dir).
+    - Returns the first existing path, else None.
+    """
+    if path is None:
+        return None
+    path_str = str(path).strip()
+    if not path_str:
+        return None
+
+    p0 = Path(path_str).expanduser()
+    candidates: List[Path] = [p0]
+    for d in (search_dirs or []):
+        try:
+            candidates.append(Path(d).expanduser() / p0)
+        except Exception:
+            continue
+
+    for p in candidates:
+        try:
+            if p.exists():
+                return p
+        except Exception:
+            continue
+    return None
 
 
 def load_market_state_df(path: str | Path) -> pd.DataFrame:
@@ -141,4 +178,3 @@ def lookup_market_state(
             )
     
     return np.stack(out, axis=0)
-

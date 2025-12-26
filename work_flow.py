@@ -2,6 +2,8 @@
 """
 RST-MoE + Qlib Official Workflow (Paper-Ready Version)
 
+pip install plotly spicy statsmodels
+
 功能：
 1. 使用 Alpha158 / CSI300 官方切分，训练 QlibQuantMoE（时序 MoE）。
 2. 运行标准 Signal 分析 + 组合回测。
@@ -34,6 +36,8 @@ from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
 import matplotlib.pyplot as plt
 
 from module.utils.qlib_official_graphs import ensure_qlib_official_graphs
+from module.utils.market_state import load_market_state_df, resolve_market_state_path
+from module.utils import regime_analysis as ra
 # =============================================================================
 # 0. Qlib Init (与官方 yaml 对齐)
 # =============================================================================
@@ -825,97 +829,23 @@ def generate_paper_report(
     regime_bucket_lines: List[str] = []
     regime_bucket_saved: Dict[str, Any] = {}
 
-    def _normalize_dt_index(s: pd.Series) -> pd.Series:
-        s = s.copy()
-        s.index = pd.to_datetime(s.index).normalize()
-        if getattr(s.index, "tz", None) is not None:
-            s.index = s.index.tz_convert(None)
-        s = s[~s.index.duplicated(keep="last")]
-        return s.sort_index()
-
-    def _resolve_market_state_path(path_str: str) -> Optional[Path]:
-        if not path_str:
-            return None
-        cand = []
-        p0 = Path(str(path_str)).expanduser()
-        cand.append(p0)
-        cand.append(local_dir / str(path_str))
-        try:
-            cand.append(Path(__file__).resolve().parent / str(path_str))
-        except Exception:
-            pass
-        for p in cand:
-            try:
-                if p.exists():
-                    return p
-            except Exception:
-                continue
-        return None
-
-    def _bucket_tercile(s: pd.Series) -> Optional[pd.Series]:
-        s = pd.to_numeric(s, errors="coerce")
-        if s.dropna().nunique() < 2:
-            return None
-        try:
-            codes = pd.qcut(s, q=3, labels=False, duplicates="drop")
-        except Exception:
-            return None
-        if codes is None:
-            return None
-        # codes may have NaNs, keep them
-        max_code = int(pd.to_numeric(codes, errors="coerce").max()) if codes.notna().any() else -1
-        n_bins = max_code + 1
-        if n_bins <= 0:
-            return None
-        if n_bins == 1:
-            labels = ["All"]
-        elif n_bins == 2:
-            labels = ["Low", "High"]
-        else:
-            labels = ["Low", "Mid", "High"][:n_bins]
-
-        def _map_code(v):
-            if pd.isna(v):
-                return np.nan
-            i = int(v)
-            if i < 0 or i >= len(labels):
-                return np.nan
-            return labels[i]
-
-        return codes.map(_map_code)
-
-    def _series_ir(x: pd.Series) -> float:
-        x = pd.to_numeric(x, errors="coerce").dropna()
-        if len(x) < 2:
-            return np.nan
-        m = float(x.mean())
-        sd = float(x.std())
-        return (m / sd) if sd > 0 else np.nan
-
     # Load market_state file (if configured) and compute per-regime performance/diagnostics.
     try:
         trainer_k = mk.get("trainer_config", {}) or {}
         ms_path = trainer_k.get("market_state_path", None)
-        ms_file = _resolve_market_state_path(str(ms_path)) if ms_path else None
+        ms_file = (
+            resolve_market_state_path(
+                ms_path,
+                search_dirs=[
+                    local_dir,
+                    Path(__file__).resolve().parent,
+                ],
+            )
+            if ms_path
+            else None
+        )
         if ms_file is not None:
-            # load & align index
-            if ms_file.suffix in {".pkl", ".pickle"}:
-                ms_df = pd.read_pickle(ms_file)
-            elif ms_file.suffix in {".parquet"}:
-                ms_df = pd.read_parquet(ms_file)
-            elif ms_file.suffix in {".csv"}:
-                ms_df = pd.read_csv(ms_file, index_col=0)
-            else:
-                raise ValueError(f"Unsupported market_state file type: {ms_file.suffix}")
-
-            if not isinstance(ms_df, pd.DataFrame) or ms_df.empty:
-                raise ValueError("market_state file must contain a non-empty DataFrame")
-
-            ms_df = ms_df.copy()
-            ms_df.index = pd.to_datetime(ms_df.index).normalize()
-            if getattr(ms_df.index, "tz", None) is not None:
-                ms_df.index = ms_df.index.tz_convert(None)
-            ms_df.sort_index(inplace=True)
+            ms_df = load_market_state_df(ms_file)
 
             shift = int(trainer_k.get("market_state_shift", 0) or 0)
             if shift:
@@ -932,17 +862,16 @@ def generate_paper_report(
                 # Performance series on the same dates
                 perf_df = pd.DataFrame(index=pd.Index([], name="datetime"))
                 if isinstance(ic, pd.Series) and len(ic) > 0:
-                    perf_df["ic"] = _normalize_dt_index(ic)
+                    perf_df["ic"] = ra.normalize_dt_index(ic)
                 if isinstance(ric, pd.Series) and len(ric) > 0:
-                    perf_df["rank_ic"] = _normalize_dt_index(ric)
+                    perf_df["rank_ic"] = ra.normalize_dt_index(ric)
 
                 # Optional model diagnostics to correlate with regimes
                 if isinstance(gate_series, pd.Series) and len(gate_series) > 0:
-                    perf_df["time_ratio"] = _normalize_dt_index(gate_series)
-                for k in ["gate_entropy", "time_tau", "time_half_life"]:
-                    s = diag_series.get(k, None)
+                    perf_df["time_ratio"] = ra.normalize_dt_index(gate_series)
+                for k, s in (diag_series or {}).items():
                     if isinstance(s, pd.Series) and len(s) > 0:
-                        perf_df[k] = _normalize_dt_index(s)
+                        perf_df[k] = ra.normalize_dt_index(s)
 
                 # Join and keep test dates only
                 joined = perf_df.join(ms_df[available_feats], how="inner")
@@ -955,48 +884,86 @@ def generate_paper_report(
                         "基于 `market_state`（与训练时相同的宏观状态文件）对 test 交易日做分桶，"
                         "观察不同市场状态下的预测质量与路由行为差异。\n"
                     )
+                    fit_segs = trainer_k.get("regime_bucket_fit_segments", None)
+                    if isinstance(fit_segs, str):
+                        fit_segs = [s.strip() for s in fit_segs.split(",") if s.strip()]
+                    if not isinstance(fit_segs, (list, tuple)) or not fit_segs:
+                        fit_segs = ["train"]
+
+                    fit_ranges: List[Tuple[pd.Timestamp, pd.Timestamp]] = []
+                    fit_range_meta: List[Dict[str, str]] = []
+                    for seg in fit_segs:
+                        rng = _get_segment_range(run_conf.get("data_conf", data_conf), str(seg))
+                        if rng is not None:
+                            fit_ranges.append(rng)
+                            fit_range_meta.append(
+                                {
+                                    "segment": str(seg),
+                                    "start": _fmt_date(rng[0]),
+                                    "end": _fmt_date(rng[1]),
+                                }
+                            )
+
+                    fit_mask = ra.build_fit_mask(ms_df.index, fit_ranges) if fit_ranges else np.ones(len(ms_df), dtype=bool)
+                    fit_df = ms_df.loc[fit_mask, available_feats].copy()
+                    fit_df = fit_df.replace([np.inf, -np.inf], np.nan)
+
+                    regime_bucket_lines.append(
+                        f"- market_state: `{Path(ms_file).name}`, shift={shift}, fit_segments={list(fit_segs)} "
+                        f"(fit_days={int(fit_mask.sum())}, test_days={int(len(joined))})\n"
+                    )
+
+                    regime_thresholds: Dict[str, Any] = {
+                        "market_state_path": str(ms_path),
+                        "market_state_file": str(Path(ms_file).name),
+                        "market_state_shift": int(shift),
+                        "fit_segments": list(fit_segs),
+                        "fit_ranges": fit_range_meta,
+                        "fit_days": int(fit_mask.sum()),
+                        "test_days": int(len(joined)),
+                        "features": list(available_feats),
+                        "medians": {},
+                        "terciles": {},
+                    }
 
                     # 1) Joint 2x2 regime by (PC1 ratio) x (Tail intensity), using median split.
                     if feat_pc1 in joined.columns and feat_tail in joined.columns:
-                        pc1 = pd.to_numeric(joined[feat_pc1], errors="coerce")
-                        tail = pd.to_numeric(joined[feat_tail], errors="coerce")
-                        pc1_med = float(pc1.dropna().median()) if pc1.notna().any() else np.nan
-                        tail_med = float(tail.dropna().median()) if tail.notna().any() else np.nan
+                        pc1_fit = pd.to_numeric(fit_df.get(feat_pc1, pd.Series(dtype=float)), errors="coerce").dropna()
+                        tail_fit = pd.to_numeric(fit_df.get(feat_tail, pd.Series(dtype=float)), errors="coerce").dropna()
+                        pc1_med = float(pc1_fit.median()) if len(pc1_fit) > 0 else np.nan
+                        tail_med = float(tail_fit.median()) if len(tail_fit) > 0 else np.nan
+                        src = "fit"
+                        if not np.isfinite(pc1_med) or not np.isfinite(tail_med):
+                            src = "test_fallback"
+                            pc1 = pd.to_numeric(joined[feat_pc1], errors="coerce").dropna()
+                            tail = pd.to_numeric(joined[feat_tail], errors="coerce").dropna()
+                            pc1_med = float(pc1.median()) if len(pc1) > 0 else np.nan
+                            tail_med = float(tail.median()) if len(tail) > 0 else np.nan
 
-                        regime = pd.Series(index=joined.index, dtype=object)
-                        pc1_high = pc1 >= pc1_med
-                        tail_high = tail >= tail_med
-                        regime.loc[pc1_high & tail_high] = "High-PC1 / High-Tail"
-                        regime.loc[pc1_high & ~tail_high] = "High-PC1 / Low-Tail"
-                        regime.loc[~pc1_high & tail_high] = "Low-PC1 / High-Tail"
-                        regime.loc[~pc1_high & ~tail_high] = "Low-PC1 / Low-Tail"
+                        regime_thresholds["medians"] = {
+                            feat_pc1: {"value": float(pc1_med) if np.isfinite(pc1_med) else np.nan, "source": src},
+                            feat_tail: {"value": float(tail_med) if np.isfinite(tail_med) else np.nan, "source": src},
+                        }
 
                         g = joined.copy()
-                        g["regime_2x2"] = regime
-                        rows = []
-                        for name, sub in g.groupby("regime_2x2"):
-                            if name is None or (isinstance(name, float) and not np.isfinite(name)):
-                                continue
-                            row = {"Regime": str(name), "Days": int(len(sub))}
-                            if "rank_ic" in sub.columns:
-                                row["RankIC_mean"] = float(sub["rank_ic"].mean())
-                                row["RankIC_IR"] = _series_ir(sub["rank_ic"])
-                            if "ic" in sub.columns:
-                                row["IC_mean"] = float(sub["ic"].mean())
-                                row["IC_IR"] = _series_ir(sub["ic"])
-                            if "time_ratio" in sub.columns:
-                                row["time_ratio_mean"] = float(pd.to_numeric(sub["time_ratio"], errors="coerce").mean())
-                            if "gate_entropy" in sub.columns:
-                                row["gate_entropy_mean"] = float(pd.to_numeric(sub["gate_entropy"], errors="coerce").mean())
-                            if "time_tau" in sub.columns:
-                                row["time_tau_mean"] = float(pd.to_numeric(sub["time_tau"], errors="coerce").mean())
-                            rows.append(row)
-
-                        df_2x2 = pd.DataFrame(rows)
+                        g["regime_2x2"] = ra.assign_regime_2x2(
+                            g[feat_pc1],
+                            g[feat_tail],
+                            pc1_median=pc1_med,
+                            tail_median=tail_med,
+                        )
+                        df_2x2 = ra.summarize_by_bucket(g, bucket_col="regime_2x2", bucket_name="Regime")
                         if not df_2x2.empty:
-                            df_2x2 = df_2x2.sort_values(["Regime"]).reset_index(drop=True)
+                            order = [
+                                "High-PC1 / High-Tail",
+                                "High-PC1 / Low-Tail",
+                                "Low-PC1 / High-Tail",
+                                "Low-PC1 / Low-Tail",
+                            ]
+                            df_2x2["_ord"] = df_2x2["Regime"].map(lambda x: order.index(x) if x in order else 99)
+                            df_2x2 = df_2x2.sort_values(["_ord", "Regime"]).drop(columns=["_ord"]).reset_index(drop=True)
                             regime_bucket_lines.append(
-                                f"- 2×2 分桶：`{feat_pc1}` median={pc1_med:.4g}, `{feat_tail}` median={tail_med:.4g}\n"
+                                f"- 2×2 分桶（median@{src}）：`{feat_pc1}`={pc1_med:.4g}, `{feat_tail}`={tail_med:.4g}\n"
                             )
                             regime_bucket_lines.append(df_2x2.to_markdown(index=False) + "\n")
                             regime_bucket_saved["regime_2x2"] = df_2x2
@@ -1011,35 +978,230 @@ def generate_paper_report(
                     for feat, title in univariate_feats:
                         if feat not in joined.columns:
                             continue
-                        b = _bucket_tercile(joined[feat])
-                        if b is None:
+                        edges = ra.fit_quantile_edges(fit_df.get(feat, pd.Series(dtype=float)))
+                        src = "fit"
+                        if not edges:
+                            edges = ra.fit_quantile_edges(joined.get(feat, pd.Series(dtype=float)))
+                            src = "test_fallback"
+                        if not edges:
                             continue
+                        regime_thresholds["terciles"][feat] = {"edges": list(edges), "source": src}
                         tmp = joined.copy()
-                        tmp["bucket"] = b
-                        rows = []
-                        for name, sub in tmp.groupby("bucket"):
-                            if name is None or (isinstance(name, float) and not np.isfinite(name)):
-                                continue
-                            row = {"Bucket": str(name), "Days": int(len(sub))}
-                            if "rank_ic" in sub.columns:
-                                row["RankIC_mean"] = float(sub["rank_ic"].mean())
-                                row["RankIC_IR"] = _series_ir(sub["rank_ic"])
-                            if "ic" in sub.columns:
-                                row["IC_mean"] = float(sub["ic"].mean())
-                                row["IC_IR"] = _series_ir(sub["ic"])
-                            if "time_ratio" in sub.columns:
-                                row["time_ratio_mean"] = float(pd.to_numeric(sub["time_ratio"], errors="coerce").mean())
-                            rows.append(row)
-                        df_u = pd.DataFrame(rows)
+                        tmp["bucket"] = ra.assign_quantile_bucket(tmp[feat], edges=edges)
+                        df_u = ra.summarize_by_bucket(tmp, bucket_col="bucket", bucket_name="Bucket")
                         if df_u.empty:
                             continue
-                        # Stable order: Low->Mid->High where possible
                         order = ["Low", "Mid", "High", "All"]
                         df_u["_ord"] = df_u["Bucket"].map(lambda x: order.index(x) if x in order else 99)
                         df_u = df_u.sort_values(["_ord", "Bucket"]).drop(columns=["_ord"]).reset_index(drop=True)
-                        regime_bucket_lines.append(f"- Terciles by `{feat}` ({title})\n")
+                        edges_str = ", ".join(f"{e:.4g}" for e in edges)
+                        regime_bucket_lines.append(f"- Terciles by `{feat}` ({title}), edges@{src}=[{edges_str}]\n")
                         regime_bucket_lines.append(df_u.to_markdown(index=False) + "\n")
                         regime_bucket_saved[f"terciles__{feat}"] = df_u
+
+                    if regime_thresholds.get("medians") or regime_thresholds.get("terciles"):
+                        try:
+                            rec.save_objects(regime_thresholds=regime_thresholds)
+                        except Exception:
+                            pass
+
+                    # 3) Correlation table + scatter plots (test segment)
+                    corr_feats = list(available_feats)
+                    corr_metrics = [
+                        c
+                        for c in [
+                            "rank_ic",
+                            "ic",
+                            "time_ratio",
+                            "gate_entropy",
+                            "time_tau",
+                            "time_half_life",
+                            "factor_gate_entropy",
+                            "factor_gate_topk_mass_10",
+                        ]
+                        if c in joined.columns
+                    ]
+                    corr_df = ra.spearman_corr_table(joined, features=corr_feats, metrics=corr_metrics)
+                    if not corr_df.empty:
+                        corr_csv = local_dir / "regime_corr_spearman.csv"
+                        try:
+                            corr_df.to_csv(corr_csv, index=False)
+                        except Exception:
+                            corr_csv = None
+                        regime_bucket_lines.append("- Spearman correlations (market_state vs metrics), top 12 by |ρ|:\n")
+                        regime_bucket_lines.append(corr_df.head(12).to_markdown(index=False) + "\n")
+                        if corr_csv is not None:
+                            regime_bucket_lines.append(f"- Full table: `{corr_csv.name}`\n")
+                        try:
+                            rec.save_objects(regime_corr_spearman=corr_df)
+                        except Exception:
+                            pass
+
+                    scatter_pngs: Dict[str, str] = {}
+                    perf_metrics = [m for m in ["rank_ic", "ic"] if m in joined.columns]
+                    router_metrics = [
+                        m
+                        for m in ["time_ratio", "gate_entropy", "time_tau", "time_half_life", "factor_gate_entropy"]
+                        if m in joined.columns
+                    ]
+                    fn_perf = ra.save_scatter_grid(
+                        joined,
+                        features=corr_feats,
+                        metrics=perf_metrics,
+                        out_path=local_dir / "regime_scatter_perf.png",
+                        title="Market state vs performance (test)",
+                    )
+                    if fn_perf:
+                        scatter_pngs["perf"] = fn_perf
+                        regime_bucket_lines.append(f"![Regime scatter (performance)]({fn_perf})\n")
+
+                    fn_router = ra.save_scatter_grid(
+                        joined,
+                        features=corr_feats,
+                        metrics=router_metrics,
+                        out_path=local_dir / "regime_scatter_router.png",
+                        title="Market state vs routing diagnostics (test)",
+                    )
+                    if fn_router:
+                        scatter_pngs["router"] = fn_router
+                        regime_bucket_lines.append(f"![Regime scatter (routing)]({fn_router})\n")
+                    if scatter_pngs:
+                        try:
+                            rec.save_objects(regime_scatter_pngs=scatter_pngs)
+                        except Exception:
+                            pass
+
+                    # 4) Interpretation & diagnostics (auto-generated, paper-friendly)
+                    def _fmt(x, nd: int = 4) -> str:
+                        try:
+                            x = float(x)
+                        except Exception:
+                            return "N/A"
+                        return f"{x:.{nd}f}" if np.isfinite(x) else "N/A"
+
+                    def _rng(s: pd.Series, *, nd: int = 4) -> str:
+                        s = pd.to_numeric(s, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+                        if len(s) == 0:
+                            return "N/A"
+                        return f"{_fmt(float(s.min()), nd)}~{_fmt(float(s.max()), nd)}"
+
+                    def _best_worst(df: pd.DataFrame, *, metric: str, name_col: str) -> Optional[str]:
+                        if not isinstance(df, pd.DataFrame) or df.empty or metric not in df.columns or name_col not in df.columns:
+                            return None
+                        v = pd.to_numeric(df[metric], errors="coerce").replace([np.inf, -np.inf], np.nan)
+                        if not v.notna().any():
+                            return None
+                        i_best = int(v.idxmax())
+                        i_worst = int(v.idxmin())
+                        best_name = str(df.loc[i_best, name_col])
+                        worst_name = str(df.loc[i_worst, name_col])
+                        best_v = float(v.loc[i_best])
+                        worst_v = float(v.loc[i_worst])
+                        return f"{metric}: best={best_name}({_fmt(best_v)}), worst={worst_name}({_fmt(worst_v)}), spread={_fmt(best_v - worst_v)}"
+
+                    def _bucket_delta(df: pd.DataFrame, *, metric: str) -> Optional[str]:
+                        if not isinstance(df, pd.DataFrame) or df.empty or "Bucket" not in df.columns or metric not in df.columns:
+                            return None
+                        v = df.set_index("Bucket")[metric]
+                        v = pd.to_numeric(v, errors="coerce").replace([np.inf, -np.inf], np.nan)
+                        if "High" not in v.index or "Low" not in v.index:
+                            return None
+                        hi = v.loc["High"]
+                        lo = v.loc["Low"]
+                        if not (np.isfinite(hi) and np.isfinite(lo)):
+                            return None
+                        return f"Δ(High-Low)={_fmt(float(hi - lo))}"
+
+                    # ---- metrics glossary ----
+                    regime_bucket_lines.append("#### 2.X.1 指标释义（读表指南）\n")
+                    regime_bucket_lines.append(
+                        "- `market_state_corr_pc1_ratio`：市场“单一主导因子/同涨同跌”强度（越高越像单一市场因子驱动）。\n"
+                        "- `market_state_tail_2sigma`：尾部/冲击强度（越高表示极端波动占比越高）。\n"
+                        "- `market_state_corr_mean_abs`：拥挤度/相关性水平（越高越拥挤，alpha 更难独立发挥）。\n"
+                        "- `market_vol_20`：基准 20 日波动（通常已标准化，解读为相对高/低波动）。\n"
+                        "- `RankIC/IC`：预测排序/线性相关质量；`IR` 为日度均值/标准差（样本少时不稳定）。\n"
+                        "- `time_ratio`：路由对 time-expert 的权重（高→更偏时序专家，低→更偏截面因子专家）。\n"
+                        "- `gate_entropy`：路由不确定性（接近 0.693≈两专家均匀；越低越“果断”）。\n"
+                        "- `time_tau/time_half_life`：时间记忆尺度（越大→更长记忆/更慢衰减）。\n"
+                        "- `factor_gate_entropy/topk_mass`：因子重加权是否集中（topk_mass 高/entropy 低→更集中）。\n"
+                    )
+                    regime_bucket_lines.append("\n")
+
+                    # ---- observed differences ----
+                    regime_bucket_lines.append("#### 2.X.2 观测到的差异（test）\n")
+                    if "rank_ic" in joined.columns:
+                        regime_bucket_lines.append(f"- RankIC daily range: {_rng(joined['rank_ic'])}\n")
+                    if "ic" in joined.columns:
+                        regime_bucket_lines.append(f"- IC daily range: {_rng(joined['ic'])}\n")
+                    if "time_ratio" in joined.columns:
+                        regime_bucket_lines.append(f"- time_ratio daily range: {_rng(joined['time_ratio'])}\n")
+                    if "gate_entropy" in joined.columns:
+                        regime_bucket_lines.append(f"- gate_entropy daily range: {_rng(joined['gate_entropy'])}\n")
+                    if "time_tau" in joined.columns:
+                        regime_bucket_lines.append(f"- time_tau daily range: {_rng(joined['time_tau'])}\n")
+
+                    df_2x2 = regime_bucket_saved.get("regime_2x2", None)
+                    if isinstance(df_2x2, pd.DataFrame) and not df_2x2.empty:
+                        bw = _best_worst(df_2x2, metric="RankIC_mean", name_col="Regime")
+                        if bw:
+                            regime_bucket_lines.append(f"- 2×2 regimes: {bw}\n")
+                        bw_tr = _best_worst(df_2x2, metric="time_ratio_mean", name_col="Regime")
+                        if bw_tr:
+                            regime_bucket_lines.append(f"- 2×2 routing: {bw_tr}\n")
+
+                    for feat in corr_feats:
+                        key = f"terciles__{feat}"
+                        df_u = regime_bucket_saved.get(key, None)
+                        if not isinstance(df_u, pd.DataFrame) or df_u.empty:
+                            continue
+                        d_perf = _bucket_delta(df_u, metric="RankIC_mean")
+                        d_route = _bucket_delta(df_u, metric="time_ratio_mean")
+                        parts = []
+                        if d_perf:
+                            parts.append(f"RankIC_mean {d_perf}")
+                        if d_route:
+                            parts.append(f"time_ratio_mean {d_route}")
+                        if parts:
+                            regime_bucket_lines.append(f"- `{feat}` terciles: " + ", ".join(parts) + "\n")
+
+                    # routing-performance coupling (within test)
+                    coupling_pairs = [
+                        ("time_ratio", "rank_ic"),
+                        ("gate_entropy", "rank_ic"),
+                        ("time_tau", "rank_ic"),
+                        ("factor_gate_entropy", "rank_ic"),
+                    ]
+                    coupling_lines = []
+                    for x, y in coupling_pairs:
+                        if x in joined.columns and y in joined.columns:
+                            rho, n = ra.spearman_rho(joined[x], joined[y])
+                            if n >= 3 and np.isfinite(rho):
+                                coupling_lines.append(f"{x}↔{y}: ρ={rho:.2f} (n={n})")
+                    if coupling_lines:
+                        regime_bucket_lines.append("- Routing ↔ quality coupling (Spearman, test): " + "; ".join(coupling_lines) + "\n")
+
+                    # correlation-driven highlights
+                    if isinstance(corr_df, pd.DataFrame) and not corr_df.empty:
+                        perf_rows = corr_df[corr_df["Metric"].isin(["rank_ic", "ic"])]
+                        route_rows = corr_df[corr_df["Metric"].isin(["time_ratio", "gate_entropy", "time_tau", "factor_gate_entropy"])]
+                        if not perf_rows.empty:
+                            r0 = perf_rows.iloc[0]
+                            regime_bucket_lines.append(
+                                f"- Strongest state↔performance: `{r0['Feature']}` vs `{r0['Metric']}` "
+                                f"ρ={_fmt(r0['SpearmanR'], 2)} (n={int(r0['N'])}).\n"
+                            )
+                        if not route_rows.empty:
+                            r0 = route_rows.iloc[0]
+                            regime_bucket_lines.append(
+                                f"- Strongest state↔routing: `{r0['Feature']}` vs `{r0['Metric']}` "
+                                f"ρ={_fmt(r0['SpearmanR'], 2)} (n={int(r0['N'])}).\n"
+                            )
+
+                    regime_bucket_lines.append(
+                        "\n- 解释建议：若“预测质量差异”显著但 `time_ratio/gate_entropy/time_tau` 基本不变，说明路由/时间尺度未随宏观状态自适应；"
+                        "反之若路由显著变化但 RankIC 不变，可能是“在动但没带来收益”。\n"
+                        "- 注意：test 天数通常较少，分桶后的 `IR` 与相关性更偏诊断用途；建议在更长窗口/多次 run 上复核。 \n"
+                    )
 
                     # Save for later aggregation
                     if regime_bucket_saved:
