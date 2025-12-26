@@ -46,6 +46,10 @@ class QlibQuantMoE(Model):
     - 训练使用 DK_L，验证/测试/预测使用 DK_I（对齐 Qlib 官方工作流）。
     - Label NaN 不会进 loss/metric（先 mask 再计算）。
     - Warmup + cosine LR scheduler (transformers.get_cosine_schedule_with_warmup)。
+    - Stopping & best checkpoint:
+        * If trainer_config['early_stop']>0: legacy valid-metric based early stop (patience).
+        * Else: train-metric (default loss_main) min-selection + optional threshold stop:
+            - train_stop_key, train_stop_threshold, min_epochs, consecutive_k
     - Recorder logs:
         * train/* & valid/*：
             - loss_total / loss_main / loss_listmle / loss_mse / loss_ic / loss_aux / loss_sparsity
@@ -70,6 +74,17 @@ class QlibQuantMoE(Model):
 
         self.early_stop = int(self.trainer_config.get("early_stop", 0) or 0)
         self.min_delta = float(self.trainer_config.get("min_delta", 1e-6))
+        # Train-loss threshold stopping (used when early_stop is disabled)
+        # - train_stop_key: metric key in train metrics dict (default: loss_main)
+        # - train_stop_threshold: stop when metric <= threshold for `consecutive_k` epochs (after `min_epochs`)
+        self.train_stop_key = str(self.trainer_config.get("train_stop_key", "loss_main") or "loss_main")
+        _thr = self.trainer_config.get("train_stop_threshold", None)
+        if _thr is None or (isinstance(_thr, str) and _thr.strip().lower() in {"", "none", "null"}):
+            self.train_stop_threshold: Optional[float] = None
+        else:
+            self.train_stop_threshold = float(_thr)
+        self.min_epochs = max(1, int(self.trainer_config.get("min_epochs", 1) or 1))
+        self.consecutive_k = max(1, int(self.trainer_config.get("consecutive_k", 1) or 1))
         # Gradient accumulation (micro-batch = one date cross-section; accumulate across K dates)
         self.grad_accum_steps = max(1, int(self.trainer_config.get("grad_accum_steps", 5)))
         # Validation data_key policy
@@ -215,6 +230,11 @@ class QlibQuantMoE(Model):
             f"warmup={warmup_desc}",
             f"seed={self.random_seed}",
         ]
+        if not (self.early_stop and self.early_stop > 0):
+            thr_desc = "off" if self.train_stop_threshold is None else f"{self.train_stop_key}<={self.train_stop_threshold:g}"
+            trainer_parts.append(f"train_stop={thr_desc}")
+            trainer_parts.append(f"min_epochs={self.min_epochs}")
+            trainer_parts.append(f"k={self.consecutive_k}")
         print(f">>> [Config:{tag}] trainer: " + ", ".join(trainer_parts))
     
     def _print_full_config(
@@ -330,6 +350,10 @@ class QlibQuantMoE(Model):
             ("batch_size", self.batch_size, "Batch size (stocks/day)"),
             ("grad_accum_steps", self.grad_accum_steps, "Accumulate K days/step"),
             ("early_stop", self.early_stop, "Early stop patience"),
+            ("train_stop_key", self.train_stop_key, "Train stop metric key"),
+            ("train_stop_threshold", self.train_stop_threshold, "Train stop threshold"),
+            ("min_epochs", self.min_epochs, "Min epochs before stop"),
+            ("consecutive_k", self.consecutive_k, "Consecutive epochs to stop"),
             ("use_warmup", self.use_warmup, "Enable LR warmup"),
             ("warmup_config", warmup_val, "Warmup steps/ratio"),
             ("total_steps", total_steps or "N/A", "Total training steps"),
@@ -1418,9 +1442,20 @@ class QlibQuantMoE(Model):
             warmup_steps=warmup_steps,
         )
 
+        use_valid_early_stop = bool(self.early_stop and self.early_stop > 0)
+        if use_valid_early_stop and valid_loader is None:
+            self._warn_once(
+                "early_stop_no_valid",
+                ">>> [Warn] early_stop is set but valid loader is unavailable; "
+                "falling back to train-loss threshold stopping.",
+            )
+            use_valid_early_stop = False
+
         best_state = None
-        best_score = float("-inf")
+        best_score = float("-inf")  # used in valid early stop mode (maximize)
+        best_train = float("inf")  # used in train threshold mode (minimize)
         bad = 0
+        good = 0
 
         # 训练曲线缓存，用于报告里的“训练过程诊断”
         rec = R.get_recorder()
@@ -1442,7 +1477,12 @@ class QlibQuantMoE(Model):
                 "valid_ic": [],
             }
 
-        print(f">>> [Train] epochs={self.epochs}, early_stop={self.early_stop}")
+        if use_valid_early_stop:
+            stop_desc = f"valid_early_stop(patience={self.early_stop})"
+        else:
+            thr_desc = "off" if self.train_stop_threshold is None else f"{self.train_stop_key}<={self.train_stop_threshold:g}"
+            stop_desc = f"train_threshold({thr_desc}, min_epochs={self.min_epochs}, k={self.consecutive_k})"
+        print(f">>> [Train] epochs={self.epochs}, stop={stop_desc}")
         epoch_iter = range(self.epochs)
         if self.use_tqdm and trange is not None:
             epoch_iter = trange(self.epochs, desc="Epochs", dynamic_ncols=True)
@@ -1506,8 +1546,10 @@ class QlibQuantMoE(Model):
                     train_curve["valid_rank_ic"].append(float("nan"))
                     train_curve["valid_ic"].append(float("nan"))
 
-            # early stopping 监控
-            if va is not None:
+            # Stopping & best checkpoint selection:
+            # - If early_stop>0: use valid metrics (legacy behavior)
+            # - Else: use train metric (min) + optional threshold stop
+            if use_valid_early_stop and va is not None:
                 score = self._monitor(va)
                 if self.use_tqdm and hasattr(epoch_iter, "set_postfix"):
                     epoch_iter.set_postfix(
@@ -1525,10 +1567,36 @@ class QlibQuantMoE(Model):
                 if self.early_stop and self.early_stop > 0 and bad >= self.early_stop:
                     print(f">>> [EarlyStop] epoch={epoch + 1}, best_score={best_score:.6f}")
                     break
+            elif not use_valid_early_stop:
+                tv = tr.get(self.train_stop_key, None)
+                if tv is None and self.train_stop_key != "loss_main":
+                    tv = tr.get("loss_main", None)
+                if tv is not None:
+                    tv = float(tv)
+                    if np.isfinite(tv):
+                        # best checkpoint by train-loss(min)
+                        if tv < best_train - self.min_delta:
+                            best_train = tv
+                            best_state = copy.deepcopy(self.net.state_dict())
+                        # threshold stop
+                        if self.train_stop_threshold is not None and (epoch + 1) >= self.min_epochs:
+                            if tv <= self.train_stop_threshold:
+                                good += 1
+                            else:
+                                good = 0
+                            if good >= self.consecutive_k:
+                                print(
+                                    f">>> [TrainStop] epoch={epoch + 1}, {self.train_stop_key}={tv:.6f} "
+                                    f"<= {self.train_stop_threshold:g} (k={self.consecutive_k})"
+                                )
+                                break
 
         if best_state is not None:
             self.net.load_state_dict(best_state)
-            print(f">>> [Train] restored best (score={best_score:.6f})")
+            if use_valid_early_stop:
+                print(f">>> [Train] restored best (score={best_score:.6f})")
+            else:
+                print(f">>> [Train] restored best ({self.train_stop_key}={best_train:.6f})")
 
         # 保存训练曲线
         if train_curve is not None:

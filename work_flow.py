@@ -118,7 +118,11 @@ model_conf = {
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
             "seed": 42,
-            "early_stop": 5,
+            "early_stop": 0, 
+            "train_stop_key": "loss_main", 
+            "train_stop_threshold": 1.33, 
+            "min_epochs": 5, 
+            "consecutive_k": 2,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
             "market_state_path": "market_state_csi300.pkl",
