@@ -179,12 +179,27 @@ class QuantMoEModel(PreTrainedModel):
             factor_ids = torch.arange(N, device=device)
         factor_ids = factor_ids.to(device)
 
+        num_alphas = int(getattr(self.factor_id_emb, "num_embeddings", 0) or 0)
+        if num_alphas > 0 and int(N) > num_alphas:
+            raise RuntimeError(
+                f"Input x has N={int(N)} factor channels, but the model was initialized with num_alphas={num_alphas}. "
+                "This usually means extra channels (e.g., packed label) leaked into x, or num_alphas mismatches the data."
+            )
+
+        if factor_ids.numel() != int(N):
+            raise RuntimeError(
+                "factor_ids must have the same number of elements as x.shape[2] (N). "
+                f"Got x.shape={tuple(x.shape)}, factor_ids.shape={tuple(factor_ids.shape)}, "
+                f"factor_ids.numel()={int(factor_ids.numel())}."
+            )
+        factor_ids = factor_ids.reshape(int(N))
+
         # 0) Regime embedding（只看 x/macro，不看 label；也不被 time embedding 污染）
         regime = self.regime_encoder(x, macro_features)  # [B, D]
 
         # 1) value + factor embedding
         factor_table = self.factor_id_emb(factor_ids.long())  # [N,D]
-        h = self.val_proj(x.unsqueeze(-1)) + factor_table.view(1, 1, N, -1)
+        h = self.val_proj(x.unsqueeze(-1)) + factor_table.unsqueeze(0).unsqueeze(0)
 
         diag_metrics: dict[str, float] = {}
         factor_film = None

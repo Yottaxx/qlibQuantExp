@@ -495,6 +495,163 @@ class QlibQuantMoE(Model):
             return x.detach().cpu().numpy()
         return np.asarray(x)
 
+    def _coerce_feature_dim(self, x_np: np.ndarray, *, expected_dim: int, context: str) -> np.ndarray:
+        """
+        Ensure x has feature dim == expected_dim (num_alphas).
+
+        Some handlers may leak extra channels into x (e.g., packed label) on DK_I/diagnostic paths.
+        The core model expects x shaped as [T, num_alphas].
+        """
+        if x_np.ndim != 2:
+            raise RuntimeError(f"{context}: expected x to be 2D [T,F], got shape {tuple(x_np.shape)}")
+
+        expected_dim = int(expected_dim)
+        if expected_dim <= 0:
+            return x_np
+
+        f_dim = int(x_np.shape[1])
+        if f_dim == expected_dim:
+            return x_np
+
+        if f_dim > expected_dim:
+            if self.label_dim > 0 and f_dim == expected_dim + self.label_dim:
+                self._warn_once(
+                    f"schema:strip_packed_label:{context}",
+                    ">>> [Schema] Detected extra channel(s) in x for "
+                    f"{context}: x_dim={f_dim} vs expected num_alphas={expected_dim}. "
+                    f"Treating the last {self.label_dim} channel(s) as packed label and stripping them.",
+                )
+            else:
+                self._warn_once(
+                    f"schema:truncate_extra_channels:{context}",
+                    ">>> [Schema] Detected extra channel(s) in x for "
+                    f"{context}: x_dim={f_dim} vs expected num_alphas={expected_dim}. "
+                    "Truncating extra channels to match the trained model.",
+                )
+            return np.asarray(x_np[:, :expected_dim])
+
+        # f_dim < expected_dim
+        raise RuntimeError(
+            f"{context}: x_dim={f_dim} < expected num_alphas={expected_dim}. "
+            "Check handler schema / feature set consistency between train and inference."
+        )
+
+    def _coerce_bx_feature_dim(self, bx: torch.Tensor, *, expected_dim: int, context: str) -> torch.Tensor:
+        """Torch variant of `_coerce_feature_dim` for bx shaped as [B,T,F]."""
+        if bx.ndim != 3:
+            raise RuntimeError(f"{context}: expected bx to be 3D [B,T,F], got shape {tuple(bx.shape)}")
+
+        expected_dim = int(expected_dim)
+        if expected_dim <= 0:
+            return bx
+
+        f_dim = int(bx.shape[2])
+        if f_dim == expected_dim:
+            return bx
+
+        if f_dim > expected_dim:
+            if self.label_dim > 0 and f_dim == expected_dim + self.label_dim:
+                self._warn_once(
+                    f"schema:strip_packed_label:{context}",
+                    ">>> [Schema] Detected extra channel(s) in bx for "
+                    f"{context}: x_dim={f_dim} vs expected num_alphas={expected_dim}. "
+                    f"Treating the last {self.label_dim} channel(s) as packed label and stripping them.",
+                )
+            else:
+                self._warn_once(
+                    f"schema:truncate_extra_channels:{context}",
+                    ">>> [Schema] Detected extra channel(s) in bx for "
+                    f"{context}: x_dim={f_dim} vs expected num_alphas={expected_dim}. "
+                    "Truncating extra channels to match the trained model.",
+                )
+            return bx[:, :, :expected_dim]
+
+        raise RuntimeError(
+            f"{context}: x_dim={f_dim} < expected num_alphas={expected_dim}. "
+            "Check handler schema / feature set consistency between train and inference."
+        )
+
+    def _get_num_alphas(self) -> int:
+        n = None
+        if self.net is not None:
+            n = getattr(getattr(self.net, "config", None), "num_alphas", None)
+        if n is None:
+            n = self.model_config.get("num_alphas", 0)
+        return int(n or 0)
+
+    def _macro_tensor_for_day(self, dt: pd.Timestamp, bsz: int) -> Optional[torch.Tensor]:
+        if self._market_state is None:
+            return None
+        bsz = int(bsz)
+        if bsz <= 0:
+            return None
+        m = self._macro_from_dates([pd.Timestamp(dt)] * bsz)
+        if m is None:
+            return None
+        return torch.nan_to_num(m, 0.0).to(self.device).float()
+
+    def _stack_feature_batch_from_row_indices(
+        self,
+        tsds,
+        row_idx: np.ndarray,
+        *,
+        max_samples: int | None,
+        num_alphas: int,
+        context: str,
+    ) -> Optional[torch.Tensor]:
+        row_idx = np.asarray(row_idx, dtype=int)
+        if row_idx.size <= 0:
+            return None
+
+        if max_samples is not None and int(max_samples) > 0:
+            row_idx = row_idx[: int(max_samples)]
+
+        xs: List[torch.Tensor] = []
+        for i in row_idx:
+            raw_x, _ = self._extract_sample(tsds[int(i)])
+            x_np = self._as_numpy(raw_x)
+            x_np = self._coerce_feature_dim(x_np, expected_dim=num_alphas, context=context)
+            xs.append(torch.from_numpy(np.asarray(x_np)).float())
+
+        if not xs:
+            return None
+
+        bx = torch.stack(xs, dim=0)  # [B,T,N]
+        return torch.nan_to_num(bx, 0.0).to(self.device)
+
+    @staticmethod
+    def _select_spaced_dates(dates: List[pd.Timestamp], k: int) -> List[pd.Timestamp]:
+        """
+        Select k dates spread over the span (deterministic, avoids consecutive days when possible).
+        """
+        k = int(k)
+        if k <= 0 or not dates:
+            return []
+        if k >= len(dates):
+            return list(dates)
+
+        n = len(dates)
+        if k == 1:
+            return [dates[-1]]
+
+        # Farthest-point sampling on indices; always include last day (and first if k>1).
+        selected = {n - 1, 0}
+        while len(selected) < k:
+            best_i = None
+            best_dist = -1
+            for i in range(n):
+                if i in selected:
+                    continue
+                dist = min(abs(i - s) for s in selected)
+                if dist > best_dist:
+                    best_dist = dist
+                    best_i = i
+            if best_i is None:
+                break
+            selected.add(best_i)
+
+        return [dates[i] for i in sorted(selected)]
+
     def _maybe_warn_market_state(self):
         if self.market_state_path and self._market_state is None:
             print(">>> [MarketState] market_state_path is set but not loaded yet; call fit/predict will load it.")
@@ -1402,7 +1559,8 @@ class QlibQuantMoE(Model):
             collate_fn=self._collate_feat_with_pos,
         )
 
-        f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
+        num_alphas = self._get_num_alphas()
+        f_ids = torch.arange(num_alphas, device=self.device)
         idx = tsds.get_index()
         pred = np.full((len(idx),), np.nan, dtype=float)
 
@@ -1415,6 +1573,8 @@ class QlibQuantMoE(Model):
                     bmacro = None
                 else:
                     raise RuntimeError(f"Unexpected predict batch format: {type(batch)}")
+
+                bx = self._coerce_bx_feature_dim(bx, expected_dim=num_alphas, context="predict")
                 bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
                 macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
                 # Note: date_ids removed - regime signal is computed from internal statistics
@@ -1459,7 +1619,8 @@ class QlibQuantMoE(Model):
             return {}
         dates = pd.to_datetime(idx.get_level_values("datetime")).normalize()
 
-        f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
+        num_alphas = self._get_num_alphas()
+        f_ids = torch.arange(num_alphas, device=self.device)
 
         # Router can use batch-level "layer summary" (market mean/std). Therefore we must NOT mix dates
         # inside a batch; otherwise day-level diagnostics become meaningless.
@@ -1488,25 +1649,21 @@ class QlibQuantMoE(Model):
 
             for start in range(0, n, self.batch_size):
                 chunk = row_idx[start : start + self.batch_size]
-                xs: List[torch.Tensor] = []
-                for i in chunk:
-                    raw_x, _ = self._extract_sample(tsds[int(i)])
-                    x_np = self._as_numpy(raw_x)
-                    xs.append(torch.from_numpy(np.asarray(x_np)).float())
-
-                if not xs:
+                bx_t = self._stack_feature_batch_from_row_indices(
+                    tsds,
+                    chunk,
+                    max_samples=None,
+                    num_alphas=num_alphas,
+                    context="_collect_daily_diag_series",
+                )
+                if bx_t is None:
                     continue
 
-                bx = torch.stack(xs, dim=0)
-                bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
                 bsz = int(bx_t.shape[0])
                 if bsz <= 0:
                     continue
 
-                macro_t = None
-                if self._market_state is not None:
-                    m = self._macro_from_dates([pd.Timestamp(dt)] * bsz)
-                    macro_t = torch.nan_to_num(m, 0.0).to(self.device).float()
+                macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), bsz)
 
                 with torch.no_grad():
                     out = self.net(bx_t, f_ids, macro_features=macro_t)
@@ -1577,39 +1734,49 @@ class QlibQuantMoE(Model):
         -----
         - time expert attention is computed on shape [B*N, H, T, T] (or compatible variants)
         - factor expert attention is computed on shape [B*T, H, N, N] (or compatible variants)
+        - if target_dates is None, dates are selected to be spread over the segment span (avoid consecutive days)
         """
         self._ensure_market_state()
         try:
-            tsds = dataset.prepare(segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
-        except Exception:
             tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
-        if not hasattr(tsds, "data"):
+        except Exception as e:
+            print(f">>> [Warn] _collect_attention_maps failed to prepare tsds for segment={segment} ({e})")
             return {}
 
         # 1) choose dates
         try:
-            idx_df = tsds.data.index.to_frame(index=False)
-            date_series = pd.to_datetime(idx_df["datetime"])
-        except Exception:
-            # fallback: cannot resolve date index
+            idx = tsds.get_index()
+        except Exception as e:
+            # best-effort fallback for older TSDataSampler implementations
+            try:
+                idx = getattr(getattr(tsds, "data", None), "index", None)
+            except Exception:
+                idx = None
+
+        if not isinstance(idx, pd.MultiIndex) or "datetime" not in (idx.names or []):
+            print(
+                f">>> [Warn] _collect_attention_maps failed to resolve 'datetime' index; "
+                f"idx_type={type(idx).__name__}, idx_names={getattr(idx, 'names', None)}"
+            )
             return {}
 
+        dates = pd.to_datetime(idx.get_level_values("datetime")).normalize()
+
         if target_dates:
-            chosen_dates = []
-            for d in target_dates:
-                d = pd.to_datetime(d)
-                chosen_dates.append(d.normalize())
+            chosen_dates = [pd.Timestamp(pd.to_datetime(d)).normalize() for d in target_dates]
+            # Keep backward-compatible behavior for explicit target_dates.
+            if max_dates is not None and max_dates > 0 and len(chosen_dates) > int(max_dates):
+                chosen_dates = chosen_dates[-int(max_dates) :]
         else:
-            chosen_dates = sorted(date_series.unique())
+            chosen_dates = [pd.Timestamp(d).normalize() for d in sorted(pd.unique(dates))]
+            if max_dates is not None and max_dates > 0 and len(chosen_dates) > int(max_dates):
+                chosen_dates = self._select_spaced_dates(chosen_dates, int(max_dates))
 
         if not chosen_dates:
             return {}
 
-        if max_dates is not None and max_dates > 0:
-            chosen_dates = chosen_dates[-max_dates:]
-
         # 2) prepare factor ids
-        num_alphas = int(self.model_config["num_alphas"])
+        num_alphas = self._get_num_alphas()
         f_ids = torch.arange(num_alphas, device=self.device)
 
         def _reduce_time_attn(time_attn: torch.Tensor, *, B: int, T: int, N: int) -> np.ndarray:
@@ -1679,35 +1846,38 @@ class QlibQuantMoE(Model):
         attn_maps: Dict[str, Dict[str, np.ndarray]] = {}
 
         for dt in chosen_dates:
-            mask = date_series == dt
-            row_idx = np.where(mask.values)[0]
+            row_idx = np.where(dates == dt)[0]
             if len(row_idx) == 0:
                 continue
 
-            xs: List[torch.Tensor] = []
-            for i in row_idx[: self.batch_size]:
-                raw_x, _ = self._extract_sample(tsds[int(i)])
-                x_np = self._as_numpy(raw_x)
-                xs.append(torch.from_numpy(np.asarray(x_np)).float())
-
-            if not xs:
+            bx_t = self._stack_feature_batch_from_row_indices(
+                tsds,
+                row_idx,
+                max_samples=self.batch_size,
+                num_alphas=num_alphas,
+                context="_collect_attention_maps",
+            )
+            if bx_t is None:
                 continue
 
-            bx = torch.stack(xs, dim=0).to(self.device)  # [B, T, N]
-            B = int(bx.shape[0])
-            T = int(bx.shape[1])
-            macro_t = None
-            if self._market_state is not None:
-                m = self._macro_from_dates([dt] * B)
-                macro_t = torch.nan_to_num(m, 0.0).to(self.device).float()
+            B = int(bx_t.shape[0])
+            T = int(bx_t.shape[1])
+            N = int(bx_t.shape[2])
+            macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), B)
 
-            layer_idx = attn_layer if attn_layer >= 0 else (len(self.net.layers) - 1)
+            n_layers = len(getattr(self.net, "layers", [])) if self.net is not None else 0
+            if n_layers <= 0:
+                continue
+            if attn_layer >= 0:
+                layer_idx = min(int(attn_layer), n_layers - 1)
+            else:
+                layer_idx = n_layers - 1
 
             with torch.no_grad():
                 # Note: date_ids removed - regime signal is computed from internal statistics
                 out = self.net(
-                    bx,
-                    f_ids,
+                    bx_t,
+                    f_ids[:N],
                     macro_features=macro_t,
                     return_attn=True,
                     attn_layers=[layer_idx],
@@ -1724,16 +1894,16 @@ class QlibQuantMoE(Model):
             maps_one: Dict[str, np.ndarray] = {}
             if "time" in layer_attn and layer_attn["time"] is not None:
                 try:
-                    maps_one["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=num_alphas)
-                except Exception:
-                    pass
+                    maps_one["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=N)
+                except Exception as e:
+                    print(f">>> [Warn] _collect_attention_maps (time) failed at {dt}: {e}")
             if "factor" in layer_attn and layer_attn["factor"] is not None:
                 try:
                     maps_one["factor"] = _reduce_factor_attn(
-                        layer_attn["factor"], B=B, T=T, N=num_alphas, use_last_time=factor_use_last_time
+                        layer_attn["factor"], B=B, T=T, N=N, use_last_time=factor_use_last_time
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f">>> [Warn] _collect_attention_maps (factor) failed at {dt}: {e}")
 
             if maps_one:
                 attn_maps[dt.strftime("%Y-%m-%d")] = maps_one

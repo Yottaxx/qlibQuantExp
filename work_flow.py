@@ -32,6 +32,8 @@ from qlib.workflow import R
 from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
 
 import matplotlib.pyplot as plt
+
+from module.utils.qlib_official_graphs import ensure_qlib_official_graphs
 # =============================================================================
 # 0. Qlib Init (与官方 yaml 对齐)
 # =============================================================================
@@ -45,15 +47,15 @@ data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 4,  # 时序窗口，对应模型 context_len
+        "step_len": 2,  # 时序窗口，对应模型 context_len
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
             "kwargs": {
-                "start_time": "2008-01-01",
-                "end_time": "2020-08-01",
-                "fit_start_time": "2008-01-01",
-                "fit_end_time": "2014-12-31",
+                "start_time": "2018-01-01",
+                "end_time": "2019-03-31",
+                "fit_start_time": "2018-01-01",
+                "fit_end_time": "2019-01-31",
                 "instruments": "csi300",
                 # 推理预处理（DK_I，用于特征预处理）：
                 # - 特征：去极值 + 填充
@@ -79,9 +81,9 @@ data_conf = {
             },
         },
         "segments": {
-            "train": ("2008-01-01", "2014-12-31"),
-            "valid": ("2015-01-01", "2016-12-31"),
-            "test": ("2017-01-01", "2020-08-01"),
+            "train": ("2018-01-01", "2019-01-31"),
+            "valid": ("2019-02-01", "2019-02-28"),
+            "test": ("2019-03-01", "2019-03-29"),
         },
     },
 }
@@ -94,8 +96,8 @@ model_conf = {
     "module_path": "module.model_adapter",
     "kwargs": {
         "model_config": {
-            "d_model": 128,
-            "n_layers": 2,
+            "d_model": 8,
+            "n_layers": 1,
             "main_loss": "mse",
             "use_feature_selection": False,
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
@@ -104,8 +106,8 @@ model_conf = {
         },
         "trainer_config": {
             "lr": 5e-4,
-            "n_epochs": 20,
-            "batch_size": 4,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "n_epochs": 1,
+            "batch_size": 2,  # 对应 FixedDailyBatchSampler 的日度 batch
             # Gradient accumulation across K (shuffled) daily microbatches (K dates per optimizer step)
             "grad_accum_steps": 5,
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
@@ -143,8 +145,8 @@ port_conf = {
         },
     },
     "backtest": {
-        "start_time": "2017-01-01",
-        "end_time": "2020-08-01",
+        "start_time": "2019-03-01",
+        "end_time": "2019-03-29",
         "account": 100000000,
         "benchmark": "SH000300",
         "exchange_kwargs": {
@@ -162,6 +164,85 @@ port_conf = {
 # =============================================================================
 # 4. 报告生成工具函数
 # =============================================================================
+def _to_ts(d) -> pd.Timestamp:
+    """
+    Parse a date-like value into normalized pandas.Timestamp.
+
+    Raises on invalid dates (e.g., '2019-02-31') to avoid silent misalignment.
+    """
+    return pd.to_datetime(str(d)).normalize()
+
+
+def _fmt_date(ts: pd.Timestamp) -> str:
+    return pd.Timestamp(ts).strftime("%Y-%m-%d")
+
+
+def _get_segment_range(conf: Dict[str, Any], segment: str) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
+    segs = (((conf or {}).get("kwargs") or {}).get("segments") or {})
+    seg = segs.get(segment, None)
+    if not (isinstance(seg, (tuple, list)) and len(seg) == 2):
+        return None
+    s, e = seg
+    s_ts = _to_ts(s)
+    e_ts = _to_ts(e)
+    if s_ts > e_ts:
+        raise ValueError(f"Invalid segment range: {segment} start={s} end={e}")
+    return s_ts, e_ts
+
+
+def _infer_pred_date_range(pred_df: pd.DataFrame) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
+    if not isinstance(pred_df, pd.DataFrame) or pred_df.empty:
+        return None
+    idx = pred_df.index
+    if isinstance(idx, pd.MultiIndex) and "datetime" in (idx.names or []):
+        dts = pd.to_datetime(idx.get_level_values("datetime")).normalize()
+    elif isinstance(idx, pd.DatetimeIndex):
+        dts = pd.to_datetime(idx).normalize()
+    else:
+        return None
+    if len(dts) <= 0:
+        return None
+    return pd.Timestamp(dts.min()).normalize(), pd.Timestamp(dts.max()).normalize()
+
+
+def _clip_backtest_window(
+    port_conf_in: Dict[str, Any],
+    *,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    reason: str,
+) -> Dict[str, Any]:
+    """
+    Clip `port_conf['backtest']` window into [start, end] (inclusive), in-place.
+    """
+    bt = (port_conf_in.get("backtest") or {})
+    bt_start_raw = bt.get("start_time", None)
+    bt_end_raw = bt.get("end_time", None)
+    bt_start = _to_ts(bt_start_raw) if bt_start_raw is not None else start
+    bt_end = _to_ts(bt_end_raw) if bt_end_raw is not None else end
+    if bt_start > bt_end:
+        raise ValueError(f"Invalid backtest range: start_time={bt_start_raw} end_time={bt_end_raw}")
+
+    new_start = max(bt_start, start)
+    new_end = min(bt_end, end)
+    if new_start > new_end:
+        raise RuntimeError(
+            f"Backtest window has no overlap after clipping ({reason}). "
+            f"backtest=[{_fmt_date(bt_start)}..{_fmt_date(bt_end)}], "
+            f"clip=[{_fmt_date(start)}..{_fmt_date(end)}]"
+        )
+
+    if new_start != bt_start or new_end != bt_end:
+        print(
+            f">>> [Config] Clip backtest window ({reason}): "
+            f"{_fmt_date(bt_start)}~{_fmt_date(bt_end)} -> {_fmt_date(new_start)}~{_fmt_date(new_end)}"
+        )
+        bt["start_time"] = _fmt_date(new_start)
+        bt["end_time"] = _fmt_date(new_end)
+        port_conf_in["backtest"] = bt
+    return port_conf_in
+
+
 def _as_float(x):
     try:
         return float(x)
@@ -330,32 +411,18 @@ def _load_run_conf(rec) -> Dict:
     Load run configuration saved during training. Fallback to current module globals.
     """
     try:
+        conf = rec.load_object("run_conf_resolved")
+        if isinstance(conf, dict) and conf:
+            return conf
+    except Exception:
+        pass
+    try:
         conf = rec.load_object("run_conf")
         if isinstance(conf, dict) and conf:
             return conf
     except Exception:
         pass
     return {"data_conf": data_conf, "model_conf": model_conf, "port_conf": port_conf}
-
-
-def _load_label_df_from_recorder(rec) -> Optional[pd.DataFrame]:
-    """
-    Strictly load the raw label generated by Qlib official SignalRecord (DK_R) from recorder artifact `label.pkl`.
-    """
-    try:
-        label_df = rec.load_object("label.pkl")
-    except Exception:
-        return None
-
-    if isinstance(label_df, pd.Series):
-        label_df = label_df.to_frame("label")
-
-    if not isinstance(label_df, pd.DataFrame) or label_df.shape[0] == 0 or label_df.shape[1] < 1:
-        return None
-
-    df = label_df.iloc[:, [0]].copy()
-    df.columns = ["label"]
-    return df
 
 
 def print_metrics_summary(rec) -> None:
@@ -451,29 +518,41 @@ def print_metrics_summary(rec) -> None:
     except Exception as e:
         print(f"  [WARN] Failed to load port_analysis: {e}")
 
+    # === Indicator Analysis Metrics (FFR / PA / POS) ===
+    try:
+        ind_ana = rec.load_object("portfolio_analysis/indicator_analysis_1day.pkl")
+        print("\n[Indicator Analysis Metrics]")
+        if isinstance(ind_ana, pd.DataFrame) and not ind_ana.empty:
+            print(ind_ana.to_string())
+        else:
+            print(f"  {ind_ana}")
+    except Exception as e:
+        print(f"  [WARN] Failed to load indicator_analysis: {e}")
+
     # === Generated Graphs ===
     print("\n[Generated Graphs]")
+    graphs = {}
+    errs = {}
     try:
-        graphs = rec.load_object("qlib_official_graphs")
-        local_dir = rec.get_local_dir()
-        if graphs:
-            for gname, fns in graphs.items():
-                for fn in fns:
-                    print(f"  - {gname}: {local_dir}/{fn}")
-        else:
-            print("  (no graphs found)")
+        graphs, errs = ensure_qlib_official_graphs(rec, dataset=None, segment="test", prefix="qlib", strict=False)
     except Exception:
+        graphs, errs = {}, {}
+    try:
+        local_dir = rec.get_local_dir()
+    except Exception:
+        local_dir = ""
+    if graphs:
+        for gname, fns in graphs.items():
+            for fn in fns:
+                print(f"  - {gname}: {local_dir}/{fn}")
+    else:
         print("  (no graphs found)")
 
     # === Graph generation errors (best-effort mode) ===
-    try:
-        errs = rec.load_object("qlib_official_graphs_errors") or {}
-        if isinstance(errs, dict) and errs:
-            print("\n[Graph Generation Errors]")
-            for k, v in list(errs.items())[:6]:
-                print(f"  - {k}: {v}")
-    except Exception:
-        pass
+    if isinstance(errs, dict) and errs:
+        print("\n[Graph Generation Errors]")
+        for k, v in list(errs.items())[:6]:
+            print(f"  - {k}: {v}")
 
     # === List all saved objects ===
     print("\n[Recorder Objects]")
@@ -504,396 +583,6 @@ def _save_new_figures(
         fig.savefig(local_dir / fn, dpi=dpi, bbox_inches="tight")
         plt.close(fig)
         out.append(fn)
-    return out
-
-
-def _coerce_graph_output_to_figures(graph_output) -> List[object]:
-    """
-    Normalize qlib.contrib.report graph outputs into a list of figure-like objects.
-
-    Qlib report graphs may return:
-    - plotly / matplotlib figure objects
-    - iterables / generators of figures
-    - dicts mapping names -> figures
-    - graph wrapper objects that expose `.figure` / `.fig`
-    """
-
-    def _is_figure_like(x) -> bool:
-        return hasattr(x, "write_html") or hasattr(x, "savefig")
-
-    def _unwrap(x):
-        if x is None:
-            return None
-        if _is_figure_like(x):
-            return x
-        for attr in ("figure", "fig"):
-            try:
-                v = getattr(x, attr)
-            except Exception:
-                v = None
-            if v is not None and _is_figure_like(v):
-                return v
-        return None
-
-    def _collect(x) -> List[object]:
-        if x is None:
-            return []
-
-        fig = _unwrap(x)
-        if fig is not None:
-            return [fig]
-
-        if isinstance(x, dict):
-            out: List[object] = []
-            for v in x.values():
-                out.extend(_collect(v))
-            return out
-
-        if isinstance(x, (list, tuple, set)):
-            out: List[object] = []
-            for v in x:
-                out.extend(_collect(v))
-            return out
-
-        # Avoid iterating over strings/bytes (iterates characters)
-        if isinstance(x, (str, bytes)):
-            return []
-
-        # Generator / iterable of unknown objects
-        try:
-            it = iter(x)
-        except TypeError:
-            return []
-
-        out: List[object] = []
-        for v in it:
-            out.extend(_collect(v))
-        return out
-
-    return _collect(graph_output)
-
-
-def _save_graph_figures(
-    *,
-    local_dir: Path,
-    prefix: str,
-    figures: List[object],
-    dpi: int = 150,
-) -> List[str]:
-    """
-    Save a list of figure objects into local_dir.
-
-    Priority:
-    - Plotly Figure: try `.png` via `write_image` (needs kaleido); fall back to `.html` (`include_plotlyjs="directory"`).
-    - Matplotlib Figure: save `.png`.
-    """
-    figs = list(figures) if figures else []
-    out: List[str] = []
-    for i, fig in enumerate(figs):
-        base = prefix if len(figs) == 1 else f"{prefix}_{i+1}"
-
-        # Matplotlib
-        if hasattr(fig, "savefig"):
-            try:
-                fn = f"{base}.png"
-                fig.savefig(local_dir / fn, dpi=dpi, bbox_inches="tight")
-                out.append(fn)
-                continue
-            except Exception:
-                pass
-
-        # Plotly
-        if hasattr(fig, "write_html"):
-            try:
-                fn = f"{base}.png"
-                fig.write_image(str(local_dir / fn))
-                out.append(fn)
-                continue
-            except Exception:
-                fn = f"{base}.html"
-                fig.write_html(str(local_dir / fn), include_plotlyjs="directory", full_html=True)
-                out.append(fn)
-                continue
-
-    return out
-
-
-def export_qlib_official_graphs(
-    rec,
-    *,
-    dataset: Optional[TSDatasetH] = None,
-    segment: str = "test",
-    prefix: str = "qlib",
-    strict: bool = True,
-) -> Dict[str, List[str]]:
-    """
-    Generate and save Qlib official analysis graphs into recorder local_dir.
-
-    Graphs (if inputs exist):
-    - analysis_position.report_graph
-    - analysis_position.risk_analysis_graph
-    - analysis_position.score_ic_graph
-    - analysis_model.model_performance_graph
-    """
-    try:
-        import qlib.contrib.report as qcr
-        # 显式导入子模块，否则 getattr(qcr, 'analysis_position') 会失败
-        # Python namespace package 不会自动将子模块暴露为父模块属性
-        import qlib.contrib.report.analysis_position  # noqa: F401
-        import qlib.contrib.report.analysis_model  # noqa: F401
-    except Exception as e:
-        if strict:
-            raise RuntimeError(f"Failed to import qlib.contrib.report: {e}") from e
-        return {}
-    import inspect
-    import warnings
-
-    local_dir: Path = Path(rec.get_local_dir())
-    try:
-        local_dir.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-    out: Dict[str, List[str]] = {}
-    errors: Dict[str, str] = {}
-
-    # Inputs from recorder (created by PortAnaRecord / SignalRecord)
-    report_normal_df = None
-    analysis_df = None
-    try:
-        report_normal_df = rec.load_object("portfolio_analysis/report_normal_1day.pkl")
-    except Exception:
-        report_normal_df = None
-    try:
-        analysis_df = rec.load_object("portfolio_analysis/port_analysis_1day.pkl")
-    except Exception:
-        analysis_df = None
-
-    pred_df = None
-    try:
-        pred_df = rec.load_object("pred.pkl")
-    except Exception:
-        pred_df = None
-
-    # Strict: only use raw label generated by Qlib official SignalRecord (DK_R) => label.pkl
-    label_df = _load_label_df_from_recorder(rec)
-
-    pred_label = None
-    if isinstance(label_df, pd.DataFrame) and isinstance(pred_df, pd.DataFrame):
-        pred_label = pd.concat([label_df, pred_df], axis=1, sort=True).reindex(label_df.index)
-
-
-    positions = None
-    try:
-        positions = rec.load_object("portfolio_analysis/positions_normal_1day.pkl")
-    except Exception:
-        positions = None
-
-    # available 字典必须包含 qlib graph 函数参数名的所有变体
-    # 根据 qlib 源码分析，各函数参数名如下：
-    #   report_graph:            report_df
-    #   score_ic_graph:          pred_label
-    #   cumulative_return_graph: position, report_normal, label_data
-    #   risk_analysis_graph:     analysis_df, report_normal_df (opt)
-    #   rank_label_graph:        position, label_data
-    #   model_performance_graph: pred_label
-    available = {
-        # 原始 key
-        "report_normal_df": report_normal_df,
-        "analysis_df": analysis_df,
-        "pred_label": pred_label,
-        "positions": positions,
-        # === 别名映射 (qlib 函数实际参数名) ===
-        "report_df": report_normal_df,      # report_graph 需要
-        "position": positions,               # cumulative_return_graph, rank_label_graph 需要
-        "report_normal": report_normal_df,   # cumulative_return_graph 需要
-        "label_data": label_df,              # cumulative_return_graph, rank_label_graph 需要
-    }
-
-    def _describe_df(df: Any, name: str) -> str:
-        if df is None:
-            return f"{name}=None"
-        if not isinstance(df, pd.DataFrame):
-            return f"{name}={type(df).__name__}"
-        msg = f"{name}.shape={df.shape}"
-        try:
-            msg += f", nan_frac={float(df.isna().mean().mean()):.3f}"
-        except Exception:
-            pass
-        try:
-            if isinstance(df.index, pd.MultiIndex) and "datetime" in df.index.names:
-                dts = pd.to_datetime(df.index.get_level_values("datetime"))
-                if len(dts) > 0:
-                    msg += f", dt=[{dts.min().date()}..{dts.max().date()}]"
-        except Exception:
-            pass
-        return msg
-
-    def _describe_positions(pos: Any) -> str:
-        if pos is None:
-            return "positions=None"
-        if not isinstance(pos, dict):
-            return f"positions={type(pos).__name__}"
-        n_days = len(pos)
-        if n_days == 0:
-            return "positions=dict(days=0)"
-
-        holding_counts: List[int] = []
-        nonempty_days = 0
-        for _, v in pos.items():
-            try:
-                if hasattr(v, "position"):
-                    d = dict(v.position)
-                elif isinstance(v, dict):
-                    d = dict(v)
-                else:
-                    continue
-                d.pop("cash", None)
-                d.pop("now_account_value", None)
-                cnt = len(d)
-                holding_counts.append(cnt)
-                if cnt > 0:
-                    nonempty_days += 1
-            except Exception:
-                continue
-        try:
-            dt_min = min(pos.keys())
-            dt_max = max(pos.keys())
-        except Exception:
-            dt_min, dt_max = None, None
-
-        if holding_counts:
-            avg = float(np.mean(holding_counts))
-            mn = int(np.min(holding_counts))
-            mx = int(np.max(holding_counts))
-        else:
-            avg, mn, mx = 0.0, 0, 0
-        return (
-            f"positions=dict(days={n_days}, nonempty_days={nonempty_days}, "
-            f"holdings(avg/min/max)={avg:.1f}/{mn}/{mx}, dt=[{dt_min}..{dt_max}])"
-        )
-
-    def _date_overlap_hint() -> str:
-        try:
-            if not isinstance(positions, dict) or not isinstance(label_df, pd.DataFrame):
-                return ""
-            if label_df.empty or len(positions) == 0:
-                return ""
-            pos_dates = pd.to_datetime(list(positions.keys())).normalize()
-            lbl_dates = pd.to_datetime(label_df.index.get_level_values("datetime")).normalize()
-            overlap = len(set(pos_dates) & set(lbl_dates))
-            return f"date_overlap(positions,label_df)={overlap}"
-        except Exception:
-            return ""
-
-    def _auto_call(fn):
-        sig = inspect.signature(fn)
-        kwargs = {}
-        for name, p in sig.parameters.items():
-            # 跳过 **kwargs 类型参数
-            if p.kind == inspect.Parameter.VAR_KEYWORD:
-                continue
-            if name == "show_notebook":
-                kwargs[name] = False
-                continue
-            if name in available and available[name] is not None:
-                kwargs[name] = available[name]
-            elif p.default is inspect._empty and p.kind in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            ):
-                raise TypeError(f"Missing required arg: {name}")
-        return fn(**kwargs)
-
-    def _resolve_graph_fn(graph_name: str):
-        # e.g. "analysis_position.report_graph"
-        obj = qcr
-        for part in graph_name.split("."):
-            obj = getattr(obj, part)
-        return obj
-
-    graph_names = []
-    try:
-        graph_names = list(getattr(qcr, "GRAPH_NAME_LIST"))
-    except Exception:
-        graph_names = []
-
-    # Fall back to documented list if GRAPH_NAME_LIST is missing in this qlib version.
-    if not graph_names:
-        graph_names = [
-            "analysis_position.report_graph",
-            "analysis_position.score_ic_graph",
-            "analysis_position.cumulative_return_graph",
-            "analysis_position.risk_analysis_graph",
-            "analysis_position.rank_label_graph",
-            "analysis_model.model_performance_graph",
-        ]
-
-    for gname in graph_names:
-        fn = _resolve_graph_fn(gname)
-        file_prefix = f"{prefix}_{gname.replace('.', '_')}"
-        try:
-            graph_output = _auto_call(fn)
-        except Exception as e:
-            msg = f"Failed to run Qlib graph '{gname}': {e}"
-            if strict:
-                raise RuntimeError(msg) from e
-            errors[gname] = msg
-            warnings.warn(msg)
-            continue
-
-        figures = _coerce_graph_output_to_figures(graph_output)
-        if not figures:
-            hints = [
-                f"Qlib graph '{gname}' returned no figure objects.",
-                _describe_positions(positions),
-                _describe_df(report_normal_df, "report_normal_df"),
-                _describe_df(analysis_df, "analysis_df"),
-                _describe_df(label_df, "label_df"),
-                _describe_df(pred_df, "pred_df"),
-            ]
-            ov = _date_overlap_hint()
-            if ov:
-                hints.append(ov)
-            msg = "\n".join([h for h in hints if h])
-            if strict:
-                raise RuntimeError(msg)
-            errors[gname] = msg
-            warnings.warn(msg)
-            continue
-
-        try:
-            fns = _save_graph_figures(local_dir=local_dir, prefix=file_prefix, figures=figures)
-        except Exception as e:
-            msg = f"Failed to save figures for Qlib graph '{gname}': {e}"
-            if strict:
-                raise RuntimeError(msg) from e
-            errors[gname] = msg
-            warnings.warn(msg)
-            continue
-
-        if not fns:
-            msg = (
-                f"Qlib graph '{gname}' produced figure objects but none could be saved. "
-                f"figure_types={[type(f).__name__ for f in figures][:5]}"
-            )
-            if strict:
-                raise RuntimeError(msg)
-            errors[gname] = msg
-            warnings.warn(msg)
-            continue
-
-        out[gname] = fns
-
-    if out:
-        try:
-            rec.save_objects(qlib_official_graphs=out)
-        except Exception:
-            pass
-    if errors:
-        try:
-            rec.save_objects(qlib_official_graphs_errors=errors)
-        except Exception:
-            pass
     return out
 
 
@@ -1447,19 +1136,28 @@ def generate_paper_report(
     df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec, main_loss=main_loss)
 
     # ---------- 4.5 Qlib 官方分析图（尽力生成：缺输入/空数据时跳过并记录原因） ----------
-    qlib_graphs = export_qlib_official_graphs(rec, dataset=dataset, segment=segment, prefix="qlib", strict=False)
-    qlib_graphs_errors = {}
     try:
-        qlib_graphs_errors = rec.load_object("qlib_official_graphs_errors") or {}
+        qlib_graphs, qlib_graphs_errors = ensure_qlib_official_graphs(
+            rec,
+            dataset=dataset,
+            segment=segment,
+            prefix="qlib",
+            strict=False,
+        )
     except Exception:
-        qlib_graphs_errors = {}
+        qlib_graphs, qlib_graphs_errors = {}, {}
 
     # ---------- 5. 汇总成表格（方便 VS baseline 比较） ----------
     df_res = pd.DataFrame(
         [
             {
                 "Model": model_name,
-                "Dataset": "Alpha158 / CSI300 / 2008-2020 (official split)",
+                "Dataset": (
+                    f"Alpha158 / "
+                    f"{(((run_conf or {}).get('data_conf') or {}).get('kwargs') or {}).get('handler', {}).get('kwargs', {}).get('instruments', 'N/A')} / "
+                    f"{(((run_conf or {}).get('data_conf') or {}).get('kwargs') or {}).get('handler', {}).get('kwargs', {}).get('start_time', 'N/A')}"
+                    f"~{(((run_conf or {}).get('data_conf') or {}).get('kwargs') or {}).get('handler', {}).get('kwargs', {}).get('end_time', 'N/A')}"
+                ),
                 "IC (mean)": f"{ic_mean:.4f}",
                 "ICIR": f"{icir:.2f}",
                 "IC HAC t-stat": f"{ic_t_hac:.1f}" if pd.notna(ic_t_hac) else "nan",
@@ -1509,7 +1207,16 @@ def generate_paper_report(
         lines.append(f"![Training dynamics ({main_loss_label} vs RankIC)]({train_fig_name})\n")
 
     # 3.2 组合回测
-    lines.append("### 3.2 Portfolio Backtest (2017-2020, CSI300 universe)\n")
+    bt = (((run_conf or {}).get("port_conf") or {}).get("backtest") or {})
+    bt_start = bt.get("start_time", "N/A")
+    bt_end = bt.get("end_time", "N/A")
+    inst = (
+        (((run_conf or {}).get("data_conf") or {}).get("kwargs") or {})
+        .get("handler", {})
+        .get("kwargs", {})
+        .get("instruments", "N/A")
+    )
+    lines.append(f"### 3.2 Portfolio Backtest ({bt_start}~{bt_end}, {inst} universe)\n")
     bt_txt = f"""
     - 年化收益 (excess return with cost): {ann_ret:.2%} (如果为 nan 请检查 portfolio_analysis/port_analysis_1day.pkl)
     - 信息比 (Information Ratio): {info_ratio:.2f}
@@ -1680,6 +1387,18 @@ if __name__ == "__main__":
     # 1) 实例化数据和模型
     dataset = init_instance_by_config(data_conf)
     model = init_instance_by_config(model_conf)
+    port_conf_run = copy.deepcopy(port_conf)
+
+    # Align backtest window to test segment to avoid silent no-trade / NaN indicators
+    seg_rng = _get_segment_range(data_conf, "test")
+    if seg_rng is not None:
+        seg_start, seg_end = seg_rng
+        port_conf_run = _clip_backtest_window(
+            port_conf_run,
+            start=seg_start,
+            end=seg_end,
+            reason="dataset.test segment",
+        )
 
     # 2) 启动实验
     with R.start(experiment_name="Official_Alignment_RST_MoE"):
@@ -1690,7 +1409,7 @@ if __name__ == "__main__":
             run_conf={
                 "data_conf": copy.deepcopy(data_conf),
                 "model_conf": copy.deepcopy(model_conf),
-                "port_conf": copy.deepcopy(port_conf),
+                "port_conf": copy.deepcopy(port_conf_run),
             }
         )
         if hasattr(model, "log_config_summary"):
@@ -1724,13 +1443,39 @@ if __name__ == "__main__":
         SignalRecord(model, dataset, rec).generate()
         SigAnaRecord(rec).generate()
 
+        # Clip backtest window to *actual* prediction availability (pred.pkl datetime range)
+        try:
+            pred_df = rec.load_object("pred.pkl")
+            pred_rng = _infer_pred_date_range(pred_df)
+            if pred_rng is not None:
+                p_start, p_end = pred_rng
+                port_conf_run = _clip_backtest_window(
+                    port_conf_run,
+                    start=p_start,
+                    end=p_end,
+                    reason="pred.pkl datetime range",
+                )
+                R.save_objects(
+                    run_conf_resolved={
+                        "data_conf": copy.deepcopy(data_conf),
+                        "model_conf": copy.deepcopy(model_conf),
+                        "port_conf": copy.deepcopy(port_conf_run),
+                    }
+                )
+        except Exception as e:
+            print(f">>> [WARN] Failed to align backtest window to pred.pkl: {e}")
+
         # 2.5 组合回测
         print(">>> [Phase 3] Backtesting...")
-        PortAnaRecord(rec, port_conf, "day").generate()
+        PortAnaRecord(rec, port_conf_run, "day").generate()
 
-        # 2.6 统一输出所有指标（包含 Graph 路径）
+        # 2.6 Qlib 官方分析图（使 print_metrics_summary 可见）
+        print(">>> [Phase 3.1] Export Qlib Official Graphs...")
+        ensure_qlib_official_graphs(rec, dataset=dataset, segment="test", prefix="qlib", strict=False)
+
+        # 2.7 统一输出所有指标（包含 Graph 路径）
         print_metrics_summary(rec)
 
-        # 2.7 生成论文级报告
+        # 2.8 生成论文级报告
         print(">>> [Phase 4] Generate Paper-level Report...")
         generate_paper_report(rec, model_name="RST-MoE", dataset=dataset, segment="test")
