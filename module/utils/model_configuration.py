@@ -23,21 +23,21 @@ class QuantMoEConfig(PretrainedConfig):
             num_alphas: int = 64,
             context_len: int = 32,
             # regime-adaptive embeddings (lightweight, recommended)
-            use_regime_time_embedding: bool = False,
+            use_regime_time_embedding: bool = True,
             time_tau_min: float = 0.5,
             time_tau_max: float = 50.0,
             time_tau_init: float = 5.0,
             time_emb_init_std: float = 0.02,
             time_decay_normalize: bool = True,
-            use_regime_factor_gate: bool = False,
+            use_regime_factor_gate: bool = True,
             factor_gate_scale: float = 0.5,
             factor_gate_shift_scale: float = 0.0,
             # router (MoE gate)
-            router_noise: float = 0.05,       # logit noise std (training only)
+            router_noise: float = 0.01,       # logit noise std (training only)
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
             router_use_layer_summary: bool = False,  # add per-layer market summary token to router input
-            use_alibi: bool = True,
+            use_alibi: bool = False,
             use_feature_selection: bool = False,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
             selection_temperature: float = 0.1,
@@ -139,7 +139,9 @@ class QuantMoEConfig(PretrainedConfig):
 @dataclass
 class QuantModelOutput(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
-    logits: torch.FloatTensor = None
+    # Model prediction logits (kept for HF-style compatibility).
+    # For RST-MoE, this is the per-sample stock score prediction: [B]
+    logits: Optional[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
 
     # 每层 router gate 权重: List[num_layers] of [B, 2]
@@ -156,6 +158,9 @@ class QuantModelOutput(ModelOutput):
     # 新增: 注意力图 (只在需要时填充)
     # 约定: { "layer_0": {"time": Tensor, "factor": Tensor}, ... }
     attn_maps: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+
+    # Attention pooling weights over factors (for interpretability): [B, N]
+    factor_pool_weights: Optional[torch.FloatTensor] = None
 
     # scores 用于predict
     scores: Optional[torch.FloatTensor] = None

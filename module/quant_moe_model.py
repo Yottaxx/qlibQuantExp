@@ -297,7 +297,7 @@ class QuantMoEModel(PreTrainedModel):
         stock_score = self.head(h_pooled).squeeze(-1)  # [B]
         
         # factor_attention_weights 用于返回（可用于可解释性分析）
-        factor_logits = factor_attention_weights  # [B, N]
+        factor_pool_weights = factor_attention_weights  # [B, N]
 
         # 7) Loss & metrics
         total_loss: torch.Tensor | None = None
@@ -411,12 +411,13 @@ class QuantMoEModel(PreTrainedModel):
 
         return QuantModelOutput(
             loss=total_loss,
-            logits=factor_logits,
+            logits=stock_score,
             gate_weights=gates_list,
             metrics=metrics,
             avg_gate_entropy=avg_entropy,
             avg_time_ratio=avg_time_ratio,
             selected_mask=mask,
             attn_maps=attn_maps if return_attn else None,
+            factor_pool_weights=factor_pool_weights,
             scores=stock_score,
         )

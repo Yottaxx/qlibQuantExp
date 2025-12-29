@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from contextlib import nullcontext
 
 # ==========================================
 # 新增模块: 市场状态编码器 (Regime Encoder)
@@ -134,38 +135,47 @@ class RegimeContextEncoder(nn.Module):
         if x.ndim != 3:
             raise ValueError(f"Expected x with shape [B, T, N], got {tuple(x.shape)}")
 
-        if not self.internal_use_batch_stats:
-            return self._compute_internal_stats_per_sample(x)
+        # Internal regime stats are small but numerically sensitive (corr/eig). Force FP32 math even under AMP.
+        try:
+            autocast_off = torch.autocast(device_type=x.device.type, enabled=False)
+        except Exception:
+            autocast_off = torch.cuda.amp.autocast(enabled=False) if x.device.type == "cuda" else nullcontext()
 
-        B, T, N = x.shape
-        if T < 1:
-            raise ValueError("T must be >= 1")
+        with autocast_off:
+            x = x.float()
 
-        lag = 1 if self.internal_mode == "short" else max(self.internal_lag, 1)
-        lag = min(lag, max(T - 1, 1))
-        t0 = -1 - lag
+            if not self.internal_use_batch_stats:
+                return self._compute_internal_stats_per_sample(x)
 
-        X_end = x[:, -1, :]  # [B, N]
-        X_start = x[:, t0, :] if T > 1 else X_end
+            B, T, N = x.shape
+            if T < 1:
+                raise ValueError("T must be >= 1")
 
-        crowd_end, pc1_end = self._corr_crowding_stats(X_end)
-        crowd_start, _ = self._corr_crowding_stats(X_start)
+            lag = 1 if self.internal_mode == "short" else max(self.internal_lag, 1)
+            lag = min(lag, max(T - 1, 1))
+            t0 = -1 - lag
 
-        tail = (X_end.abs() > self.internal_tail_threshold).float().mean()
+            X_end = x[:, -1, :]  # [B, N]
+            X_start = x[:, t0, :] if T > 1 else X_end
 
-        # [1, 4] -> [B, 4] (same market state for a daily cross-section batch)
-        stats = torch.stack(
-            [
-                crowd_end.clamp(0.0, 1.0),
-                pc1_end.clamp(0.0, 1.0),
-                (crowd_end - crowd_start).abs().clamp(0.0, 1.0),
-                tail.clamp(0.0, 1.0),
-            ],
-            dim=-1,
-        ).unsqueeze(0)
-        stats = stats.expand(B, -1)
-        stats = torch.where(torch.isfinite(stats), stats, torch.zeros_like(stats))
-        return stats
+            crowd_end, pc1_end = self._corr_crowding_stats(X_end)
+            crowd_start, _ = self._corr_crowding_stats(X_start)
+
+            tail = (X_end.abs() > self.internal_tail_threshold).float().mean()
+
+            # [1, 4] -> [B, 4] (same market state for a daily cross-section batch)
+            stats = torch.stack(
+                [
+                    crowd_end.clamp(0.0, 1.0),
+                    pc1_end.clamp(0.0, 1.0),
+                    (crowd_end - crowd_start).abs().clamp(0.0, 1.0),
+                    tail.clamp(0.0, 1.0),
+                ],
+                dim=-1,
+            ).unsqueeze(0)
+            stats = stats.expand(B, -1)
+            stats = torch.where(torch.isfinite(stats), stats, torch.zeros_like(stats))
+            return stats
 
     def forward(self, x, macro_features=None):
         if self.use_external:

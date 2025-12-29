@@ -105,14 +105,19 @@ model_conf = {
             "n_layers": 2,
             "main_loss": "ic",
             "use_feature_selection": False,
-            "use_alibi": True,  # recommended default (time embedding already provides position signal)
-            "regime_macro_dropout": 0.05,
+            "use_alibi": False,  # recommended default (time embedding already provides position signal)
+            "regime_macro_dropout": 0.1,
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
             "lr": 5e-5,
             "n_epochs": 2,
             "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
+            # Mixed precision:
+            # - "amp_fp16": recommended on RTX 4070S (fastest, needs GradScaler)
+            # - "amp_bf16": more stable, usually no GradScaler (requires BF16 support)
+            # - "fp32": baseline
+            "precision": "fp32",
             # Gradient accumulation across K (shuffled) daily microbatches (K dates per optimizer step)
             "grad_accum_steps": 1,
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
@@ -150,7 +155,7 @@ port_conf = {
         "kwargs": {
             "signal": "<PRED>",  # 占位符，SignalRecord 会自动替换
             "topk": 30,
-            "n_drop": 30,
+            "n_drop": 5,
         },
     },
     "backtest": {
@@ -751,6 +756,7 @@ def generate_paper_report(
     attn_maps = None
     attn_pngs = None
     factor_topk = None
+    factor_pool_topk = None
     diag_series: Dict[str, pd.Series] = {}
     diag_pngs: Dict[str, str] = {}
     tau_vs_time_ratio_png = None
@@ -774,6 +780,11 @@ def generate_paper_report(
         factor_topk = rec.load_object("st_disentangle_factor_topk")
     except Exception:
         factor_topk = None
+
+    try:
+        factor_pool_topk = rec.load_object("st_disentangle_factor_pool_topk")
+    except Exception:
+        factor_pool_topk = None
 
     try:
         tau_vs_time_ratio_png = rec.load_object("st_disentangle_tau_vs_time_ratio_png")
@@ -1294,6 +1305,7 @@ def generate_paper_report(
                 cand = {
                     "time": f"st_disentangle_attn_time_{dt_str}.png",
                     "factor": f"st_disentangle_attn_factor_{dt_str}.png",
+                    "pool": f"st_disentangle_attn_pool_factor_{dt_str}.png",
                 }
                 # only keep those that actually exist
                 for k, fn in list(cand.items()):
@@ -1322,6 +1334,45 @@ def generate_paper_report(
                 factor_topk_lines.append(f"- {dt_str}: top{len(ids_int)} ids={ids_int}")
     if not factor_topk_lines:
         factor_topk_lines = ["- (no factor-topk found; check export_visuals call)"]
+
+    factor_pool_topk_lines: List[str] = []
+    if isinstance(factor_pool_topk, dict) and len(factor_pool_topk) > 0:
+        for dt_str in shown_dates:
+            entry = factor_pool_topk.get(dt_str, None)
+            if not isinstance(entry, dict):
+                continue
+            ids = entry.get("ids", None)
+            if ids is None:
+                continue
+            try:
+                ids_int = [int(i) for i in list(ids)]
+            except Exception:
+                continue
+            if ids_int:
+                factor_pool_topk_lines.append(f"- {dt_str}: top{len(ids_int)} ids={ids_int}")
+    if not factor_pool_topk_lines:
+        # Fallback: compute from attn_maps["factor_pool"] when old runs didn't save factor_pool_topk.
+        try:
+            if isinstance(attn_maps, dict) and len(attn_maps) > 0:
+                for dt_str in shown_dates:
+                    v = attn_maps.get(dt_str, None)
+                    if not isinstance(v, dict):
+                        continue
+                    w = v.get("factor_pool", None)
+                    if w is None:
+                        continue
+                    w = np.asarray(w, dtype=float).reshape(-1)
+                    if w.ndim != 1 or w.size <= 0:
+                        continue
+                    k = min(10, int(w.size))
+                    idx = np.argsort(w)[::-1][:k]
+                    ids_int = [int(i) for i in idx]
+                    if ids_int:
+                        factor_pool_topk_lines.append(f"- {dt_str}: top{len(ids_int)} ids={ids_int}")
+        except Exception:
+            pass
+    if not factor_pool_topk_lines:
+        factor_pool_topk_lines = ["- (no factor-pooling topk found; check export_visuals call)"]
 
     # ---------- 4. 训练过程诊断（main_loss vs RankIC） ----------
     df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec, main_loss=main_loss)
@@ -1550,6 +1601,18 @@ def generate_paper_report(
     - 注意：因子维度没有天然顺序，因此不像时间维那样用“邻近对角带”解释；我们更关心“是否稀疏/是否可解释地集中在少数因子交互上”。
     """
     lines.append(textwrap.dedent(attn_interp_f).strip() + "\n")
+
+    lines.append("### 4.4 Factor Pooling Attention (Heatmap + Top-K)\n")
+    lines.append(
+        "来自 attention pooling 的 `factor_attention_weights`（模型输出 `factor_pool_weights`），按日对 batch 做均值后导出 heatmap 与 Top-K：\n"
+    )
+    lines.append("#### 4.4.1 Factor Pooling Top-K (ids)\n")
+    lines.extend(factor_pool_topk_lines)
+    lines.append("")
+    for dt_str in shown_dates:
+        fn = attn_media.get(dt_str, {}).get("pool", None)
+        if fn:
+            lines.append(f"![Factor pooling attention ({dt_str})]({fn})\n")
 
     lines.append("## 5. Summary\n")
     lines.append(

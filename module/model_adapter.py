@@ -5,6 +5,7 @@ import copy
 import random
 from collections import defaultdict
 import math
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Text, Tuple, Union
 
@@ -118,6 +119,68 @@ class QlibQuantMoE(Model):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.net: Optional[QuantMoEModel] = None
 
+        # Mixed precision / AMP
+        self.precision = str(self.trainer_config.get("precision", "fp32") or "fp32").strip().lower()
+        self.amp_enabled: bool = False
+        self.amp_dtype: Optional[torch.dtype] = None
+        self.scaler: Optional[torch.cuda.amp.GradScaler] = None
+
+        prec_alias = {
+            "32": "fp32",
+            "float32": "fp32",
+            "fp32": "fp32",
+            "amp": "amp_fp16",
+            "mixed": "amp_fp16",
+            "fp16": "amp_fp16",
+            "float16": "amp_fp16",
+            "amp_fp16": "amp_fp16",
+            "mixed_fp16": "amp_fp16",
+            "bf16": "amp_bf16",
+            "bfloat16": "amp_bf16",
+            "amp_bf16": "amp_bf16",
+            "mixed_bf16": "amp_bf16",
+        }
+        self.precision = prec_alias.get(self.precision, self.precision)
+
+        if self.precision == "fp32":
+            pass
+        elif self.precision == "amp_fp16":
+            if self.device.type == "cuda":
+                self.amp_enabled = True
+                self.amp_dtype = torch.float16
+                self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+            else:
+                print(">>> [AMP] Requested amp_fp16 but CUDA is unavailable; falling back to fp32.")
+                self.precision = "fp32"
+        elif self.precision == "amp_bf16":
+            if self.device.type == "cuda":
+                is_supported = True
+                try:
+                    is_supported = bool(torch.cuda.is_bf16_supported())
+                except Exception:
+                    is_supported = False
+                if is_supported:
+                    self.amp_enabled = True
+                    self.amp_dtype = torch.bfloat16
+                    self.scaler = None  # BF16 typically does not need GradScaler
+                else:
+                    print(">>> [AMP] Requested amp_bf16 but BF16 is not supported on this CUDA device; falling back to amp_fp16.")
+                    self.precision = "amp_fp16"
+                    self.amp_enabled = True
+                    self.amp_dtype = torch.float16
+                    self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+            elif self.device.type == "cpu":
+                # CPU autocast supports bf16 on many ops (PyTorch >= 1.10).
+                self.amp_enabled = True
+                self.amp_dtype = torch.bfloat16
+                self.scaler = None
+            else:
+                print(">>> [AMP] Requested amp_bf16 but neither CUDA nor CPU autocast is available; falling back to fp32.")
+                self.precision = "fp32"
+        else:
+            print(f">>> [AMP] Unknown precision='{self.precision}', supported: fp32/amp_fp16/amp_bf16; falling back to fp32.")
+            self.precision = "fp32"
+
         # global step for scheduler
         self.global_step: int = 0
 
@@ -128,6 +191,21 @@ class QlibQuantMoE(Model):
         self.debug_std_eps = float(self.trainer_config.get("debug_std_eps", 1e-8))
         self.debug_grad_eps = float(self.trainer_config.get("debug_grad_eps", 1e-12))
         self._warned_keys: set[str] = set()
+
+    def _autocast_ctx(self):
+        if not self.amp_enabled or self.amp_dtype is None:
+            return nullcontext()
+        # Prefer torch.autocast; fall back to cuda.amp.autocast on older PyTorch.
+        try:
+            return torch.autocast(device_type=self.device.type, dtype=self.amp_dtype, enabled=True)
+        except Exception:
+            if self.device.type == "cuda":
+                try:
+                    return torch.cuda.amp.autocast(dtype=self.amp_dtype, enabled=True)
+                except TypeError:
+                    # Older PyTorch may not accept `dtype=` here (defaults to fp16).
+                    return torch.cuda.amp.autocast(enabled=True)
+            return nullcontext()
 
     def _warn_once(self, key: str, msg: str) -> None:
         if key in self._warned_keys:
@@ -228,6 +306,7 @@ class QlibQuantMoE(Model):
             f"accum={self.grad_accum_steps}",
             f"early_stop={self.early_stop}",
             f"warmup={warmup_desc}",
+            f"precision={self.precision}",
             f"seed={self.random_seed}",
         ]
         if not (self.early_stop and self.early_stop > 0):
@@ -393,8 +472,9 @@ class QlibQuantMoE(Model):
         macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
 
         optimizer.zero_grad(set_to_none=True)
-        out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
-        loss = getattr(out, "loss", None)
+        with self._autocast_ctx():
+            out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
+            loss = getattr(out, "loss", None)
         if loss is None:
             self._warn_once(
                 "sanity_no_loss",
@@ -405,7 +485,10 @@ class QlibQuantMoE(Model):
             self._warn_once("sanity_nan_loss", f">>> [Sanity] loss is NaN/Inf: {loss}")
             return
 
-        loss.backward()
+        # Important: do NOT call GradScaler.unscale_ here. This sanity check runs before training,
+        # and leaving the scaler in an "unscaled" stage can break the first real optimizer step.
+        loss_to_backprop = loss.float() if self.scaler is not None else loss
+        loss_to_backprop.backward()
         grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
 
         score_std = float("nan")
@@ -1139,9 +1222,10 @@ class QlibQuantMoE(Model):
                 optimizer.zero_grad(set_to_none=True)
 
             with torch.set_grad_enabled(train):
-                # Note: date_ids removed - regime signal is computed from internal statistics
-                out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
-                loss = getattr(out, "loss", None)
+                with self._autocast_ctx():
+                    # Note: date_ids removed - regime signal is computed from internal statistics
+                    out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
+                    loss = getattr(out, "loss", None)
 
                 if train and optimizer is not None and loss is not None:
                     if not torch.isfinite(loss):
@@ -1149,7 +1233,11 @@ class QlibQuantMoE(Model):
                         continue
                     # Accumulate gradients across K (shuffled) daily cross-section microbatches.
                     # Scale to approximate mean gradient (large-batch) rather than sum.
-                    (loss / float(accum_steps)).backward()
+                    loss_to_backprop = loss / float(accum_steps)
+                    if self.scaler is not None:
+                        self.scaler.scale(loss_to_backprop).backward()
+                    else:
+                        loss_to_backprop.backward()
                     accum_count += 1
 
                     do_step = accum_count >= accum_steps
@@ -1164,12 +1252,24 @@ class QlibQuantMoE(Model):
                                     continue
                                 p.grad.mul_(scale)
 
+                        if self.scaler is not None:
+                            self.scaler.unscale_(optimizer)
                         grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
-                        optimizer.step()
-                        opt_steps += 1
-                        if scheduler is not None:
-                            scheduler.step()
-                        self.global_step += 1
+                        step_skipped = False
+                        if self.scaler is not None:
+                            prev_scale = float(self.scaler.get_scale())
+                            self.scaler.step(optimizer)
+                            self.scaler.update()
+                            new_scale = float(self.scaler.get_scale())
+                            step_skipped = new_scale < prev_scale
+                        else:
+                            optimizer.step()
+
+                        if not step_skipped:
+                            opt_steps += 1
+                            if scheduler is not None:
+                                scheduler.step()
+                            self.global_step += 1
                         optimizer.zero_grad(set_to_none=True)
                         accum_count = 0
                         if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
@@ -1286,12 +1386,24 @@ class QlibQuantMoE(Model):
                     if p.grad is None:
                         continue
                     p.grad.mul_(scale)
+            if self.scaler is not None:
+                self.scaler.unscale_(optimizer)
             grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
-            optimizer.step()
-            opt_steps += 1
-            if scheduler is not None:
-                scheduler.step()
-            self.global_step += 1
+            step_skipped = False
+            if self.scaler is not None:
+                prev_scale = float(self.scaler.get_scale())
+                self.scaler.step(optimizer)
+                self.scaler.update()
+                new_scale = float(self.scaler.get_scale())
+                step_skipped = new_scale < prev_scale
+            else:
+                optimizer.step()
+
+            if not step_skipped:
+                opt_steps += 1
+                if scheduler is not None:
+                    scheduler.step()
+                self.global_step += 1
             optimizer.zero_grad(set_to_none=True)
             accum_count = 0
             if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
@@ -1645,8 +1757,9 @@ class QlibQuantMoE(Model):
                 bx = self._coerce_bx_feature_dim(bx, expected_dim=num_alphas, context="predict")
                 bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
                 macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
-                # Note: date_ids removed - regime signal is computed from internal statistics
-                out = self.net(bx_t, f_ids, macro_features=macro_t)
+                with self._autocast_ctx():
+                    # Note: date_ids removed - regime signal is computed from internal statistics
+                    out = self.net(bx_t, f_ids, macro_features=macro_t)
                 score = out.scores.detach().cpu().numpy()
                 pos = bpos.detach().cpu().numpy().astype(int)
                 if score.shape[0] != pos.shape[0]:
@@ -1734,7 +1847,8 @@ class QlibQuantMoE(Model):
                 macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), bsz)
 
                 with torch.no_grad():
-                    out = self.net(bx_t, f_ids, macro_features=macro_t)
+                    with self._autocast_ctx():
+                        out = self.net(bx_t, f_ids, macro_features=macro_t)
 
                 cnt_by_day[pd.Timestamp(dt)] += bsz
 
@@ -1797,6 +1911,7 @@ class QlibQuantMoE(Model):
             - date_str: "YYYY-MM-DD"
             - "time":   [T, T]  (avg over batch × factor × heads)
             - "factor": [N, N]  (avg over batch × heads, default uses last time step of window)
+            - "factor_pool": [N] (avg over batch; attention pooling weights from model output factor_pool_weights)
 
         Notes
         -----
@@ -1942,36 +2057,52 @@ class QlibQuantMoE(Model):
                 layer_idx = n_layers - 1
 
             with torch.no_grad():
-                # Note: date_ids removed - regime signal is computed from internal statistics
-                out = self.net(
-                    bx_t,
-                    f_ids[:N],
-                    macro_features=macro_t,
-                    return_attn=True,
-                    attn_layers=[layer_idx],
-                )
-
-            if not getattr(out, "attn_maps", None):
-                continue
-
-            key = f"layer_{layer_idx}"
-            layer_attn = out.attn_maps.get(key, None)
-            if not isinstance(layer_attn, dict) or len(layer_attn) == 0:
-                continue
+                with self._autocast_ctx():
+                    # Note: date_ids removed - regime signal is computed from internal statistics
+                    out = self.net(
+                        bx_t,
+                        f_ids[:N],
+                        macro_features=macro_t,
+                        return_attn=True,
+                        attn_layers=[layer_idx],
+                    )
 
             maps_one: Dict[str, np.ndarray] = {}
-            if "time" in layer_attn and layer_attn["time"] is not None:
-                try:
-                    maps_one["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=N)
-                except Exception as e:
-                    print(f">>> [Warn] _collect_attention_maps (time) failed at {dt}: {e}")
-            if "factor" in layer_attn and layer_attn["factor"] is not None:
-                try:
-                    maps_one["factor"] = _reduce_factor_attn(
-                        layer_attn["factor"], B=B, T=T, N=N, use_last_time=factor_use_last_time
-                    )
-                except Exception as e:
-                    print(f">>> [Warn] _collect_attention_maps (factor) failed at {dt}: {e}")
+
+            # Attention-pooling weights over factors (for interpretability): [B, N] -> mean over batch => [N]
+            try:
+                pool_w = getattr(out, "factor_pool_weights", None)
+                if pool_w is None:
+                    # Backward compatibility: older checkpoints used `logits` to carry factor-pooling weights.
+                    legacy = getattr(out, "logits", None)
+                    if isinstance(legacy, torch.Tensor) and legacy.dim() == 2 and int(legacy.shape[-1]) == N:
+                        self._warn_once(
+                            "legacy_factor_pool_from_logits",
+                            ">>> [Visual] Using legacy `out.logits` as factor_pool_weights; please re-export with updated model.",
+                        )
+                        pool_w = legacy
+                if isinstance(pool_w, torch.Tensor) and pool_w.dim() == 2 and int(pool_w.shape[-1]) == N:
+                    maps_one["factor_pool"] = pool_w.detach().float().mean(dim=0).cpu().numpy()
+            except Exception as e:
+                print(f">>> [Warn] _collect_attention_maps (factor_pool) failed at {dt}: {e}")
+
+            layer_attn = None
+            if getattr(out, "attn_maps", None):
+                key = f"layer_{layer_idx}"
+                layer_attn = out.attn_maps.get(key, None)
+            if isinstance(layer_attn, dict) and len(layer_attn) > 0:
+                if "time" in layer_attn and layer_attn["time"] is not None:
+                    try:
+                        maps_one["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=N)
+                    except Exception as e:
+                        print(f">>> [Warn] _collect_attention_maps (time) failed at {dt}: {e}")
+                if "factor" in layer_attn and layer_attn["factor"] is not None:
+                    try:
+                        maps_one["factor"] = _reduce_factor_attn(
+                            layer_attn["factor"], B=B, T=T, N=N, use_last_time=factor_use_last_time
+                        )
+                    except Exception as e:
+                        print(f">>> [Warn] _collect_attention_maps (factor) failed at {dt}: {e}")
 
             if maps_one:
                 attn_maps[dt.strftime("%Y-%m-%d")] = maps_one
@@ -2062,7 +2193,7 @@ class QlibQuantMoE(Model):
         factor_use_last_time: bool = True,
         factor_topk: int = 10,
         save_png: bool = True,
-    ):
+        ):
         """
         在当前 Qlib Recorder 中导出:
         1) router / regime-adaptive diagnostics 日度序列 (Series + Fig + optional PNG)
@@ -2071,9 +2202,9 @@ class QlibQuantMoE(Model):
         2) 若干日期的 attention heatmaps (raw dict + figs + optional PNGs)
 
         - raw attention stored as:   f"{prefix}_attn_maps"
-          format: {date_str: {"time": [T,T], "factor": [N,N]}}
+          format: {date_str: {"time": [T,T], "factor": [N,N], "factor_pool": [N]}}
         - optional PNG filenames stored as: f"{prefix}_attn_pngs"
-          format: {date_str: {"time": "...png", "factor": "...png"}}
+          format: {date_str: {"time": "...png", "factor": "...png", "pool": "...png"}}
         """
         recorder = R.get_recorder()
         local_dir = None
@@ -2096,6 +2227,7 @@ class QlibQuantMoE(Model):
         )
 
         factor_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
+        factor_pool_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
         if factor_topk and int(factor_topk) > 0 and isinstance(attn_maps, dict):
             def _factor_importance(attn: np.ndarray) -> np.ndarray:
                 a = np.asarray(attn, dtype=float)
@@ -2129,6 +2261,29 @@ class QlibQuantMoE(Model):
                     "weights": [float(scores[i]) for i in idx],
                 }
 
+            for dt_str, maps in attn_maps.items():
+                if not isinstance(maps, dict):
+                    continue
+                pool_w = maps.get("factor_pool", None)
+                if pool_w is None:
+                    continue
+                try:
+                    scores = np.asarray(pool_w, dtype=float).reshape(-1)
+                except Exception as e:
+                    print(f">>> [Visual] factor_pool_topk failed at {dt_str}: {e}")
+                    continue
+                if scores.ndim != 1:
+                    continue
+                n = int(scores.shape[0])
+                k = min(int(factor_topk), n)
+                if k <= 0:
+                    continue
+                idx = np.argsort(scores)[::-1][:k]
+                factor_pool_topk_map[dt_str] = {
+                    "ids": [int(i) for i in idx],
+                    "weights": [float(scores[i]) for i in idx],
+                }
+
         # save raw objects first (so report can still work even if fig saving fails)
         try:
             extra_series_objs = {
@@ -2136,6 +2291,8 @@ class QlibQuantMoE(Model):
             }
             if factor_topk_map:
                 extra_series_objs[f"{prefix}_factor_topk"] = factor_topk_map
+            if factor_pool_topk_map:
+                extra_series_objs[f"{prefix}_factor_pool_topk"] = factor_pool_topk_map
             recorder.save_objects(
                 **{
                     f"{prefix}_gate_series": gate_series,
@@ -2236,9 +2393,11 @@ class QlibQuantMoE(Model):
                 if isinstance(maps, dict):
                     time_attn = maps.get("time", None)
                     factor_attn = maps.get("factor", None)
+                    pool_attn = maps.get("factor_pool", None)
                 else:
                     time_attn = maps
                     factor_attn = None
+                    pool_attn = None
 
                 if time_attn is not None:
                     fig_t = None
@@ -2291,6 +2450,33 @@ class QlibQuantMoE(Model):
                     finally:
                         if fig_f is not None:
                             plt.close(fig_f)
+
+                if pool_attn is not None:
+                    fig_p = None
+                    try:
+                        w = np.asarray(pool_attn, dtype=float).reshape(1, -1)
+                        fig_p = self._plot_attention_map(
+                            w,
+                            title=f"Factor Pooling Attention ({dt_str})",
+                            x_label="factor (j)",
+                            y_label="pool",
+                            figsize=(10, 2),
+                        )
+                        key_p = f"{prefix}_attn_pool_factor_{dt_str}"
+                        try:
+                            recorder.save_objects(**{key_p: fig_p})
+                        except Exception:
+                            pass
+                        if local_dir is not None:
+                            fn_p = f"{prefix}_attn_pool_factor_{dt_str}.png"
+                            try:
+                                fig_p.savefig(local_dir / fn_p, dpi=150, bbox_inches="tight")
+                                attn_pngs.setdefault(dt_str, {})["pool"] = fn_p
+                            except Exception as e:
+                                print(f">>> [Visual] save attn png failed (pool, {dt_str}): {e}")
+                    finally:
+                        if fig_p is not None:
+                            plt.close(fig_p)
             except Exception as e:
                 print(f">>> [Visual] save attn figs failed ({dt_str}): {e}")
 
