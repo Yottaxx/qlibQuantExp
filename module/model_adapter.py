@@ -2072,15 +2072,6 @@ class QlibQuantMoE(Model):
             # Attention-pooling weights over factors (for interpretability): [B, N] -> mean over batch => [N]
             try:
                 pool_w = getattr(out, "factor_pool_weights", None)
-                if pool_w is None:
-                    # Backward compatibility: older checkpoints used `logits` to carry factor-pooling weights.
-                    legacy = getattr(out, "logits", None)
-                    if isinstance(legacy, torch.Tensor) and legacy.dim() == 2 and int(legacy.shape[-1]) == N:
-                        self._warn_once(
-                            "legacy_factor_pool_from_logits",
-                            ">>> [Visual] Using legacy `out.logits` as factor_pool_weights; please re-export with updated model.",
-                        )
-                        pool_w = legacy
                 if isinstance(pool_w, torch.Tensor) and pool_w.dim() == 2 and int(pool_w.shape[-1]) == N:
                     maps_one["factor_pool"] = pool_w.detach().float().mean(dim=0).cpu().numpy()
             except Exception as e:
