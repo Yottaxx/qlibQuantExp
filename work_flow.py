@@ -19,6 +19,7 @@ pip install plotly spicy statsmodels
    - 增加“训练过程诊断”：train/main_loss vs valid/rank_ic 曲线 + 文本总结
 """
 from typing import Optional, List, Tuple, Dict, Any
+import sys
 
 import numpy as np
 import pandas as pd
@@ -51,15 +52,15 @@ data_conf = {
     "class": "TSDatasetH",
     "module_path": "qlib.data.dataset",
     "kwargs": {
-        "step_len": 2,  # 时序窗口，对应模型 context_len
+        "step_len": 8,  # 时序窗口，对应模型 context_len
         "handler": {
             "class": "Alpha158",
             "module_path": "qlib.contrib.data.handler",
             "kwargs": {
-                "start_time": "2018-01-01",
-                "end_time": "2019-03-31",
-                "fit_start_time": "2018-01-01",
-                "fit_end_time": "2019-01-31",
+                "start_time": "2008-01-01",
+                "end_time": "2022-12-31",
+                "fit_start_time": "2008-01-01",
+                "fit_end_time": "2020-03-31",
                 "instruments": "csi300",
                 # 推理预处理（DK_I，用于特征预处理）：
                 # - 特征：去极值 + 填充
@@ -85,9 +86,9 @@ data_conf = {
             },
         },
         "segments": {
-            "train": ("2018-01-01", "2019-01-31"),
-            "valid": ("2019-02-01", "2019-02-28"),
-            "test": ("2019-03-01", "2019-03-29"),
+            "train": ("2008-01-01", "2020-03-31"),
+            "valid": ("2020-04-01", "2020-06-30"),
+            "test": ("2020-07-01", "2022-12-31"),
         },
     },
 }
@@ -100,32 +101,32 @@ model_conf = {
     "module_path": "module.model_adapter",
     "kwargs": {
         "model_config": {
-            "d_model": 8,
-            "n_layers": 1,
-            "main_loss": "mse",
+            "d_model": 16,
+            "n_layers": 2,
+            "main_loss": "ic",
             "use_feature_selection": False,
-            "use_alibi": False,  # recommended default (time embedding already provides position signal)
-            "regime_macro_dropout": 0.1,
+            "use_alibi": True,  # recommended default (time embedding already provides position signal)
+            "regime_macro_dropout": 0.05,
             # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
-            "lr": 5e-4,
-            "n_epochs": 1,
-            "batch_size": 2,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "lr": 5e-5,
+            "n_epochs": 2,
+            "batch_size": 256,  # 对应 FixedDailyBatchSampler 的日度 batch
             # Gradient accumulation across K (shuffled) daily microbatches (K dates per optimizer step)
-            "grad_accum_steps": 5,
+            "grad_accum_steps": 1,
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
             "seed": 42,
-            "early_stop": 0, 
-            "train_stop_key": "loss_main", 
-            "train_stop_threshold": 1.33, 
-            "min_epochs": 5, 
-            "consecutive_k": 2,
+            "early_stop": 3,
+            # "train_stop_key": "loss_main",
+            # "train_stop_threshold": 1.33,
+            # "min_epochs": 5,
+            # "consecutive_k": 2,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            "market_state_path": "market_state_csi300.pkl",
+            "market_state_path": "market_state_master_market.pkl",
             "market_state_shift": 0,
             "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
@@ -148,22 +149,22 @@ port_conf = {
         "module_path": "qlib.contrib.strategy.signal_strategy",
         "kwargs": {
             "signal": "<PRED>",  # 占位符，SignalRecord 会自动替换
-            "topk": 50,
-            "n_drop": 5,
+            "topk": 30,
+            "n_drop": 30,
         },
     },
     "backtest": {
-        "start_time": "2019-03-01",
-        "end_time": "2019-03-29",
+        "start_time": "2020-07-01",
+        "end_time": "2022-12-31",
         "account": 100000000,
         "benchmark": "SH000300",
         "exchange_kwargs": {
             "freq": "day",
-            "limit_threshold": 0.095,
+            # "limit_threshold": 0.095,
             "deal_price": "close",
-            "open_cost": 0.0005,
-            "close_cost": 0.0015,
-            "min_cost": 5,
+            # "open_cost": 0.0005,
+            # "close_cost": 0.0015,
+            # "min_cost": 5,
         },
     },
 }
@@ -749,6 +750,7 @@ def generate_paper_report(
     gate_png = None
     attn_maps = None
     attn_pngs = None
+    factor_topk = None
     diag_series: Dict[str, pd.Series] = {}
     diag_pngs: Dict[str, str] = {}
     tau_vs_time_ratio_png = None
@@ -767,6 +769,11 @@ def generate_paper_report(
         attn_maps = rec.load_object("st_disentangle_attn_maps")
     except Exception:
         pass
+
+    try:
+        factor_topk = rec.load_object("st_disentangle_factor_topk")
+    except Exception:
+        factor_topk = None
 
     try:
         tau_vs_time_ratio_png = rec.load_object("st_disentangle_tau_vs_time_ratio_png")
@@ -1298,6 +1305,24 @@ def generate_paper_report(
     if not factor_attn_summary_lines:
         factor_attn_summary_lines = ["- (no factor-attention maps found; check export_visuals call)"]
 
+    factor_topk_lines: List[str] = []
+    if isinstance(factor_topk, dict) and len(factor_topk) > 0:
+        for dt_str in shown_dates:
+            entry = factor_topk.get(dt_str, None)
+            if not isinstance(entry, dict):
+                continue
+            ids = entry.get("ids", None)
+            if ids is None:
+                continue
+            try:
+                ids_int = [int(i) for i in list(ids)]
+            except Exception:
+                continue
+            if ids_int:
+                factor_topk_lines.append(f"- {dt_str}: top{len(ids_int)} ids={ids_int}")
+    if not factor_topk_lines:
+        factor_topk_lines = ["- (no factor-topk found; check export_visuals call)"]
+
     # ---------- 4. 训练过程诊断（main_loss vs RankIC） ----------
     df_tc, train_summary_lines, train_fig_name = _load_train_curves(rec, main_loss=main_loss)
 
@@ -1510,6 +1535,9 @@ def generate_paper_report(
     )
     lines.extend(factor_attn_summary_lines)
     lines.append("")
+    lines.append("#### 4.3.1 Factor Attention Top-K (ids)\n")
+    lines.extend(factor_topk_lines)
+    lines.append("")
     for dt_str in shown_dates:
         fn = attn_media.get(dt_str, {}).get("factor", None)
         if fn:
@@ -1542,7 +1570,15 @@ def generate_paper_report(
     print("-" * 80)
     print(f"Full Markdown report written to: {report_path}")
     print("-" * 80)
-    print(report_md)
+    def _safe_print(text: str) -> None:
+        try:
+            print(text)
+        except UnicodeEncodeError:
+            enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+            safe = text.encode(enc, errors="replace").decode(enc, errors="replace")
+            print(safe)
+
+    _safe_print(report_md)
     print("=" * 80)
 
 
@@ -1567,7 +1603,7 @@ if __name__ == "__main__":
         )
 
     # 2) 启动实验
-    with R.start(experiment_name="Official_Alignment_RST_MoE"):
+    with R.start(experiment_name="Official_Alignment_RST_MoE_ONLY_MACRO_TIME_ALIBI_masterMarket_ic_small"):
         # 2.1 记录超参
         R.log_params(**flatten_dict(model_conf))
         # 2.1.1 Save full run configuration for report reproducibility

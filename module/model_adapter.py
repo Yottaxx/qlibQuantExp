@@ -279,8 +279,8 @@ class QlibQuantMoE(Model):
             ],
             "Regime-Adaptive Factor Gate": [
                 ("use_regime_factor_gate", "Enable factor gate (FiLM)"),
-                ("factor_gate_scale", "Gate scale (γ range)"),
-                ("factor_gate_shift_scale", "Gate shift scale (β)"),
+                ("factor_gate_scale", "Gate scale (gamma range)"),
+                ("factor_gate_shift_scale", "Gate shift scale (beta)"),
             ],
             "MoE Router": [
                 ("router_noise", "Logit noise std"),
@@ -323,7 +323,7 @@ class QlibQuantMoE(Model):
                 elif isinstance(value, float):
                     value_str = f"{value:g}"
                 elif isinstance(value, bool):
-                    value_str = "✓ ON" if value else "✗ OFF"
+                    value_str = "[+] ON" if value else "[-] OFF"
                 else:
                     value_str = str(value)
                 print(f"{attr_name:<35} {value_str:<30} {desc:<25}")
@@ -368,7 +368,7 @@ class QlibQuantMoE(Model):
             if isinstance(value, float):
                 value_str = f"{value:g}"
             elif isinstance(value, bool):
-                value_str = "✓ ON" if value else "✗ OFF"
+                value_str = "[+] ON" if value else "[-] OFF"
             else:
                 value_str = str(value)
             print(f"{name:<35} {value_str:<30} {desc:<25}")
@@ -2060,6 +2060,7 @@ class QlibQuantMoE(Model):
         target_dates: List[Union[str, pd.Timestamp]] | None = None,
         prefix: str = "st_disentangle",
         factor_use_last_time: bool = True,
+        factor_topk: int = 10,
         save_png: bool = True,
     ):
         """
@@ -2094,11 +2095,47 @@ class QlibQuantMoE(Model):
             factor_use_last_time=factor_use_last_time,
         )
 
+        factor_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
+        if factor_topk and int(factor_topk) > 0 and isinstance(attn_maps, dict):
+            def _factor_importance(attn: np.ndarray) -> np.ndarray:
+                a = np.asarray(attn, dtype=float)
+                if a.ndim == 3:
+                    a = a.mean(axis=0)
+                if a.ndim != 2:
+                    raise ValueError(f"factor attn must be 2D, got shape {a.shape}")
+                # Normalize rows, then use column mean as "attention received".
+                row_sum = a.sum(axis=-1, keepdims=True) + 1e-12
+                a = a / row_sum
+                return a.mean(axis=0)
+
+            for dt_str, maps in attn_maps.items():
+                if not isinstance(maps, dict):
+                    continue
+                f_map = maps.get("factor", None)
+                if f_map is None:
+                    continue
+                try:
+                    scores = _factor_importance(f_map)
+                except Exception as e:
+                    print(f">>> [Visual] factor_topk failed at {dt_str}: {e}")
+                    continue
+                n = int(scores.shape[0])
+                k = min(int(factor_topk), n)
+                if k <= 0:
+                    continue
+                idx = np.argsort(scores)[::-1][:k]
+                factor_topk_map[dt_str] = {
+                    "ids": [int(i) for i in idx],
+                    "weights": [float(scores[i]) for i in idx],
+                }
+
         # save raw objects first (so report can still work even if fig saving fails)
         try:
             extra_series_objs = {
                 f"{prefix}_{k}_series": v for k, v in daily_series.items() if k != "time_ratio" and v is not None
             }
+            if factor_topk_map:
+                extra_series_objs[f"{prefix}_factor_topk"] = factor_topk_map
             recorder.save_objects(
                 **{
                     f"{prefix}_gate_series": gate_series,

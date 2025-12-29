@@ -23,27 +23,27 @@ class QuantMoEConfig(PretrainedConfig):
             num_alphas: int = 64,
             context_len: int = 32,
             # regime-adaptive embeddings (lightweight, recommended)
-            use_regime_time_embedding: bool = True,
+            use_regime_time_embedding: bool = False,
             time_tau_min: float = 0.5,
             time_tau_max: float = 50.0,
             time_tau_init: float = 5.0,
             time_emb_init_std: float = 0.02,
             time_decay_normalize: bool = True,
-            use_regime_factor_gate: bool = True,
+            use_regime_factor_gate: bool = False,
             factor_gate_scale: float = 0.5,
             factor_gate_shift_scale: float = 0.0,
             # router (MoE gate)
-            router_noise: float = 0.1,       # logit noise std (training only)
+            router_noise: float = 0.05,       # logit noise std (training only)
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
             router_use_layer_summary: bool = False,  # add per-layer market summary token to router input
-            use_alibi: bool = False,
+            use_alibi: bool = True,
             use_feature_selection: bool = False,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
             selection_temperature: float = 0.1,
             selection_noise_std: float = 0.5,
             # Loss & ranking
-            main_loss: str = "ic",
+            main_loss: str = "mse",
             loss_weights: Optional[Dict[str, float]] = None,
             mse_normalize: bool = False,
             rank_topk: int = 5,
@@ -56,7 +56,7 @@ class QuantMoEConfig(PretrainedConfig):
             # internal regime stats (used when use_external_macro=False)
             regime_internal_mode: str = "long",  # "short" (t+1-ish) or "long" (t+5-ish)
             regime_internal_lag: int = 5,         # effective when mode="long"
-            regime_internal_use_batch_stats: bool = True,
+            regime_internal_use_batch_stats: bool = False,
             regime_internal_tail_threshold: float = 2.0,
             # pooling
             pooling_alpha: float = 0.7,  # Weight for attention vs mean pooling
