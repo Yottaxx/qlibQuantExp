@@ -277,12 +277,18 @@ class QlibQuantMoE(Model):
             lag = cfg_get("regime_internal_lag", 5)
             macro_desc = f"internal({mode}, lag={lag})"
 
+        emb_type = str(cfg_get("value_embedding_type", "shared_linear"))
+        if emb_type == "feature_tokenizer":
+            add_id = bool(cfg_get("feature_tokenizer_add_factor_id", False))
+            emb_type = f"{emb_type}+id" if add_id else emb_type
+
         model_parts = [
             f"loss={cfg_get('main_loss', 'mse')}",
             f"d_model={cfg_get('d_model', 'n/a')}",
             f"layers={cfg_get('n_layers', 'n/a')}",
             f"heads={cfg_get('n_heads', 'n/a')}",
             ", ".join(dims),
+            f"val_emb={emb_type}",
             f"time_emb={on_off(cfg_get('use_regime_time_embedding', False))}",
             f"factor_gate={on_off(cfg_get('use_regime_factor_gate', False))}",
             f"feat_sel={on_off(cfg_get('use_feature_selection', False))}",
@@ -339,6 +345,12 @@ class QlibQuantMoE(Model):
                 ("context_len", "Sequence length (T)"),
                 ("dropout", "Dropout rate"),
                 ("initializer_range", "Weight init std"),
+            ],
+            "Value Embedding": [
+                ("value_embedding_type", "Value embedding type"),
+                ("feature_tokenizer_bias", "FT bias"),
+                ("feature_tokenizer_add_factor_id", "FT add factor ID"),
+                ("feature_tokenizer_init_std", "FT init std"),
             ],
             "Loss & Training": [
                 ("main_loss", "Primary loss function"),
@@ -1275,7 +1287,7 @@ class QlibQuantMoE(Model):
                         if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
                             self._warn_once(
                                 "zero_grad_norm",
-                                f">>> [Warn] grad_norm≈0 ({grad_norm:.3e}); parameters may not be updating.",
+                                f">>> [Warn] grad_norm approx 0 ({grad_norm:.3e}); parameters may not be updating.",
                             )
                 elif train and optimizer is not None and loss is None:
                     skip_no_loss += 1
@@ -1291,21 +1303,21 @@ class QlibQuantMoE(Model):
                         if y_std <= self.debug_std_eps:
                             self._warn_once(
                                 "label_almost_constant",
-                                f">>> [Warn] label std≈0 ({y_std:.3e}); ranking loss has little signal in-batch.",
+                                f">>> [Warn] label std approx 0 ({y_std:.3e}); ranking loss has little signal in-batch.",
                             )
                     if getattr(out, "scores", None) is not None:
                         p_std = float(out.scores.detach().float().std(unbiased=False).item())
                         if p_std <= self.debug_std_eps:
                             self._warn_once(
                                 "score_almost_constant",
-                                f">>> [Warn] score std≈0 ({p_std:.3e}); check data variability / model wiring.",
+                                f">>> [Warn] score std approx 0 ({p_std:.3e}); check data variability / model wiring.",
                             )
                     if bx_t.ndim == 3 and bx_t.shape[0] > 0:
                         x_std = float(bx_t[:, -1, :].detach().float().std(unbiased=False).item())
                         if x_std <= self.debug_std_eps:
                             self._warn_once(
                                 "x_almost_constant",
-                                f">>> [Warn] x(last-step) std≈0 ({x_std:.3e}); features may be all-0 after Fillna.",
+                                f">>> [Warn] x(last-step) std approx 0 ({x_std:.3e}); features may be all-0 after Fillna.",
                             )
                 except Exception:
                     pass
@@ -1409,7 +1421,7 @@ class QlibQuantMoE(Model):
             if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
                 self._warn_once(
                     "zero_grad_norm",
-                    f">>> [Warn] grad_norm≈0 ({grad_norm:.3e}); parameters may not be updating.",
+                    f">>> [Warn] grad_norm approx 0 ({grad_norm:.3e}); parameters may not be updating.",
                 )
 
         avg = self._avg(meters, n_batches)

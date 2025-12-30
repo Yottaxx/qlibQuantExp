@@ -7,6 +7,7 @@ import torch.nn as nn
 from transformers import PreTrainedModel
 
 from module.architecture.feature_selector import DifferentiableFeatureSelector
+from module.architecture.feature_tokenizer import FeatureTokenizer
 from module.utils.losses import QuantLossFunctions
 from module.utils.model_configuration import QuantMoEConfig, QuantModelOutput
 from module.architecture.moe_block import RegimeAdaptiveMoEBlock
@@ -33,7 +34,22 @@ class QuantMoEModel(PreTrainedModel):
         num_alphas = config.num_alphas
 
         # 1) 数值 + 因子 ID 嵌入
-        self.val_proj = nn.Linear(1, d_model)
+        self.value_embedding_type = str(getattr(config, "value_embedding_type", "shared_linear")).strip().lower()
+        self.feature_tokenizer_add_factor_id = bool(getattr(config, "feature_tokenizer_add_factor_id", False))
+        self.val_proj = None
+        self.feature_tokenizer = None
+        if self.value_embedding_type == "feature_tokenizer":
+            init_std = float(getattr(config, "feature_tokenizer_init_std", config.initializer_range))
+            if init_std <= 0:
+                init_std = float(getattr(config, "initializer_range", 0.02) or 0.02)
+            self.feature_tokenizer = FeatureTokenizer(
+                num_features=num_alphas,
+                d_model=d_model,
+                bias=bool(getattr(config, "feature_tokenizer_bias", True)),
+                init_std=init_std,
+            )
+        else:
+            self.val_proj = nn.Linear(1, d_model)
         self.factor_id_emb = nn.Embedding(num_alphas, d_model)
         self.emb_dropout = nn.Dropout(config.dropout)
 
@@ -120,6 +136,10 @@ class QuantMoEModel(PreTrainedModel):
                     nn.init.zeros_(module.bias)
             return
 
+        if isinstance(module, FeatureTokenizer):
+            module.reset_parameters()
+            return
+
         if isinstance(module, nn.Linear):
             nn.init.normal_(module.weight, mean=0.0, std=init_std)
             if module.bias is not None:
@@ -199,7 +219,16 @@ class QuantMoEModel(PreTrainedModel):
 
         # 1) value + factor embedding
         factor_table = self.factor_id_emb(factor_ids.long())  # [N,D]
-        h = self.val_proj(x.unsqueeze(-1)) + factor_table.unsqueeze(0).unsqueeze(0)
+        if self.value_embedding_type == "feature_tokenizer":
+            if self.feature_tokenizer is None:
+                raise RuntimeError("feature_tokenizer is enabled but not initialized.")
+            h = self.feature_tokenizer(x)
+            if self.feature_tokenizer_add_factor_id:
+                h = h + factor_table.unsqueeze(0).unsqueeze(0)
+        else:
+            if self.val_proj is None:
+                raise RuntimeError("shared_linear embedding is enabled but val_proj is missing.")
+            h = self.val_proj(x.unsqueeze(-1)) + factor_table.unsqueeze(0).unsqueeze(0)
 
         diag_metrics: dict[str, float] = {}
         factor_film = None

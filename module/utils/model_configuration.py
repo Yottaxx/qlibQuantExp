@@ -22,6 +22,11 @@ class QuantMoEConfig(PretrainedConfig):
             initializer_range: float = 0.02,
             num_alphas: int = 64,
             context_len: int = 32,
+            # value embedding
+            value_embedding_type: str = "shared_linear",
+            feature_tokenizer_bias: bool = True,
+            feature_tokenizer_add_factor_id: bool = False,
+            feature_tokenizer_init_std: float = 0.02,
             # regime-adaptive embeddings (lightweight, recommended)
             use_regime_time_embedding: bool = True,
             time_tau_min: float = 0.5,
@@ -73,6 +78,26 @@ class QuantMoEConfig(PretrainedConfig):
         self.initializer_range = initializer_range
         self.num_alphas = num_alphas
         self.context_len = context_len
+
+        value_embedding_type = str(value_embedding_type).strip().lower()
+        embedding_alias = {
+            "shared": "shared_linear",
+            "shared_linear": "shared_linear",
+            "feature_tokenizer": "feature_tokenizer",
+            "ft_tokenizer": "feature_tokenizer",
+            "ft": "feature_tokenizer",
+        }
+        value_embedding_type = embedding_alias.get(value_embedding_type, value_embedding_type)
+        allowed_embedding = {"shared_linear", "feature_tokenizer"}
+        if value_embedding_type not in allowed_embedding:
+            raise ValueError(
+                f"Unsupported value_embedding_type: {value_embedding_type}. "
+                f"Supported: {sorted(allowed_embedding)}"
+            )
+        self.value_embedding_type = value_embedding_type
+        self.feature_tokenizer_bias = bool(feature_tokenizer_bias)
+        self.feature_tokenizer_add_factor_id = bool(feature_tokenizer_add_factor_id)
+        self.feature_tokenizer_init_std = float(feature_tokenizer_init_std)
 
         # regime-adaptive embeddings
         self.use_regime_time_embedding = use_regime_time_embedding

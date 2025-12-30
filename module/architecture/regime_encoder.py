@@ -38,10 +38,10 @@ class RegimeContextEncoder(nn.Module):
         # 将低维统计特征映射到 d_model
         drop_p = float(dropout) if dropout is not None else 0.0
         self.encoder = nn.Sequential(
-            nn.Linear(self.d_input, d_model // 2),
-            nn.Tanh(),  # Tanh 适合处理统计值的归一化
+            nn.Linear(self.d_input, d_model * 2),
+            nn.Tanh(),  # Tanh 适合处理统计值的归一化s
             nn.Dropout(drop_p),
-            nn.Linear(d_model // 2, d_model),
+            nn.Linear(d_model * 2, d_model),
             nn.LayerNorm(d_model)  # 必须 Norm，防止统计值波动过大
         )
 
