@@ -176,6 +176,10 @@ model_conf = {
             "regime_internal_tail_threshold": 2.0,
             # ---- Pooling ----
             "pooling_alpha": 0.7,
+            "pooling_mode": "full",  # static | adaptive_alpha | conditioned_query | full
+            "pooling_alpha_scale": 0.3,
+            "pooling_d_ff": 128,  # None means d_model; usually set to d_model for lightweight pooling
+            "pooling_use_layer_summary": True,
         },
         "trainer_config": {
             "lr": 5e-5,
@@ -291,6 +295,10 @@ MODEL_CONFIG_KEYS_FULL = [
     "regime_internal_use_batch_stats",
     "regime_internal_tail_threshold",
     "pooling_alpha",
+    "pooling_mode",
+    "pooling_alpha_scale",
+    "pooling_d_ff",
+    "pooling_use_layer_summary",
 ]
 
 

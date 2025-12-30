@@ -13,7 +13,7 @@ from module.utils.model_configuration import QuantMoEConfig, QuantModelOutput
 from module.architecture.moe_block import RegimeAdaptiveMoEBlock
 from module.architecture.regime_encoder import RegimeContextEncoder
 from module.architecture.regime_adaptive_embedding import RegimeAdaptiveFactorGate, RegimeAdaptiveTimeEmbedding
-from module.architecture.attention_pooling import AdaptivePooling
+from module.architecture.regime_adaptive_pooling import RegimeAdaptivePooling
 from module.utils.utils import build_bidirectional_alibi_bias
 
 
@@ -102,12 +102,22 @@ class QuantMoEModel(PreTrainedModel):
         # 5) Attention-based pooling for factor aggregation
         # 使用自适应 attention pooling 替代简单的 softmax pooling
         # 结合 attention 和 mean pooling，提供更稳健的因子聚合
-        self.factor_pooling = AdaptivePooling(
+        # Supports: static, adaptive_alpha, conditioned_query, full
+        self.factor_pooling = RegimeAdaptivePooling(
             d_model=d_model,
-            n_heads=1,
+            n_heads=4,
             dropout=config.dropout,
-            alpha=config.pooling_alpha,
+            pooling_mode=config.pooling_mode,
+            base_alpha=config.pooling_alpha,
+            alpha_scale=config.pooling_alpha_scale,
+            pooling_d_ff=config.pooling_d_ff,
+            use_layer_summary=config.pooling_use_layer_summary,
         )
+
+        # 5.1) Pooling summary projection if needed
+        self.pooling_summary_proj = None
+        if config.pooling_use_layer_summary:
+            self.pooling_summary_proj = nn.Linear(2 * d_model, d_model, bias=False)
         
         # 6) Stock score head
         self.head = nn.Linear(d_model, 1)
@@ -331,8 +341,25 @@ class QuantMoEModel(PreTrainedModel):
         # 使用最后一时间步的因子表示 [B, N, D]
         h_last = h[:, -1, :, :]  # [B, N, D]
         
+        # Compute layer summary if needed (matches MoE block logic)
+        layer_summary = None
+        if self.config.pooling_use_layer_summary:
+            # per-stock: [B, D]
+            per_stock = h_last.mean(dim=1) 
+            # Market stats over batch
+            m_mean = per_stock.mean(dim=0)
+            m_std = per_stock.std(dim=0, unbiased=False)
+            # [2D] -> [D] -> [B, D]
+            summary_raw = torch.cat([m_mean, m_std], dim=-1)
+            layer_summary = self.pooling_summary_proj(summary_raw).unsqueeze(0).expand(B, -1)
+
         # Attention-based pooling: 自适应加权聚合因子表示
-        h_pooled, factor_attention_weights = self.factor_pooling(h_last)  # [B, D], [B, N]
+        # Now pass regime embedding for adaptive behavior
+        h_pooled, factor_attention_weights, alpha_val = self.factor_pooling(
+            h_last, 
+            regime_embedding=regime,
+            layer_summary=layer_summary
+        )  # [B, D], [B, N], [B, 1]
         
         # Stock score prediction
         stock_score = self.head(h_pooled).squeeze(-1)  # [B]
@@ -439,10 +466,18 @@ class QuantMoEModel(PreTrainedModel):
                     metrics["loss_rank"] = float(l_rank.detach().item())
                 if l_huber is not None:
                     metrics["loss_huber"] = float(l_huber.detach().item())
+                if l_huber is not None:
+                    metrics["loss_huber"] = float(l_huber.detach().item())
             else:
                 metrics = {"valid_ratio": float(valid_ratio)}
         else:
             metrics = {}
+
+        # Log pooling stats
+        if hasattr(self.factor_pooling, "use_adaptive_alpha") and self.factor_pooling.use_adaptive_alpha:
+             # alpha_val defined in scope
+             metrics["pooling_alpha_mean"] = float(alpha_val.mean().item())
+             metrics["pooling_alpha_std"] = float(alpha_val.std().item())
 
         if diag_metrics:
             metrics = {**diag_metrics, **metrics}

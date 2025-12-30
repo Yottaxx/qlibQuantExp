@@ -64,7 +64,11 @@ class QuantMoEConfig(PretrainedConfig):
             regime_internal_use_batch_stats: bool = False,
             regime_internal_tail_threshold: float = 2.0,
             # pooling
-            pooling_alpha: float = 0.7,  # Weight for attention vs mean pooling
+            pooling_alpha: float = 0.7,  # Base weight for attention vs mean pooling
+            pooling_mode: str = "adaptive_alpha",  # "static", "adaptive_alpha", "conditioned_query", "full"
+            pooling_alpha_scale: float = 0.3,      # Scaling factor for adaptive alpha
+            pooling_d_ff: Optional[int] = None,    # FFN dimension (None = d_model)
+            pooling_use_layer_summary: bool = False, # If True, condition on layer summary
             **kwargs
     ):
 
@@ -156,6 +160,14 @@ class QuantMoEConfig(PretrainedConfig):
         self.regime_internal_tail_threshold = regime_internal_tail_threshold
         
         self.pooling_alpha = pooling_alpha
+        self.pooling_mode = pooling_mode
+        self.pooling_alpha_scale = pooling_alpha_scale
+        self.pooling_d_ff = pooling_d_ff
+        self.pooling_use_layer_summary = bool(pooling_use_layer_summary)
+
+        valid_pooling_modes = {"static", "adaptive_alpha", "conditioned_query", "full"}
+        if self.pooling_mode not in valid_pooling_modes:
+            raise ValueError(f"Unsupported pooling_mode: {self.pooling_mode}. Supported: {valid_pooling_modes}")
 
 
 # ==========================================
