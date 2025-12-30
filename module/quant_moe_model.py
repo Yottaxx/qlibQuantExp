@@ -115,6 +115,13 @@ class QuantMoEModel(PreTrainedModel):
         # HF 标准初始化
         self.post_init()
 
+        # [Optimized Init] Match head output scale to label variance (~1.0)
+        # Prevents "scale seeking" in early epochs.
+        with torch.no_grad():
+            nn.init.kaiming_normal_(self.head.weight, mode="fan_in", nonlinearity="linear")
+            if self.head.bias is not None:
+                nn.init.zeros_(self.head.bias)
+
     def _init_weights(self, module: nn.Module) -> None:
         """
         HF-style weight init (executed by `self.post_init()`).
@@ -141,7 +148,12 @@ class QuantMoEModel(PreTrainedModel):
             return
 
         if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=init_std)
+            # [Optimized Init] val_proj (1->D): Boost std to 0.1 to preserve signal
+            if module.in_features == 1:
+                nn.init.normal_(module.weight, mean=0.0, std=0.1)
+            else:
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
             return
