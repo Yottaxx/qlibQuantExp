@@ -102,8 +102,8 @@ data_conf = {
         },
         "segments": {
             "train": ("2008-01-01", "2020-03-31"),
-            "valid": ("2020-04-01", "2020-06-30"),
-            "test": ("2020-07-01", "2022-12-31"),
+            "valid": ("2020-07-01", "2022-12-31"),
+            "test": ("2020-04-01", "2020-06-30"),
         },
     },
 }
@@ -146,7 +146,7 @@ model_conf = {
             "router_noise": 0.01,
             "router_temperature": 1.0,
             "router_z_loss_coef": 0.01,
-            "router_use_layer_summary": False,
+            "router_use_layer_summary": True,
             # ---- Positional/feature selection ----
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
             "use_feature_selection": False,
@@ -179,7 +179,7 @@ model_conf = {
         },
         "trainer_config": {
             "lr": 5e-5,
-            "n_epochs": 10,
+            "n_epochs": 40,
             "batch_size": 300,  # 对应 FixedDailyBatchSampler 的日度 batch
             # Mixed precision:
             # - "amp_fp16": recommended on RTX 4070S (fastest, needs GradScaler)
@@ -199,7 +199,7 @@ model_conf = {
             "consecutive_k": 2,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            "market_state_path": "market_state_master_market.pkl",
+            "market_state_path": "market_state_csi300.pkl",
             "market_state_shift": 0,
             "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
@@ -227,8 +227,8 @@ port_conf = {
         },
     },
     "backtest": {
-        "start_time": "2020-07-01",
-        "end_time": "2022-12-31",
+        "start_time": "2020-04-01",
+        "end_time": "2020-06-30",
         "account": 100000000,
         "benchmark": "SH000300",
         "exchange_kwargs": {
