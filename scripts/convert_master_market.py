@@ -106,7 +106,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="market_state_master_market.pkl",
+        default="artifacts/market_state/market_state_master_market.pkl",
         help="Output path (.pkl/.parquet/.csv).",
     )
     parser.add_argument(

@@ -10,7 +10,7 @@ This script validates the precomputed market_state pkl files for:
 5. Potential look-ahead bias detection
 
 Usage:
-    python scripts/analyze_macro_features.py [--path market_state_csi300.pkl]
+    python scripts/analyze_macro_features.py [--path artifacts/market_state/market_state_csi300.pkl]
 """
 
 from __future__ import annotations
@@ -31,6 +31,38 @@ def print_section(title: str) -> None:
     print(f"\n{'='*60}")
     print(f" {title}")
     print('='*60)
+
+
+def infer_value_space(df: pd.DataFrame) -> str:
+    """
+    Infer whether the dataframe is in a raw space (natural bounds like breadth∈[0,1])
+    or has been macro-scaled (e.g. `precompute_market_state.py --macro_scale robust/zscore`),
+    which breaks those bounds by design.
+
+    Returns:
+        "raw" or "scaled"
+    """
+    # If market_ret_1d has multi-sigma values, it's almost certainly scaled because
+    # raw daily returns rarely exceed 20%.
+    if "market_ret_1d" in df.columns:
+        s = pd.to_numeric(df["market_ret_1d"], errors="coerce").dropna()
+        if len(s) >= 50 and float(s.abs().quantile(0.999)) > 0.5:
+            return "scaled"
+
+    # Breadth should be in [0,1] in raw space; outside suggests scaling.
+    if "market_state_breadth" in df.columns:
+        s = pd.to_numeric(df["market_state_breadth"], errors="coerce").dropna()
+        if len(s) >= 50 and ((s < -0.1).any() or (s > 1.1).any()):
+            return "scaled"
+
+    # These are non-negative in raw space; negative implies scaling.
+    for col in ("market_state_mean_abs", "market_state_std"):
+        if col in df.columns:
+            s = pd.to_numeric(df[col], errors="coerce").dropna()
+            if len(s) >= 50 and (s < 0).any():
+                return "scaled"
+
+    return "raw"
 
 
 def check_basic_stats(df: pd.DataFrame) -> Dict[str, any]:
@@ -94,9 +126,10 @@ def check_value_ranges(df: pd.DataFrame) -> pd.DataFrame:
     return stats
 
 
-def check_base_features(df: pd.DataFrame) -> Dict[str, str]:
+def check_base_features(df: pd.DataFrame, *, value_space: str) -> Dict[str, str]:
     """Validate base feature columns."""
     issues = {}
+    value_space = str(value_space or "raw").strip().lower()
     
     # Check global distribution features
     global_cols = [
@@ -115,8 +148,10 @@ def check_base_features(df: pd.DataFrame) -> Dict[str, str]:
             issues[col] = "ALL_NAN"
         elif (vals == 0).all():
             issues[col] = "ALL_ZERO (BUG!)"
-        elif vals.min() < 0:
+        elif value_space == "raw" and vals.min() < 0:
             issues[col] = f"NEGATIVE_VALUES (min={vals.min():.4f})"
+        elif value_space == "scaled" and np.nanmax(np.abs(vals)) > 50:
+            issues[col] = f"EXTREME_VALUES (max abs={np.nanmax(np.abs(vals)):.4f})"
     
     # Check correlation features
     corr_cols = [
@@ -132,13 +167,15 @@ def check_base_features(df: pd.DataFrame) -> Dict[str, str]:
         vals = df[col].dropna().values
         if len(vals) == 0:
             issues[col] = "ALL_NAN"
-        elif col == "market_state_corr_mean_abs" and (vals > 1).any():
+        elif value_space == "raw" and col == "market_state_corr_mean_abs" and (vals > 1).any():
             issues[col] = f"VALUES > 1 (max={vals.max():.4f})"
-        elif col == "market_state_corr_pc1_ratio" and (vals > 1).any():
+        elif value_space == "raw" and col == "market_state_corr_pc1_ratio" and (vals > 1).any():
             issues[col] = f"VALUES > 1 (max={vals.max():.4f})"
+        elif value_space == "scaled" and np.nanmax(np.abs(vals)) > 50:
+            issues[col] = f"EXTREME_VALUES (max abs={np.nanmax(np.abs(vals)):.4f})"
     
     # Check breadth should be between 0 and 1
-    if "market_state_breadth" in df.columns:
+    if value_space == "raw" and "market_state_breadth" in df.columns:
         vals = df["market_state_breadth"].dropna().values
         if (vals > 1).any() or (vals < 0).any():
             issues["market_state_breadth"] = f"OUT_OF_RANGE [0,1] (range: {vals.min():.4f} to {vals.max():.4f})"
@@ -148,7 +185,9 @@ def check_base_features(df: pd.DataFrame) -> Dict[str, str]:
 
 def check_pca_features(df: pd.DataFrame) -> Dict[str, any]:
     """Validate PCA features."""
-    pca_cols = [c for c in df.columns if c.startswith("market_state_pca_")]
+    # Only count the actual PCA score columns: `market_state_pca_{i}`.
+    # Exclude derived variants like `_d1`, `_z20`, `_roll_mean20`, etc.
+    pca_cols = [c for c in df.columns if re.fullmatch(r"market_state_pca_\d+", str(c))]
     
     if not pca_cols:
         return {"status": "NO_PCA_COLUMNS"}
@@ -253,7 +292,7 @@ def infer_expected_warmup(df: pd.DataFrame) -> int:
     return int(max_need)
 
 
-def check_market_ts_features(df: pd.DataFrame) -> Dict[str, any]:
+def check_market_ts_features(df: pd.DataFrame, *, value_space: str) -> Dict[str, any]:
     """Validate market time-series features."""
     ts_cols = [c for c in df.columns if c.startswith("market_ret_") or 
                c.startswith("market_vol_") or c.startswith("market_mom_") or 
@@ -265,21 +304,27 @@ def check_market_ts_features(df: pd.DataFrame) -> Dict[str, any]:
     ts_df = df[ts_cols]
     
     issues = {}
+    value_space = str(value_space or "raw").strip().lower()
     
     # market_ret_1d should be small (daily returns)
-    if "market_ret_1d" in ts_df.columns:
+    if value_space == "raw" and "market_ret_1d" in ts_df.columns:
         ret = ts_df["market_ret_1d"].dropna()
         if (ret.abs() > 0.15).any():  # > 15% daily return is suspicious
             issues["market_ret_1d"] = f"LARGE_VALUES (max abs: {ret.abs().max():.4f})"
+    elif value_space == "scaled" and "market_ret_1d" in ts_df.columns:
+        ret = pd.to_numeric(ts_df["market_ret_1d"], errors="coerce").dropna()
+        if len(ret) and float(ret.abs().max()) > 50:
+            issues["market_ret_1d"] = f"EXTREME_VALUES (max abs: {ret.abs().max():.4f})"
     
     # market_dd_* (raw, not z-scored) should be in [0, 1]
-    dd_cols = [c for c in ts_cols if c.startswith("market_dd_") and "_z" not in c and "roll_mean" not in c]
-    for col in dd_cols:
-        vals = ts_df[col].dropna()
-        if (vals < 0).any():
-            issues[col] = f"NEGATIVE_DRAWDOWN (min: {vals.min():.4f})"
-        if (vals > 1).any():
-            issues[col] = f"DRAWDOWN > 1 (max: {vals.max():.4f})"
+    if value_space == "raw":
+        dd_cols = [c for c in ts_cols if c.startswith("market_dd_") and "_z" not in c and "roll_mean" not in c]
+        for col in dd_cols:
+            vals = ts_df[col].dropna()
+            if (vals < 0).any():
+                issues[col] = f"NEGATIVE_DRAWDOWN (min: {vals.min():.4f})"
+            if (vals > 1).any():
+                issues[col] = f"DRAWDOWN > 1 (max: {vals.max():.4f})"
     
     return {
         "n_ts_columns": len(ts_cols),
@@ -327,13 +372,13 @@ def check_time_continuity(df: pd.DataFrame) -> Dict[str, any]:
     
     # Find large gaps (> 5 calendar days)
     large_gaps = diffs[diffs > pd.Timedelta(days=5)]
+    gap_examples = [(str(dates[i].date()), int(td.days)) for i, td in large_gaps.head(10).items()]
     
     return {
         "n_dates": len(dates),
         "date_range": (str(dates.min().date()), str(dates.max().date())),
         "n_large_gaps": len(large_gaps),
-        "large_gaps": [(str(dates[i].date()), int(diffs.iloc[i].days)) 
-                       for i in large_gaps.index[:10]],
+        "large_gaps": gap_examples,
     }
 
 
@@ -359,17 +404,29 @@ def check_pca_sidecar(pkl_path: Path) -> Dict[str, any]:
     return results
 
 
-def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Optional[int] = None) -> str:
+def generate_report(
+    df: pd.DataFrame,
+    pkl_path: Path,
+    *,
+    expected_warmup: Optional[int] = None,
+    value_space: Optional[str] = None,
+) -> str:
     """Generate a comprehensive analysis report."""
     report = []
     if expected_warmup is None:
         expected_warmup = infer_expected_warmup(df)
+
+    if value_space is None or str(value_space).strip().lower() == "auto":
+        value_space = infer_value_space(df)
+    else:
+        value_space = str(value_space).strip().lower()
     
     # 1. Basic stats
     print_section("1. BASIC STATISTICS")
     stats = check_basic_stats(df)
     for k, v in stats.items():
         print(f"  {k}: {v}")
+    print(f"  value_space: {value_space}")
     
     # 2. NaN/Inf check
     print_section("2. NaN/Inf ANALYSIS")
@@ -387,23 +444,23 @@ def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Option
     zero_cols = check_zero_columns(df)
     const_cols = check_constant_columns(df)
     if zero_cols:
-        print(f"  ⚠️  ALL-ZERO columns (BUG!): {zero_cols}")
+        print(f"  WARN: ALL-ZERO columns (BUG!): {zero_cols}")
     else:
-        print("  ✓ No all-zero columns")
+        print("  OK: No all-zero columns")
     if const_cols:
-        print(f"  ⚠️  Near-constant columns: {const_cols[:10]}")
+        print(f"  WARN: Near-constant columns: {const_cols[:10]}")
     else:
-        print("  ✓ No near-constant columns")
+        print("  OK: No near-constant columns")
     
     # 4. Base features
     print_section("4. BASE FEATURE VALIDATION")
-    base_issues = check_base_features(df)
+    base_issues = check_base_features(df, value_space=value_space)
     if base_issues:
         print("  Issues found:")
         for col, issue in base_issues.items():
-            print(f"    ⚠️  {col}: {issue}")
+            print(f"    WARN: {col}: {issue}")
     else:
-        print("  ✓ All base features look valid")
+        print("  OK: All base features look valid")
     
     # 5. PCA features
     print_section("5. PCA FEATURES")
@@ -412,7 +469,7 @@ def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Option
         print(f"  {k}: {v}")
     
     # 6. Delta features
-    print_section("6. DELTA (Δstate) FEATURES")
+    print_section("6. DELTA (dstate) FEATURES")
     delta_info = check_delta_features(df)
     for k, v in delta_info.items():
         print(f"  {k}: {v}")
@@ -425,7 +482,7 @@ def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Option
     
     # 8. Market TS features
     print_section("8. MARKET TIME-SERIES FEATURES")
-    ts_info = check_market_ts_features(df)
+    ts_info = check_market_ts_features(df, value_space=value_space)
     for k, v in ts_info.items():
         print(f"  {k}: {v}")
     
@@ -454,8 +511,8 @@ def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Option
                          not c.startswith("market_state_pca") and 
                          not c.startswith("market_state_corr") and
                          "_d" not in c and "_z" not in c and "roll_mean" not in c],
-        "correlation": [c for c in df.columns if c.startswith("market_state_corr")],
-        "pca": [c for c in df.columns if c.startswith("market_state_pca_")],
+        "correlation": [c for c in df.columns if c.startswith("market_state_corr") and "_d" not in c and "_z" not in c and "roll_mean" not in c],
+        "pca": [c for c in df.columns if re.fullmatch(r"market_state_pca_\d+", str(c))],
         "delta": [c for c in df.columns if "_d1" in c or "_d5" in c or "_d10" in c],
         "zscore": [c for c in df.columns if "_z20" in c or "_z60" in c or "_z120" in c],
         "roll_mean": [c for c in df.columns if "roll_mean" in c],
@@ -491,21 +548,28 @@ def generate_report(df: pd.DataFrame, pkl_path: Path, *, expected_warmup: Option
         issues.append("High NaN ratio (>50%)")
     
     if issues:
-        print("  ⚠️  ISSUES FOUND:")
+        print("  WARN: ISSUES FOUND:")
         for issue in issues:
             print(f"    - {issue}")
     else:
-        print("  ✓ DATA LOOKS HEALTHY")
+        print("  OK: DATA LOOKS HEALTHY")
     
     return ""
 
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze macro feature data quality")
-    parser.add_argument("--path", type=str, default="market_state_csi300.pkl",
+    parser.add_argument("--path", type=str, default="artifacts/market_state/market_state_csi300.pkl",
                         help="Path to market_state pkl file")
     parser.add_argument("--expected_warmup", type=int, default=None,
                         help="Override expected warmup (trading days). If omitted, infer from columns.")
+    parser.add_argument(
+        "--value_space",
+        type=str,
+        default="auto",
+        choices=["auto", "raw", "scaled"],
+        help="How to interpret value ranges. Use 'scaled' if the file was produced with --macro_scale.",
+    )
     parser.add_argument("--sample_date", type=str, default=None,
                         help="Show detailed data for a specific date (e.g., 2020-01-02)")
     args = parser.parse_args()
@@ -524,7 +588,7 @@ def main():
     df = pd.read_pickle(pkl_path)
     df.index = pd.to_datetime(df.index)
     
-    generate_report(df, pkl_path, expected_warmup=args.expected_warmup)
+    generate_report(df, pkl_path, expected_warmup=args.expected_warmup, value_space=args.value_space)
     
     # Optional: show data for a specific date
     if args.sample_date:

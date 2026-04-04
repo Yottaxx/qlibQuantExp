@@ -70,6 +70,17 @@ class QlibQuantMoE(Model):
         self.lr = float(self.trainer_config.get("lr", 5e-4))
         self.epochs = int(self.trainer_config.get("n_epochs", 20))
         self.batch_size = int(self.trainer_config.get("batch_size", 1024))
+        eval_bs_raw = self.trainer_config.get("eval_batch_size", None)
+        if eval_bs_raw is None:
+            eval_bs = self.batch_size
+        else:
+            try:
+                eval_bs = int(eval_bs_raw)
+            except Exception:
+                eval_bs = self.batch_size
+        if eval_bs <= 0:
+            eval_bs = self.batch_size
+        self.eval_batch_size = eval_bs
         self.num_workers = int(self.trainer_config.get("num_workers", 4))
         self.random_seed = self.trainer_config.get("seed", 42)
 
@@ -309,6 +320,7 @@ class QlibQuantMoE(Model):
             f"lr={self.lr:g}",
             f"epochs={self.epochs}",
             f"batch={self.batch_size}",
+            f"eval_batch={self.eval_batch_size}",
             f"accum={self.grad_accum_steps}",
             f"early_stop={self.early_stop}",
             f"warmup={warmup_desc}",
@@ -439,6 +451,7 @@ class QlibQuantMoE(Model):
             ("lr", self.lr, "Learning rate"),
             ("epochs", self.epochs, "Number of epochs"),
             ("batch_size", self.batch_size, "Batch size (stocks/day)"),
+            ("eval_batch_size", self.eval_batch_size, "Evaluation batch size (stocks/day)"),
             ("grad_accum_steps", self.grad_accum_steps, "Accumulate K days/step"),
             ("early_stop", self.early_stop, "Early stop patience"),
             ("train_stop_key", self.train_stop_key, "Train stop metric key"),
@@ -1108,7 +1121,7 @@ class QlibQuantMoE(Model):
         - no up/down-sampling
         """
         tsds = self._wrap_with_datetime(tsds)
-        sampler = DailyChunkBatchSampler(tsds, max_batch_size=self.batch_size)
+        sampler = DailyChunkBatchSampler(tsds, max_batch_size=self.eval_batch_size)
         return DataLoader(
             dataset=tsds,
             batch_sampler=sampler,
@@ -1742,7 +1755,7 @@ class QlibQuantMoE(Model):
         # Inference should be "intra-day batches" without any up/down-sampling:
         # - every sample enters the model exactly once
         # - each batch contains a single trading day (split into chunks if needed)
-        sampler = DailyChunkBatchSampler(tsds, max_batch_size=self.batch_size)
+        sampler = DailyChunkBatchSampler(tsds, max_batch_size=self.eval_batch_size)
         loader = DataLoader(
             dataset=tsds,
             batch_sampler=sampler,
@@ -1840,8 +1853,8 @@ class QlibQuantMoE(Model):
             if n <= 0:
                 continue
 
-            for start in range(0, n, self.batch_size):
-                chunk = row_idx[start : start + self.batch_size]
+            for start in range(0, n, self.eval_batch_size):
+                chunk = row_idx[start : start + self.eval_batch_size]
                 bx_t = self._stack_feature_batch_from_row_indices(
                     tsds,
                     chunk,
@@ -1912,18 +1925,21 @@ class QlibQuantMoE(Model):
         *,
         max_dates: int = 5,
         attn_layer: int = -1,
+        attn_layers: List[int] | str | None = None,
         factor_use_last_time: bool = True,
-    ) -> Dict[str, Dict[str, np.ndarray]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """
         抽若干交易日, 提取最后一层 attention maps（time & factor）:
 
         Returns
         -------
-        Dict[date_str, Dict[str, np.ndarray]]
+        Dict[date_str, Dict[str, Any]]
             - date_str: "YYYY-MM-DD"
             - "time":   [T, T]  (avg over batch × factor × heads)
             - "factor": [N, N]  (avg over batch × heads, default uses last time step of window)
             - "factor_pool": [N] (avg over batch; attention pooling weights from model output factor_pool_weights)
+            - "primary_layer": int
+            - optional: "layers": {layer_idx: {"time": [T,T], "factor": [N,N]}, ...} when multiple layers are fetched
 
         Notes
         -----
@@ -1973,6 +1989,38 @@ class QlibQuantMoE(Model):
         # 2) prepare factor ids
         num_alphas = self._get_num_alphas()
         f_ids = torch.arange(num_alphas, device=self.device)
+
+        n_layers = len(getattr(self.net, "layers", [])) if self.net is not None else 0
+        if n_layers <= 0:
+            return {}
+
+        def _resolve_layer_index(i: int) -> int:
+            i = int(i)
+            if i < 0:
+                i = n_layers + i
+            return max(0, min(i, n_layers - 1))
+
+        primary_layer = _resolve_layer_index(attn_layer)
+        layers_to_fetch: List[int]
+        if attn_layers is None:
+            layers_to_fetch = [primary_layer]
+        elif isinstance(attn_layers, str):
+            if attn_layers.strip().lower() in {"all", "*"}:
+                layers_to_fetch = list(range(n_layers))
+            else:
+                raise ValueError(f"attn_layers must be None/int/list/'all', got {attn_layers!r}")
+        elif isinstance(attn_layers, int):
+            layers_to_fetch = [_resolve_layer_index(attn_layers)]
+        elif isinstance(attn_layers, (list, tuple, set)):
+            tmp: List[int] = []
+            for v in list(attn_layers):
+                try:
+                    tmp.append(_resolve_layer_index(int(v)))
+                except Exception:
+                    continue
+            layers_to_fetch = sorted(set(tmp)) if tmp else [primary_layer]
+        else:
+            raise ValueError(f"attn_layers must be None/int/list/'all', got type={type(attn_layers).__name__}")
 
         def _reduce_time_attn(time_attn: torch.Tensor, *, B: int, T: int, N: int) -> np.ndarray:
             """Return [T,T]."""
@@ -2038,7 +2086,7 @@ class QlibQuantMoE(Model):
             return a.detach().cpu().numpy()
 
         # 3) collect
-        attn_maps: Dict[str, Dict[str, np.ndarray]] = {}
+        attn_maps: Dict[str, Dict[str, Any]] = {}
 
         for dt in chosen_dates:
             row_idx = np.where(dates == dt)[0]
@@ -2048,7 +2096,7 @@ class QlibQuantMoE(Model):
             bx_t = self._stack_feature_batch_from_row_indices(
                 tsds,
                 row_idx,
-                max_samples=self.batch_size,
+                max_samples=self.eval_batch_size,
                 num_alphas=num_alphas,
                 context="_collect_attention_maps",
             )
@@ -2060,14 +2108,6 @@ class QlibQuantMoE(Model):
             N = int(bx_t.shape[2])
             macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), B)
 
-            n_layers = len(getattr(self.net, "layers", [])) if self.net is not None else 0
-            if n_layers <= 0:
-                continue
-            if attn_layer >= 0:
-                layer_idx = min(int(attn_layer), n_layers - 1)
-            else:
-                layer_idx = n_layers - 1
-
             with torch.no_grad():
                 with self._autocast_ctx():
                     # Note: date_ids removed - regime signal is computed from internal statistics
@@ -2076,10 +2116,10 @@ class QlibQuantMoE(Model):
                         f_ids[:N],
                         macro_features=macro_t,
                         return_attn=True,
-                        attn_layers=[layer_idx],
+                        attn_layers=layers_to_fetch,
                     )
 
-            maps_one: Dict[str, np.ndarray] = {}
+            maps_one: Dict[str, Any] = {}
 
             # Attention-pooling weights over factors (for interpretability): [B, N] -> mean over batch => [N]
             try:
@@ -2089,25 +2129,57 @@ class QlibQuantMoE(Model):
             except Exception as e:
                 print(f">>> [Warn] _collect_attention_maps (factor_pool) failed at {dt}: {e}")
 
-            layer_attn = None
+            layer_maps: Dict[int, Dict[str, np.ndarray]] = {}
             if getattr(out, "attn_maps", None):
-                key = f"layer_{layer_idx}"
-                layer_attn = out.attn_maps.get(key, None)
-            if isinstance(layer_attn, dict) and len(layer_attn) > 0:
-                if "time" in layer_attn and layer_attn["time"] is not None:
-                    try:
-                        maps_one["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=N)
-                    except Exception as e:
-                        print(f">>> [Warn] _collect_attention_maps (time) failed at {dt}: {e}")
-                if "factor" in layer_attn and layer_attn["factor"] is not None:
-                    try:
-                        maps_one["factor"] = _reduce_factor_attn(
-                            layer_attn["factor"], B=B, T=T, N=N, use_last_time=factor_use_last_time
-                        )
-                    except Exception as e:
-                        print(f">>> [Warn] _collect_attention_maps (factor) failed at {dt}: {e}")
+                for li in layers_to_fetch:
+                    key = f"layer_{int(li)}"
+                    layer_attn = out.attn_maps.get(key, None)
+                    if not isinstance(layer_attn, dict) or not layer_attn:
+                        continue
+                    maps_li: Dict[str, np.ndarray] = {}
+                    if "time" in layer_attn and layer_attn["time"] is not None:
+                        try:
+                            maps_li["time"] = _reduce_time_attn(layer_attn["time"], B=B, T=T, N=N)
+                        except Exception as e:
+                            print(f">>> [Warn] _collect_attention_maps (time, {key}) failed at {dt}: {e}")
+                    if "factor" in layer_attn and layer_attn["factor"] is not None:
+                        try:
+                            maps_li["factor"] = _reduce_factor_attn(
+                                layer_attn["factor"], B=B, T=T, N=N, use_last_time=factor_use_last_time
+                            )
+                        except Exception as e:
+                            print(f">>> [Warn] _collect_attention_maps (factor, {key}) failed at {dt}: {e}")
+                    if maps_li:
+                        layer_maps[int(li)] = maps_li
+
+            if layer_maps:
+                # Backward-compatible "time"/"factor" from the requested primary layer when available.
+                # If the requested layer was not fetched or produced no maps, fall back and record the
+                # actual source layer so downstream metadata stays consistent.
+                primary_layer_used: Optional[int] = None
+                primary_maps = layer_maps.get(int(primary_layer), None)
+                if primary_maps is not None:
+                    primary_layer_used = int(primary_layer)
+                elif layers_to_fetch:
+                    fallback_layer = int(layers_to_fetch[-1])
+                    primary_maps = layer_maps.get(fallback_layer, None)
+                    if primary_maps is not None:
+                        primary_layer_used = fallback_layer
+                if primary_maps is None:
+                    first_layer, primary_maps = next(iter(layer_maps.items()))
+                    primary_layer_used = int(first_layer)
+                if isinstance(primary_maps, dict):
+                    if "time" in primary_maps:
+                        maps_one["time"] = primary_maps["time"]
+                    if "factor" in primary_maps:
+                        maps_one["factor"] = primary_maps["factor"]
+                if len(layer_maps) > 1:
+                    maps_one["layers"] = layer_maps
+                if primary_layer_used is not None:
+                    maps_one["primary_layer"] = int(primary_layer_used)
 
             if maps_one:
+                maps_one.setdefault("primary_layer", int(primary_layer))
                 attn_maps[dt.strftime("%Y-%m-%d")] = maps_one
 
         return attn_maps
@@ -2184,6 +2256,64 @@ class QlibQuantMoE(Model):
         fig.tight_layout()
         return fig
 
+    @staticmethod
+    def _plot_attention_layers_grid(
+        attn_by_layer: Dict[int, np.ndarray],
+        *,
+        title: str,
+        x_label: str,
+        y_label: str,
+        max_cols: int = 4,
+        cell_size: Tuple[float, float] = (3.2, 3.2),
+    ):
+        """
+        Plot multi-layer attention maps in a compact grid.
+
+        Parameters
+        ----------
+        attn_by_layer : Dict[int, np.ndarray]
+            {layer_idx: [T,T] or [N,N]}
+        """
+        if not isinstance(attn_by_layer, dict) or not attn_by_layer:
+            raise ValueError("attn_by_layer must be a non-empty dict")
+
+        items = sorted([(int(k), np.asarray(v)) for k, v in attn_by_layer.items()], key=lambda x: x[0])
+        n = len(items)
+        ncols = max(1, min(int(max_cols), n))
+        nrows = int(math.ceil(n / ncols))
+
+        fig, axes = plt.subplots(
+            nrows=nrows,
+            ncols=ncols,
+            figsize=(float(cell_size[0]) * ncols, float(cell_size[1]) * nrows),
+        )
+        axes = np.asarray(axes).reshape(nrows, ncols)
+
+        vmax = 0.0
+        for _, a in items:
+            try:
+                vmax = max(vmax, float(np.nanmax(a)))
+            except Exception:
+                continue
+        vmin = 0.0
+
+        im = None
+        for ax, (li, a) in zip(axes.ravel(), items):
+            im = ax.imshow(a, aspect="auto", vmin=vmin, vmax=vmax if vmax > vmin else None)
+            ax.set_title(f"L{li}")
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+
+        for ax in axes.ravel()[len(items) :]:
+            ax.axis("off")
+
+        if im is not None:
+            fig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.02, pad=0.02)
+
+        fig.suptitle(title)
+        fig.tight_layout(rect=(0, 0, 1, 0.96))
+        return fig
+
     def export_visuals(
         self,
         dataset: DatasetH,
@@ -2191,6 +2321,7 @@ class QlibQuantMoE(Model):
         *,
         max_attn_days: int = 4,
         attn_layer: int = -1,
+        attn_layers: List[int] | str | None = None,
         target_dates: List[Union[str, pd.Timestamp]] | None = None,
         prefix: str = "st_disentangle",
         factor_use_last_time: bool = True,
@@ -2205,9 +2336,11 @@ class QlibQuantMoE(Model):
         2) 若干日期的 attention heatmaps (raw dict + figs + optional PNGs)
 
         - raw attention stored as:   f"{prefix}_attn_maps"
-          format: {date_str: {"time": [T,T], "factor": [N,N], "factor_pool": [N]}}
+          format:
+            - primary (backward compatible): {date_str: {"time": [T,T], "factor": [N,N], "factor_pool": [N]}}
+            - MoE multi-layer: {date_str: {"layers": {layer_idx: {"time": [T,T], "factor": [N,N]}}, ...}}
         - optional PNG filenames stored as: f"{prefix}_attn_pngs"
-          format: {date_str: {"time": "...png", "factor": "...png", "pool": "...png"}}
+          format: {date_str: {"time": "...png", "factor": "...png", "pool": "...png", "time_layers": "...png", "factor_layers": "...png"}}
         """
         recorder = R.get_recorder()
         local_dir = None
@@ -2226,10 +2359,11 @@ class QlibQuantMoE(Model):
             target_dates=target_dates,
             max_dates=max_attn_days,
             attn_layer=attn_layer,
+            attn_layers=attn_layers,
             factor_use_last_time=factor_use_last_time,
         )
 
-        factor_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
+        factor_topk_map: Dict[str, Dict[str, Any]] = {}
         factor_pool_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
         if factor_topk and int(factor_topk) > 0 and isinstance(attn_maps, dict):
             def _factor_importance(attn: np.ndarray) -> np.ndarray:
@@ -2243,26 +2377,57 @@ class QlibQuantMoE(Model):
                 a = a / row_sum
                 return a.mean(axis=0)
 
+            def _topk_from_scores(scores: np.ndarray, k: int) -> tuple[list[int], list[float]]:
+                n = int(scores.shape[0])
+                k = min(int(k), n)
+                if k <= 0:
+                    return [], []
+                idx = np.argsort(scores)[::-1][:k]
+                return [int(i) for i in idx], [float(scores[i]) for i in idx]
+
             for dt_str, maps in attn_maps.items():
                 if not isinstance(maps, dict):
                     continue
+                entry: Dict[str, Any] = {}
+
+                # Per-layer factor attention top-k (if available)
+                layers = maps.get("layers", None)
+                if isinstance(layers, dict) and layers:
+                    by_layer: Dict[int, Dict[str, Any]] = {}
+                    for li, lm in layers.items():
+                        if not isinstance(lm, dict):
+                            continue
+                        f_map = lm.get("factor", None)
+                        if f_map is None:
+                            continue
+                        try:
+                            scores = _factor_importance(f_map)
+                            ids, w = _topk_from_scores(scores, int(factor_topk))
+                            if ids:
+                                by_layer[int(li)] = {"ids": ids, "weights": w}
+                        except Exception as e:
+                            print(f">>> [Visual] factor_topk failed at {dt_str} (layer={li}): {e}")
+                    if by_layer:
+                        entry["layers"] = by_layer
+
+                # Backward-compatible primary factor attention top-k
                 f_map = maps.get("factor", None)
-                if f_map is None:
-                    continue
-                try:
-                    scores = _factor_importance(f_map)
-                except Exception as e:
-                    print(f">>> [Visual] factor_topk failed at {dt_str}: {e}")
-                    continue
-                n = int(scores.shape[0])
-                k = min(int(factor_topk), n)
-                if k <= 0:
-                    continue
-                idx = np.argsort(scores)[::-1][:k]
-                factor_topk_map[dt_str] = {
-                    "ids": [int(i) for i in idx],
-                    "weights": [float(scores[i]) for i in idx],
-                }
+                if f_map is not None:
+                    try:
+                        scores = _factor_importance(f_map)
+                        ids, w = _topk_from_scores(scores, int(factor_topk))
+                        if ids:
+                            entry["ids"] = ids
+                            entry["weights"] = w
+                    except Exception as e:
+                        print(f">>> [Visual] factor_topk failed at {dt_str}: {e}")
+
+                if entry:
+                    try:
+                        entry["primary_layer"] = int(maps.get("primary_layer", -1))
+                    except Exception:
+                        pass
+                    factor_topk_map[dt_str] = entry
 
             for dt_str, maps in attn_maps.items():
                 if not isinstance(maps, dict):
@@ -2394,13 +2559,91 @@ class QlibQuantMoE(Model):
             try:
                 # backward compatibility: maps might be [T,T]
                 if isinstance(maps, dict):
+                    layers = maps.get("layers", None)
                     time_attn = maps.get("time", None)
                     factor_attn = maps.get("factor", None)
                     pool_attn = maps.get("factor_pool", None)
                 else:
+                    layers = None
                     time_attn = maps
                     factor_attn = None
                     pool_attn = None
+
+                # MoE: multi-layer attention grids (compact, paper-friendly)
+                if isinstance(layers, dict) and layers:
+                    time_by_layer: Dict[int, np.ndarray] = {}
+                    factor_by_layer: Dict[int, np.ndarray] = {}
+                    for li, lm in layers.items():
+                        if not isinstance(lm, dict):
+                            continue
+                        try:
+                            li_int = int(li)
+                        except Exception:
+                            continue
+                        if lm.get("time", None) is not None:
+                            try:
+                                time_by_layer[li_int] = np.asarray(lm["time"])
+                            except Exception:
+                                pass
+                        if lm.get("factor", None) is not None:
+                            try:
+                                factor_by_layer[li_int] = np.asarray(lm["factor"])
+                            except Exception:
+                                pass
+
+                    if time_by_layer:
+                        fig_tl = None
+                        try:
+                            fig_tl = self._plot_attention_layers_grid(
+                                time_by_layer,
+                                title=f"Time Attention (all layers, {dt_str})",
+                                x_label="time (j)",
+                                y_label="time (i)",
+                                max_cols=4,
+                                cell_size=(3.2, 3.2),
+                            )
+                            key = f"{prefix}_attn_time_layers_{dt_str}"
+                            try:
+                                recorder.save_objects(**{key: fig_tl})
+                            except Exception:
+                                pass
+                            if local_dir is not None:
+                                fn = f"{prefix}_attn_time_layers_{dt_str}.png"
+                                try:
+                                    fig_tl.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
+                                    attn_pngs.setdefault(dt_str, {})["time_layers"] = fn
+                                except Exception as e:
+                                    print(f">>> [Visual] save attn png failed (time_layers, {dt_str}): {e}")
+                        finally:
+                            if fig_tl is not None:
+                                plt.close(fig_tl)
+
+                    if factor_by_layer:
+                        fig_fl = None
+                        try:
+                            fig_fl = self._plot_attention_layers_grid(
+                                factor_by_layer,
+                                title=f"Factor Attention (all layers, {dt_str})",
+                                x_label="factor (j)",
+                                y_label="factor (i)",
+                                max_cols=4,
+                                cell_size=(3.6, 3.6),
+                            )
+                            key = f"{prefix}_attn_factor_layers_{dt_str}"
+                            try:
+                                recorder.save_objects(**{key: fig_fl})
+                            except Exception:
+                                pass
+                            if local_dir is not None:
+                                fn = f"{prefix}_attn_factor_layers_{dt_str}.png"
+                                try:
+                                    fig_fl.savefig(local_dir / fn, dpi=150, bbox_inches="tight")
+                                    attn_pngs.setdefault(dt_str, {})["factor_layers"] = fn
+                                except Exception as e:
+                                    print(f">>> [Visual] save attn png failed (factor_layers, {dt_str}): {e}")
+                        finally:
+                            if fig_fl is not None:
+                                plt.close(fig_fl)
 
                 if time_attn is not None:
                     fig_t = None

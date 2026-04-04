@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 RST-MoE + Qlib Official Workflow (Paper-Ready Version)
 
@@ -162,7 +162,7 @@ model_conf = {
                 "rank": 0.0,
                 "huber": 0.0,
             },
-            "mse_normalize": False,
+            "mse_normalize": True,
             "rank_topk": 5,
             "huber_delta": 1.0,
             "listmle_tau": 0.8,
@@ -185,6 +185,7 @@ model_conf = {
             "lr": 5e-5,
             "n_epochs": 40,
             "batch_size": 300,  # 对应 FixedDailyBatchSampler 的日度 batch
+            "eval_batch_size": 300,
             # Mixed precision:
             # - "amp_fp16": recommended on RTX 4070S (fastest, needs GradScaler)
             # - "amp_bf16": more stable, usually no GradScaler (requires BF16 support)
@@ -195,15 +196,15 @@ model_conf = {
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
-            "seed": 42,
+            "seed": 15,
             # "early_stop": 5,
             "train_stop_key": "loss_main",
-            "train_stop_threshold": 1.33,
+            "train_stop_threshold": 1.30,
             "min_epochs": 5,
             "consecutive_k": 2,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            "market_state_path": "market_state_csi300.pkl",
+            "market_state_path": "artifacts/market_state/market_state_csi300.pkl",
             "market_state_shift": 0,
             "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
@@ -234,6 +235,7 @@ port_conf = {
         "start_time": "2020-04-01",
         "end_time": "2020-06-30",
         "account": 100000000,
+        # "benchmark": "SH000906",
         "benchmark": "SH000300",
         "exchange_kwargs": {
             "freq": "day",
@@ -411,7 +413,7 @@ def _build_experiment_name(model_k: Dict[str, Any], trainer_k: Dict[str, Any]) -
 
 
 # =============================================================================
-# 4. 报告生成工具函数
+# 4. æŠ¥å‘Šç”Ÿæˆå·¥å…·å‡½æ•°
 # =============================================================================
 def _to_ts(d) -> pd.Timestamp:
     """
@@ -879,7 +881,7 @@ def _format_setup_from_conf(run_conf: Dict) -> str:
         - use_feature_selection={model_k.get("use_feature_selection")}
         - use_alibi={model_k.get("use_alibi")}
     - **Training**:
-      - lr={trainer_k.get("lr")}, epochs={trainer_k.get("n_epochs")}, batch_size={trainer_k.get("batch_size")}
+      - lr={trainer_k.get("lr")}, epochs={trainer_k.get("n_epochs")}, batch_size={trainer_k.get("batch_size")}, eval_batch_size={trainer_k.get("eval_batch_size", trainer_k.get("batch_size"))}
       - seed={trainer_k.get("seed", None)}
     - **Backtest**:
       - strategy: {((pc.get("strategy") or {}).get("class"))}, topk={strat_k.get("topk")}, n_drop={strat_k.get("n_drop")}
@@ -2023,3 +2025,4 @@ if __name__ == "__main__":
         # 2.8 生成论文级报告
         print(">>> [Phase 4] Generate Paper-level Report...")
         generate_paper_report(rec, model_name="RST-MoE", dataset=dataset, segment="test")
+

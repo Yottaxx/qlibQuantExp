@@ -19,14 +19,14 @@ task:
 universes:
   csi300:
     instruments: csi300
-    market_state_path: market_state_csi300.pkl
+    market_state_path: artifacts/market_state/market_state_csi300.pkl
     # If you run via `work_flow.py` without modifications, the default is:
     #   experiment_name="Official_Alignment_RST_MoE"
     # You can change this to a dedicated KDD experiment name if you also change your runner.
     experiment_name: Official_Alignment_RST_MoE
   csi800:
     instruments: csi800
-    market_state_path: market_state_csi800.pkl
+    market_state_path: artifacts/market_state/market_state_csi800.pkl
     experiment_name: Official_Alignment_RST_MoE
 
 # Default knobs (used for planning; keep fixed once you start the sweep)

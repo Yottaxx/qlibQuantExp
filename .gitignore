@@ -1,0 +1,14 @@
+# Generated experiment outputs
+artifacts/
+analysis/
+mlruns/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# IDE metadata
+.idea/
+
+# Local logs
+*.log
