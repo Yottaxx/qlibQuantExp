@@ -37,7 +37,7 @@
         },
         "segments": {
             "train": ("2008-01-01", "2020-03-31"),
-            "valid": ("2020-04-01", "2020-06-30"),
+            "test": ("2020-07-01", "2022-12-31"),
             "test": ("2020-07-01", "2022-12-31"),
         },
     },
@@ -81,7 +81,8 @@ model_conf = {
             "router_noise": 0.01,
             "router_temperature": 1.0,
             "router_z_loss_coef": 0.01,
-            "router_use_layer_summary": True,
+            "router_use_layer_summary": False,
+            "router_summary_source": "day_asset",
             # ---- Positional/feature selection ----
             "use_alibi": False,  # recommended default (time embedding already provides position signal)
             "use_feature_selection": False,
@@ -104,6 +105,19 @@ model_conf = {
             # ---- Macro / regime context ----
             "use_external_macro": True,
             "d_macro_input": 0,
+            "d_day_summary_input": 0,
+            "use_hierarchical_state_field": False,
+            "d_global_state": 64,
+            "d_local_state": 64,
+            "global_state_use_macro": True,
+            "global_state_use_day_summary": True,
+            "local_state_input_mode": "last_mean_std_trend_vol",
+            "router_use_global_state": True,
+            "router_use_local_state": True,
+            "film_use_global_state": True,
+            "film_use_local_state": True,
+            "pooling_use_global_state": True,
+            "pooling_use_local_state": True,
             "regime_macro_dropout": 0.1,
             "regime_internal_mode": "long",
             "regime_internal_lag": 5,
@@ -111,10 +125,11 @@ model_conf = {
             "regime_internal_tail_threshold": 2.0,
             # ---- Pooling ----
             "pooling_alpha": 0.7,
+            "pooling_summary_source": "day_asset",
         },
         "trainer_config": {
             "lr": 5e-5,
-            "n_epochs": 40,
+            "n_epochs": 20,
             "batch_size": 300,  # å¯¹åº” FixedDailyBatchSampler çš„æ—¥åº¦ batch
             "eval_batch_size": 300,
             # Mixed precision:
@@ -135,9 +150,12 @@ model_conf = {
             "consecutive_k": 2,
             "num_workers": 0,  # debug æ—¶ç”¨ 0ï¼Œæ­£å¼è®­ç»ƒå¯ä»¥æ‹‰é«˜
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            "market_state_path": "artifacts/market_state/market_state_csi300.pkl",
+            "market_state_path": "artifacts/market_state/daily_market_field_csi300.pkl",
             "market_state_shift": 0,
             "market_state_strict": True,
+            "market_day_summary_path": None,
+            "market_day_summary_shift": 0,
+            "market_day_summary_strict": True,
             # Warmup é…ç½®ï¼ˆä¸Ž adapter ä¸­çš„é»˜è®¤å€¼ä¸€è‡´ï¼‰ï¼š
             "use_warmup": True,
             "warmup_ratio": 0.05,

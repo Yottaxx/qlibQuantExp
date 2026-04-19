@@ -1,7 +1,7 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 RST-MoE + Qlib Official Workflow (Paper-Ready Version)
-
+C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe" -m mlflow ui --host 127.0.0.1 --port 5050
 pip install plotly spicy statsmodels
 
 功能：
@@ -26,8 +26,6 @@ import pandas as pd
 from pathlib import Path
 import textwrap
 import copy
-import pprint
-import re
 
 import qlib
 from qlib.constant import REG_CN
@@ -41,19 +39,6 @@ import matplotlib.pyplot as plt
 from module.utils.qlib_official_graphs import ensure_qlib_official_graphs
 from module.utils.market_state import load_market_state_df, resolve_market_state_path
 from module.utils import regime_analysis as ra
-
-
-def _configure_stdio() -> None:
-    """Force UTF-8 stdout/stderr to avoid garbled logs on Windows."""
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            if stream is not None and hasattr(stream, "reconfigure"):
-                stream.reconfigure(encoding="utf-8", errors="strict")
-        except Exception:
-            pass
-
-
-_configure_stdio()
 # =============================================================================
 # 0. Qlib Init (与官方 yaml 对齐)
 # =============================================================================
@@ -103,7 +88,7 @@ data_conf = {
         "segments": {
             "train": ("2008-01-01", "2020-03-31"),
             "valid": ("2020-07-01", "2022-12-31"),
-            "test": ("2020-04-01", "2020-06-30"),
+            "test": ("2020-07-01", "2022-12-31"),
         },
     },
 }
@@ -116,95 +101,37 @@ model_conf = {
     "module_path": "module.model_adapter",
     "kwargs": {
         "model_config": {
-            # ---- Architecture ----
             "d_model": 64,
-            "n_heads": 4,
             "n_layers": 2,
-            "d_ff": 128,
-            "dropout": 0.1,
-            "initializer_range": 0.02,
-            # NOTE: context_len / num_alphas will be overwritten by data-driven values in QlibQuantMoE._init_net
-            "context_len": 8,
-            "num_alphas": 158,
-            # ---- Value embedding ----
-            "value_embedding_type": "feature_tokenizer",  # shared_linear | feature_tokenizer
-            "feature_tokenizer_bias": True,
-            "feature_tokenizer_add_factor_id": False,
-            "feature_tokenizer_init_std": 0.02,
-            # ---- Regime-adaptive time embedding ----
-            "use_regime_time_embedding": True,
-            "time_tau_min": 0.5,
-            "time_tau_max": 50.0,
-            "time_tau_init": 5.0,
-            "time_emb_init_std": 0.02,
-            "time_decay_normalize": True,
-            # ---- Regime-adaptive factor gate (FiLM) ----
-            "use_regime_factor_gate": True,
-            "factor_gate_scale": 1.0,
-            "factor_gate_shift_scale": 0.2,
-            # ---- MoE router ----
-            "router_noise": 0.01,
-            "router_temperature": 1.0,
-            "router_z_loss_coef": 0.01,
-            "router_use_layer_summary": True,
-            # ---- Positional/feature selection ----
-            "use_alibi": False,  # recommended default (time embedding already provides position signal)
-            "use_feature_selection": False,
-            "selection_reg_lambda": 1e-5,
-            "selection_temperature": 0.1,
-            "selection_noise_std": 0.5,
-            # ---- Loss ----
             "main_loss": "mse",
-            "loss_weights": {
-                "listmle": 1.0,
-                "mse": 1.0,
-                "ic": 1.0,
-                "rank": 0.0,
-                "huber": 0.0,
-            },
-            "mse_normalize": True,
-            "rank_topk": 5,
-            "huber_delta": 1.0,
-            "listmle_tau": 0.8,
-            # ---- Macro / regime context ----
-            "use_external_macro": True,
-            "d_macro_input": 0,
-            "regime_macro_dropout": 0.1,
-            "regime_internal_mode": "long",
-            "regime_internal_lag": 5,
-            "regime_internal_use_batch_stats": False,
-            "regime_internal_tail_threshold": 2.0,
-            # ---- Pooling ----
-            "pooling_alpha": 0.7,
-            "pooling_mode": "full",  # static | adaptive_alpha | conditioned_query | full
-            "pooling_alpha_scale": 0.3,
-            "pooling_d_ff": 128,  # None means d_model; usually set to d_model for lightweight pooling
-            "pooling_use_layer_summary": True,
+            "use_feature_selection": False,
+            "use_alibi": False,  # recommended default (time embedding already provides position signal)
+            "regime_macro_dropout": 0.05,
+            # context_len 和 num_alphas 会在 QlibQuantMoE 内自动探测
         },
         "trainer_config": {
             "lr": 5e-5,
-            "n_epochs": 40,
+            "n_epochs": 20,
             "batch_size": 300,  # 对应 FixedDailyBatchSampler 的日度 batch
-            "eval_batch_size": 300,
             # Mixed precision:
             # - "amp_fp16": recommended on RTX 4070S (fastest, needs GradScaler)
             # - "amp_bf16": more stable, usually no GradScaler (requires BF16 support)
             # - "fp32": baseline
-            "precision": "amp_fp16",
+            "precision": "fp32",
             # Gradient accumulation across K (shuffled) daily microbatches (K dates per optimizer step)
             "grad_accum_steps": 1,
             # [Safety Check] Internal Regime Encoder requires sufficient batch size (e.g. > 100)
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
-            "seed": 15,
-            # "early_stop": 5,
-            "train_stop_key": "loss_main",
-            "train_stop_threshold": 1.30,
-            "min_epochs": 5,
-            "consecutive_k": 2,
+            "seed": 42,
+            "early_stop": 5,
+            # "train_stop_key": "loss_main",
+            # "train_stop_threshold": 1.33,
+            # "min_epochs": 5,
+            # "consecutive_k": 2,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            "market_state_path": "artifacts/market_state/market_state_csi300.pkl",
+            "market_state_path": "market_state_master_market.pkl",
             "market_state_shift": 0,
             "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
@@ -232,10 +159,9 @@ port_conf = {
         },
     },
     "backtest": {
-        "start_time": "2020-04-01",
-        "end_time": "2020-06-30",
+        "start_time": "2020-07-01",
+        "end_time": "2022-12-31",
         "account": 100000000,
-        # "benchmark": "SH000906",
         "benchmark": "SH000300",
         "exchange_kwargs": {
             "freq": "day",
@@ -250,170 +176,7 @@ port_conf = {
 
 
 # =============================================================================
-# 3.1 Config helpers (resolved config, experiment name, MLflow description)
-# =============================================================================
-MODEL_CONFIG_KEYS_FULL = [
-    "d_model",
-    "n_heads",
-    "n_layers",
-    "d_ff",
-    "dropout",
-    "initializer_range",
-    "num_alphas",
-    "context_len",
-    "value_embedding_type",
-    "feature_tokenizer_bias",
-    "feature_tokenizer_add_factor_id",
-    "feature_tokenizer_init_std",
-    "use_regime_time_embedding",
-    "time_tau_min",
-    "time_tau_max",
-    "time_tau_init",
-    "time_emb_init_std",
-    "time_decay_normalize",
-    "use_regime_factor_gate",
-    "factor_gate_scale",
-    "factor_gate_shift_scale",
-    "router_noise",
-    "router_temperature",
-    "router_z_loss_coef",
-    "router_use_layer_summary",
-    "use_alibi",
-    "use_feature_selection",
-    "selection_reg_lambda",
-    "selection_temperature",
-    "selection_noise_std",
-    "main_loss",
-    "loss_weights",
-    "mse_normalize",
-    "rank_topk",
-    "huber_delta",
-    "listmle_tau",
-    "use_external_macro",
-    "d_macro_input",
-    "regime_macro_dropout",
-    "regime_internal_mode",
-    "regime_internal_lag",
-    "regime_internal_use_batch_stats",
-    "regime_internal_tail_threshold",
-    "pooling_alpha",
-    "pooling_mode",
-    "pooling_alpha_scale",
-    "pooling_d_ff",
-    "pooling_use_layer_summary",
-]
-
-
-def _pformat(obj: Any) -> str:
-    try:
-        return pprint.pformat(obj, width=120, sort_dicts=False)
-    except TypeError:
-        return pprint.pformat(obj, width=120)
-
-
-def _resolve_model_config(model, fallback: Dict[str, Any]) -> Dict[str, Any]:
-    cfg = None
-    try:
-        cfg = getattr(getattr(model, "net", None), "config", None)
-    except Exception:
-        cfg = None
-    if cfg is None:
-        return dict(fallback or {})
-
-    try:
-        cfg_dict = cfg.to_dict()
-    except Exception:
-        cfg_dict = dict(getattr(cfg, "__dict__", {}) or {})
-
-    resolved: Dict[str, Any] = {}
-    for key in MODEL_CONFIG_KEYS_FULL:
-        if key in cfg_dict:
-            resolved[key] = cfg_dict[key]
-        elif hasattr(cfg, key):
-            resolved[key] = getattr(cfg, key)
-        else:
-            resolved[key] = (fallback or {}).get(key, None)
-    return resolved
-
-
-def _resolve_trainer_config(model, fallback: Dict[str, Any]) -> Dict[str, Any]:
-    if model is not None and hasattr(model, "trainer_config"):
-        try:
-            return dict(model.trainer_config)
-        except Exception:
-            pass
-    return dict(fallback or {})
-
-
-def _format_full_config_md(run_conf: Dict[str, Any]) -> str:
-    dc = (run_conf or {}).get("data_conf", {}) or {}
-    mc = (run_conf or {}).get("model_conf", {}) or {}
-    pc = (run_conf or {}).get("port_conf", {}) or {}
-    mk = (mc.get("kwargs") or {}) if isinstance(mc, dict) else {}
-    model_k = mk.get("model_config", {}) or {}
-    trainer_k = mk.get("trainer_config", {}) or {}
-    lines = [
-        "```python",
-        "data_conf = " + _pformat(dc),
-        "",
-        "model_config = " + _pformat(model_k),
-        "",
-        "trainer_config = " + _pformat(trainer_k),
-        "",
-        "port_conf = " + _pformat(pc),
-        "```",
-    ]
-    return "\n".join(lines)
-
-
-def _bool01(v: Any) -> str:
-    return "1" if bool(v) else "0"
-
-
-def _slugify(value: Any) -> str:
-    s = str(value) if value is not None else "none"
-    s = re.sub(r"[^A-Za-z0-9_.-]+", "-", s)
-    s = s.strip("-")
-    return s or "na"
-
-
-def _build_experiment_name(model_k: Dict[str, Any], trainer_k: Dict[str, Any]) -> str:
-    mk = dict(model_k or {})
-    tk = dict(trainer_k or {})
-    ms_path = tk.get("market_state_path", None)
-    ms_name = Path(ms_path).stem if ms_path else "none"
-    emb_type = str(mk.get("value_embedding_type", "shared_linear"))
-    emb_tag = _slugify(emb_type)
-    if emb_type == "feature_tokenizer":
-        emb_tag = "ft"
-        if bool(mk.get("feature_tokenizer_add_factor_id", False)):
-            emb_tag = emb_tag + "id"
-    parts = [
-        "Official_Alignment_RST_MoE",
-        f"loss-{_slugify(mk.get('main_loss', 'mse'))}",
-        f"d{mk.get('d_model', 'na')}",
-        f"l{mk.get('n_layers', 'na')}",
-        f"ff{mk.get('d_ff', 'na')}",
-        f"ctx{mk.get('context_len', 'na')}",
-        f"emb{emb_tag}",
-        f"time{_bool01(mk.get('use_regime_time_embedding', False))}",
-        f"decay{_bool01(mk.get('time_decay_normalize', False))}",
-        f"film{_bool01(mk.get('use_regime_factor_gate', False))}",
-        f"fgs{_slugify(mk.get('factor_gate_scale', 'na'))}",
-        f"fsh{_slugify(mk.get('factor_gate_shift_scale', 'na'))}",
-        f"rSum{_bool01(mk.get('router_use_layer_summary', False))}",
-        f"featSel{_bool01(mk.get('use_feature_selection', False))}",
-        f"mseNorm{_bool01(mk.get('mse_normalize', False))}",
-        f"macro{_bool01(mk.get('use_external_macro', False))}",
-        f"mDrop{_slugify(mk.get('regime_macro_dropout', 'na'))}",
-        f"pool{_slugify(mk.get('pooling_alpha', 'na'))}",
-        f"ms{_slugify(ms_name)}",
-    ]
-    return "_".join(parts)
-
-
-# =============================================================================
-# 4. æŠ¥å‘Šç”Ÿæˆå·¥å…·å‡½æ•°
+# 4. 报告生成工具函数
 # =============================================================================
 def _to_ts(d) -> pd.Timestamp:
     """
@@ -870,18 +633,14 @@ def _format_setup_from_conf(run_conf: Dict) -> str:
       - Valid: {_seg("valid")}
       - Test: {_seg("test")}
     - **Label**: {label_expr}
-      - **Model**:
-        - class: {mc.get("class")}
-        - d_model={model_k.get("d_model")}, n_layers={model_k.get("n_layers")}, n_heads={model_k.get("n_heads")}
-        - main_loss={model_k.get("main_loss", "mse")}
-        - value_embedding_type={model_k.get("value_embedding_type", "shared_linear")}
-        - feature_tokenizer_add_factor_id={model_k.get("feature_tokenizer_add_factor_id")}
-        - feature_tokenizer_bias={model_k.get("feature_tokenizer_bias")}
-        - feature_tokenizer_init_std={model_k.get("feature_tokenizer_init_std")}
-        - use_feature_selection={model_k.get("use_feature_selection")}
-        - use_alibi={model_k.get("use_alibi")}
+    - **Model**:
+      - class: {mc.get("class")}
+      - d_model={model_k.get("d_model")}, n_layers={model_k.get("n_layers")}, n_heads={model_k.get("n_heads")}
+      - main_loss={model_k.get("main_loss", "mse")}
+      - use_feature_selection={model_k.get("use_feature_selection")}
+      - use_alibi={model_k.get("use_alibi")}
     - **Training**:
-      - lr={trainer_k.get("lr")}, epochs={trainer_k.get("n_epochs")}, batch_size={trainer_k.get("batch_size")}, eval_batch_size={trainer_k.get("eval_batch_size", trainer_k.get("batch_size"))}
+      - lr={trainer_k.get("lr")}, epochs={trainer_k.get("n_epochs")}, batch_size={trainer_k.get("batch_size")}
       - seed={trainer_k.get("seed", None)}
     - **Backtest**:
       - strategy: {((pc.get("strategy") or {}).get("class"))}, topk={strat_k.get("topk")}, n_drop={strat_k.get("n_drop")}
@@ -1384,7 +1143,7 @@ def generate_paper_report(
                         "- `market_vol_20`：基准 20 日波动（通常已标准化，解读为相对高/低波动）。\n"
                         "- `RankIC/IC`：预测排序/线性相关质量；`IR` 为日度均值/标准差（样本少时不稳定）。\n"
                         "- `time_ratio`：路由对 time-expert 的权重（高→更偏时序专家，低→更偏截面因子专家）。\n"
-                        "- `gate_entropy`：路由不确定性（接近 0.693，约等于两专家均匀；越低越“果断”）。\n"
+                        "- `gate_entropy`：路由不确定性（接近 0.693≈两专家均匀；越低越“果断”）。\n"
                         "- `time_tau/time_half_life`：时间记忆尺度（越大→更长记忆/更慢衰减）。\n"
                         "- `factor_gate_entropy/topk_mass`：因子重加权是否集中（topk_mass 高/entropy 低→更集中）。\n"
                     )
@@ -1661,9 +1420,6 @@ def generate_paper_report(
     lines.append(f"# {model_name} on Alpha158 / CSI300\n")
     lines.append("## 1. Experimental Setup\n")
     lines.append(_format_setup_from_conf(run_conf) + "\n")
-    lines.append("### 1.1 Full Config (Resolved)\n")
-    lines.append(_format_full_config_md(run_conf) + "\n")
-
 
     lines.append("## 2. Cross-sectional Forecasting Performance\n")
     perf_txt = f"""
@@ -1880,20 +1636,10 @@ def generate_paper_report(
     def _safe_print(text: str) -> None:
         try:
             print(text)
-            return
         except UnicodeEncodeError:
-            pass
-
-        try:
-            if hasattr(sys.stdout, "reconfigure"):
-                sys.stdout.reconfigure(encoding="utf-8", errors="strict")
-            print(text)
-            return
-        except Exception:
-            pass
-
-        safe = text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-        print(safe)
+            enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+            safe = text.encode(enc, errors="replace").decode(enc, errors="replace")
+            print(safe)
 
     _safe_print(report_md)
     print("=" * 80)
@@ -1920,12 +1666,7 @@ if __name__ == "__main__":
         )
 
     # 2) 启动实验
-    exp_name = _build_experiment_name(
-        (model_conf.get('kwargs') or {}).get('model_config', {}),
-        (model_conf.get('kwargs') or {}).get('trainer_config', {}),
-    )
-    resolved_model_conf = None
-    with R.start(experiment_name=exp_name):
+    with R.start(experiment_name="Official_Alignment_RST_MoE_ONLY_MACRO_regime_embedding_masterMarket_mse_64_fp32"):
         # 2.1 记录超参
         R.log_params(**flatten_dict(model_conf))
         # 2.1.1 Save full run configuration for report reproducibility
@@ -1941,33 +1682,6 @@ if __name__ == "__main__":
         # 2.2 训练
         print(">>> [Phase 1] Training Model...")
         model.fit(dataset)
-
-        resolved_model_k = _resolve_model_config(
-            model, (model_conf.get('kwargs') or {}).get('model_config', {})
-        )
-        resolved_trainer_k = _resolve_trainer_config(
-            model, (model_conf.get('kwargs') or {}).get('trainer_config', {})
-        )
-        resolved_model_conf = copy.deepcopy(model_conf)
-        resolved_model_conf['kwargs']['model_config'] = copy.deepcopy(resolved_model_k)
-        resolved_model_conf['kwargs']['trainer_config'] = copy.deepcopy(resolved_trainer_k)
-
-        try:
-            full_desc = (
-                "[Model Full]\n" + _pformat(resolved_model_k) + "\n\n"
-                "[Trainer Full]\n" + _pformat(resolved_trainer_k)
-            )
-            R.set_tags(**{"mlflow.note.content": full_desc})
-        except Exception:
-            pass
-
-        R.save_objects(
-            run_conf_resolved={
-                'data_conf': copy.deepcopy(data_conf),
-                'model_conf': copy.deepcopy(resolved_model_conf),
-                'port_conf': copy.deepcopy(port_conf_run),
-            }
-        )
         R.save_objects(model=model)
 
         # 2.3 导出 gate / attention 可视化诊断
@@ -2000,11 +1714,10 @@ if __name__ == "__main__":
                     end=p_end,
                     reason="pred.pkl datetime range",
                 )
-                conf_for_save = resolved_model_conf or model_conf
                 R.save_objects(
                     run_conf_resolved={
                         "data_conf": copy.deepcopy(data_conf),
-                        "model_conf": copy.deepcopy(conf_for_save),
+                        "model_conf": copy.deepcopy(model_conf),
                         "port_conf": copy.deepcopy(port_conf_run),
                     }
                 )
@@ -2025,4 +1738,3 @@ if __name__ == "__main__":
         # 2.8 生成论文级报告
         print(">>> [Phase 4] Generate Paper-level Report...")
         generate_paper_report(rec, model_name="RST-MoE", dataset=dataset, segment="test")
-

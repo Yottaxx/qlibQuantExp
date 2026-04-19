@@ -1,5 +1,10 @@
 # Deterministic Global-Local Hyper-State Coding Plan
 
+> Status note (2026-04-09):
+> Phase 1-3 has landed in code as a flagged rollout.
+> The legacy path remains available, and the default workflow has not been switched yet.
+> See `implementation_status_2026-04-09.md` for the current checkpoint.
+
 > Scope: 本文是设计稿，不修改代码。目标是在当前 RST-MoE 架构中，把单一 `regime_embedding` 升级为分层状态场，同时尽量复用现有模块骨架。
 
 ---
@@ -333,8 +338,10 @@ $$
 - `local_state_input_mode`
 - `router_use_global_state`
 - `router_use_local_state`
-- `film_use_global_local_state`
-- `pooling_use_global_local_state`
+- `film_use_global_state`
+- `film_use_local_state`
+- `pooling_use_global_state`
+- `pooling_use_local_state`
 
 这些配置不应和未来的 variational / dynamic weights 配置混在一起。
 
@@ -398,20 +405,28 @@ $$
 
 ### Phase 1
 
+- Status 2026-04-09: done in code behind `use_hierarchical_state_field`
+
 - 新增 `GlobalStateEncoder`
 - `time_tau` 改吃 `global_state`
 
 ### Phase 2
+
+- Status 2026-04-09: done in code behind `use_hierarchical_state_field`
 
 - 新增 `LocalStateEncoder`
 - `router` 改吃 `global + local + day_summary`
 
 ### Phase 3
 
+- Status 2026-04-09: done in code behind `use_hierarchical_state_field`
+
 - `FiLM` 改吃 `global + local`
 - `pooling` 改吃 `global + local + day_summary`
 
 ### Phase 4
+
+- Status 2026-04-09: not started
 
 - 再考虑：
   - global cross expert
@@ -420,7 +435,27 @@ $$
 
 ---
 
-## 12. 最终判断
+## 12. Implementation Checkpoint (2026-04-09)
+
+- Phase 1-3 is implemented as a flagged rollout.
+- Legacy single-latent path is still available and remains the default workflow.
+- `time_tau` now reads `global_state` only in the new path.
+- `FiLM / router / pooling` now read explicit `global_state + local_state`, with summary branches still optional.
+- Day-summary fail-fast is part of the hierarchical path when `global_state_use_day_summary=True`.
+- Run metadata and comparison tooling now record the hierarchical config surface and fixed ablation labels.
+- Code-level smoke checks passed for legacy path, hierarchical path, and the basic invariance check:
+  - `global_state` unchanged under stock permutation when day-level inputs are fixed
+  - `tau_d` unchanged under stock permutation when day-level inputs are fixed
+  - `local_state` changes with stock-level `x`
+- Remaining gate before any default switch:
+  - run the 5-way ablation matrix
+  - verify stable-summary chunk metrics stay near zero
+  - verify stock-level routing / pooling heterogeneity is restored
+  - verify `global_local_stable_summary` stays within the `<= 0.002` IC / RankIC degradation budget vs `base`
+
+---
+
+## 13. 最终判断
 
 对于当前 RST-MoE，`Deterministic Global-Local Hyper-State` 是最优第一步，因为它：
 

@@ -41,7 +41,19 @@ class QuantMoEConfig(PretrainedConfig):
             router_noise: float = 0.01,       # logit noise std (training only)
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
+            router_aux_loss_type: str = "usage_entropy",
+            router_usage_entropy_coef: float = 0.01,
+            router_use_stock_token: bool = True,
+            router_stock_scale_init: float = 0.1,
+            router_stock_scale_learnable: bool = True,
             router_use_layer_summary: bool = False,  # add per-layer market summary token to router input
+            router_summary_source: Optional[str] = None,
+            temporal_pooling_mode: str = "learned_query_mha_v1",
+            temporal_pooling_heads: int = 4,
+            use_cross_stock_attention: bool = True,
+            cross_stock_attention_heads: int = 4,
+            cross_stock_residual_scale_init: float = 0.1,
+            cross_stock_scale_learnable: bool = True,
             use_alibi: bool = False,
             use_feature_selection: bool = False,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
@@ -57,18 +69,39 @@ class QuantMoEConfig(PretrainedConfig):
             # context encoder
             use_external_macro: bool = True,
             d_macro_input: int = 0,
+            d_day_summary_input: int = 0,
             regime_macro_dropout: float = 0.0,
+            use_hierarchical_state_field: bool = False,
+            d_global_state: Optional[int] = None,
+            d_local_state: Optional[int] = None,
+            global_state_use_macro: bool = True,
+            global_state_use_day_summary: bool = True,
+            local_state_input_mode: str = "last_mean_std_trend_vol",
+            state_fusion_mode: str = "sum_norm",
+            local_router_scale_init: float = 0.1,
+            local_pooling_scale_init: float = 0.1,
+            local_pooling_alpha_scale_init: float = 0.1,
+            local_film_scale_init: float = 0.1,
+            local_scale_learnable: bool = True,
+            router_use_global_state: bool = True,
+            router_use_local_state: bool = True,
+            film_use_global_state: bool = True,
+            film_use_local_state: bool = True,
+            pooling_use_global_state: bool = True,
+            pooling_use_local_state: bool = True,
             # internal regime stats (used when use_external_macro=False)
             regime_internal_mode: str = "long",  # "short" (t+1-ish) or "long" (t+5-ish)
             regime_internal_lag: int = 5,         # effective when mode="long"
             regime_internal_use_batch_stats: bool = False,
             regime_internal_tail_threshold: float = 2.0,
             # pooling
-            pooling_alpha: float = 0.7,  # Base weight for attention vs mean pooling
+            pooling_alpha: float = 0.25,  # Base weight for attention vs mean pooling
             pooling_mode: str = "adaptive_alpha",  # "static", "adaptive_alpha", "conditioned_query", "full"
-            pooling_alpha_scale: float = 0.3,      # Scaling factor for adaptive alpha
+            pooling_alpha_scale: float = 0.15,      # Scaling factor for adaptive alpha
             pooling_d_ff: Optional[int] = None,    # FFN dimension (None = d_model)
+            pooling_num_queries: int = 4,
             pooling_use_layer_summary: bool = False, # If True, condition on layer summary
+            pooling_summary_source: Optional[str] = None,
             **kwargs
     ):
 
@@ -118,8 +151,42 @@ class QuantMoEConfig(PretrainedConfig):
         self.router_noise = router_noise
         self.router_temperature = router_temperature
         self.router_z_loss_coef = router_z_loss_coef
-        self.router_use_layer_summary = router_use_layer_summary
+        router_aux_loss_type = str(router_aux_loss_type or "z_loss").strip().lower()
+        if router_aux_loss_type not in {"z_loss", "usage_entropy"}:
+            raise ValueError("router_aux_loss_type must be one of: z_loss, usage_entropy.")
+        self.router_aux_loss_type = router_aux_loss_type
+        self.router_usage_entropy_coef = float(router_usage_entropy_coef)
+        self.router_use_stock_token = bool(router_use_stock_token)
+        self.router_stock_scale_init = float(router_stock_scale_init)
+        self.router_stock_scale_learnable = bool(router_stock_scale_learnable)
+        self.router_use_layer_summary = bool(router_use_layer_summary)
+        self.temporal_pooling_mode = str(temporal_pooling_mode or "last").strip().lower()
+        if self.temporal_pooling_mode not in {"last", "learned_query_mha_v1"}:
+            raise ValueError("temporal_pooling_mode must be one of: last, learned_query_mha_v1.")
+        self.temporal_pooling_heads = int(temporal_pooling_heads)
+        self.use_cross_stock_attention = bool(use_cross_stock_attention)
+        self.cross_stock_attention_heads = int(cross_stock_attention_heads)
+        self.cross_stock_residual_scale_init = float(cross_stock_residual_scale_init)
+        self.cross_stock_scale_learnable = bool(cross_stock_scale_learnable)
         self.use_alibi = use_alibi
+
+        def _resolve_summary_source(explicit: Optional[str], legacy_flag: bool, *, field: str) -> str:
+            if explicit is None:
+                source = "batch" if bool(legacy_flag) else "none"
+            else:
+                source = str(explicit).strip().lower()
+            valid_sources = {"none", "batch", "day_asset"}
+            if source not in valid_sources:
+                raise ValueError(
+                    f"Unsupported {field}: {source}. Supported: {sorted(valid_sources)}"
+                )
+            return source
+
+        self.router_summary_source = _resolve_summary_source(
+            router_summary_source,
+            self.router_use_layer_summary,
+            field="router_summary_source",
+        )
 
         self.use_feature_selection = use_feature_selection
         self.selection_reg_lambda = selection_reg_lambda
@@ -152,7 +219,36 @@ class QuantMoEConfig(PretrainedConfig):
 
         self.use_external_macro = use_external_macro
         self.d_macro_input = d_macro_input
+        self.d_day_summary_input = int(d_day_summary_input or 0)
         self.regime_macro_dropout = regime_macro_dropout
+        self.use_hierarchical_state_field = bool(use_hierarchical_state_field)
+        self.d_global_state = int(d_model if d_global_state is None else d_global_state)
+        self.d_local_state = int(d_model if d_local_state is None else d_local_state)
+        self.global_state_use_macro = bool(global_state_use_macro)
+        self.global_state_use_day_summary = bool(global_state_use_day_summary)
+        self.local_state_input_mode = str(local_state_input_mode or "last_mean_std_trend_vol").strip().lower()
+        self.state_fusion_mode = str(state_fusion_mode or "sum_norm").strip().lower()
+        if self.state_fusion_mode not in {"sum_norm", "branch_mlp_v1", "bounded_sum_v1"}:
+            raise ValueError("state_fusion_mode must be one of: sum_norm, branch_mlp_v1, bounded_sum_v1.")
+        self.local_router_scale_init = float(local_router_scale_init)
+        self.local_pooling_scale_init = float(local_pooling_scale_init)
+        self.local_pooling_alpha_scale_init = float(local_pooling_alpha_scale_init)
+        self.local_film_scale_init = float(local_film_scale_init)
+        self.local_scale_learnable = bool(local_scale_learnable)
+        self.router_use_global_state = bool(router_use_global_state)
+        self.router_use_local_state = bool(router_use_local_state)
+        self.film_use_global_state = bool(film_use_global_state)
+        self.film_use_local_state = bool(film_use_local_state)
+        self.pooling_use_global_state = bool(pooling_use_global_state)
+        self.pooling_use_local_state = bool(pooling_use_local_state)
+        if self.use_hierarchical_state_field:
+            if self.d_global_state <= 0 or self.d_local_state <= 0:
+                raise ValueError("Hierarchical state field requires d_global_state > 0 and d_local_state > 0.")
+            if not (self.global_state_use_macro or self.global_state_use_day_summary):
+                raise ValueError(
+                    "Hierarchical state field requires at least one global-state input branch "
+                    "(global_state_use_macro or global_state_use_day_summary)."
+                )
 
         self.regime_internal_mode = regime_internal_mode
         self.regime_internal_lag = regime_internal_lag
@@ -163,7 +259,15 @@ class QuantMoEConfig(PretrainedConfig):
         self.pooling_mode = pooling_mode
         self.pooling_alpha_scale = pooling_alpha_scale
         self.pooling_d_ff = pooling_d_ff
+        self.pooling_num_queries = int(pooling_num_queries)
+        if self.pooling_num_queries <= 0:
+            raise ValueError("pooling_num_queries must be positive.")
         self.pooling_use_layer_summary = bool(pooling_use_layer_summary)
+        self.pooling_summary_source = _resolve_summary_source(
+            pooling_summary_source,
+            self.pooling_use_layer_summary,
+            field="pooling_summary_source",
+        )
 
         valid_pooling_modes = {"static", "adaptive_alpha", "conditioned_query", "full"}
         if self.pooling_mode not in valid_pooling_modes:

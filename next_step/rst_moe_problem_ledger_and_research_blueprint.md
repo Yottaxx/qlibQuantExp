@@ -650,6 +650,13 @@ $$
 \text{实验可复现性} \uparrow
 $$
 
+Implementation checkpoint (2026-04-09):
+
+- `stable_market_state_field` asset / protocol cleanup is already available.
+- `hierarchical_state_field` Phase 1-3 is now implemented as a flagged rollout in code.
+- This means the main P2 / P3 / P4 structural fix has landed, but Phase A is still not closed.
+- Phase A remains open until the fixed 5-way ablation matrix and the go / no-go acceptance gate are completed on real runs.
+
 ### Phase B. 算子扩展层
 
 目标：补齐当前 separable operator 的表达瓶颈。

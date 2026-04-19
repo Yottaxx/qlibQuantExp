@@ -25,7 +25,7 @@ python scripts/generate_thesis_tables.py ^
   --run_id <RUN_ID_CSI300> ^
   --out_dir artifacts/thesis_outputs ^
   --as_of_dates regime ^
-  --market_state artifacts/market_state/market_state_csi300.pkl
+  --market_state artifacts/market_state/daily_market_field_csi300.pkl
 
 CSI800 (train/infer on CSI800; compare benchmark migration to SH000906; snapshots cover all regimes)
 
@@ -33,14 +33,14 @@ python scripts/generate_thesis_tables.py ^
   --run_id <RUN_ID_CSI800> ^
   --out_dir artifacts/thesis_outputs ^
   --as_of_dates regime ^
-  --market_state artifacts/market_state/market_state_csi800.pkl ^
+  --market_state artifacts/market_state/daily_market_field_csi800.pkl ^
   --benchmark_override SH000906
 
 Example (this repo)
 -------------------
 python scripts/generate_thesis_tables.py ^
   --run_id e395e6d51e8e4c88b58de249342c085f ^
-  --market_state artifacts/market_state/market_state_csi300.pkl ^
+  --market_state artifacts/market_state/daily_market_field_csi300.pkl ^
   --out_dir artifacts/thesis_outputs ^
   --as_of 2022-12-30
 
@@ -65,6 +65,12 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from module.utils.market_state import load_market_state_analysis_df
 
 
 TRADING_DAYS_CN = 238  # align with qlib.contrib.evaluate.risk_analysis(freq="day")
@@ -1807,8 +1813,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--market_state",
         type=str,
-        default="artifacts/market_state/market_state_csi300.pkl",
-        help="Path to market_state DataFrame (default: auto by universe, fallback: artifacts/market_state/market_state_csi300.pkl).",
+        default="artifacts/market_state/daily_market_field_csi300.pkl",
+        help="Path to market state asset (default: auto by universe, fallback: artifacts/market_state/daily_market_field_csi300.pkl).",
     )
     ap.add_argument(
         "--out_dir",
@@ -1993,13 +1999,13 @@ def main() -> None:
     # Avoid cross-universe: default market_state follows the training universe when possible.
     ms_path_in = str(args.market_state).strip()
     universe_key = str(universe_spec).strip() if isinstance(universe_spec, str) else ""
-    if ms_path_in == "artifacts/market_state/market_state_csi300.pkl" and universe_key and universe_key != "csi300":
-        cand = Path(f"artifacts/market_state/market_state_{universe_key}.pkl")
+    if ms_path_in == "artifacts/market_state/daily_market_field_csi300.pkl" and universe_key and universe_key != "csi300":
+        cand = Path(f"artifacts/market_state/daily_market_field_{universe_key}.pkl")
         if cand.exists():
             ms_path_in = str(cand)
 
     ms_path = Path(ms_path_in).expanduser().resolve()
-    market_state = pd.read_pickle(ms_path)
+    market_state = load_market_state_analysis_df(ms_path)
 
     # --- compute tables ---
     df_regime = _regime_rankic_table(ric=ric, ic=ic, market_state=market_state, segments=segments)

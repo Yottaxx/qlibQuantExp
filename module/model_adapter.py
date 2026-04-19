@@ -30,6 +30,7 @@ from module.quant_moe_model import QuantMoEModel
 from module.utils.model_configuration import QuantMoEConfig
 from module.utils.market_state import (
     MarketStateLookup,
+    derive_market_state_sibling_path,
     load_market_state_df,
     lookup_market_state,
     make_market_state_lookup,
@@ -111,7 +112,32 @@ class QlibQuantMoE(Model):
         self.market_state_path = self.trainer_config.get("market_state_path", None)
         self.market_state_shift = int(self.trainer_config.get("market_state_shift", 0) or 0)
         self.market_state_strict = bool(self.trainer_config.get("market_state_strict", True))
+        self.market_state_missing_policy = str(
+            self.trainer_config.get("market_state_missing_policy", "strict") or "strict"
+        ).strip().lower()
         self._market_state: Optional[MarketStateLookup] = None
+        self._market_state_df: Optional[pd.DataFrame] = None
+        self._market_state_missing_hits = 0
+        self._market_state_missing_dates: set[pd.Timestamp] = set()
+        self.market_day_summary_path = self.trainer_config.get("market_day_summary_path", None)
+        _day_shift = self.trainer_config.get("market_day_summary_shift", None)
+        _day_strict = self.trainer_config.get("market_day_summary_strict", None)
+        _day_missing_policy = self.trainer_config.get("market_day_summary_missing_policy", None)
+        self.market_day_summary_shift = (
+            self.market_state_shift if _day_shift is None else int(_day_shift or 0)
+        )
+        self.market_day_summary_strict = (
+            self.market_state_strict if _day_strict is None else bool(_day_strict)
+        )
+        self.market_day_summary_missing_policy = (
+            self.market_state_missing_policy
+            if _day_missing_policy is None
+            else str(_day_missing_policy or "strict").strip().lower()
+        )
+        self._market_day_summary: Optional[MarketStateLookup] = None
+        self._market_day_summary_df: Optional[pd.DataFrame] = None
+        self._market_day_summary_missing_hits = 0
+        self._market_day_summary_missing_dates: set[pd.Timestamp] = set()
 
         # If TSDataSampler packs label into x: last `label_dim` channels are labels.
         # 对 Alpha158 + 单一 label，一般 label_dim=1。
@@ -202,6 +228,17 @@ class QlibQuantMoE(Model):
         self.debug_std_eps = float(self.trainer_config.get("debug_std_eps", 1e-8))
         self.debug_grad_eps = float(self.trainer_config.get("debug_grad_eps", 1e-12))
         self._warned_keys: set[str] = set()
+        self.fill_nonfinite_feature = bool(self.trainer_config.get("fill_nonfinite_feature", False))
+        self._feature_nonfinite_fill_count = 0
+        self._feature_nonfinite_fill_total = 0
+        self.enable_local_counterfactual_diag = bool(
+            self.trainer_config.get("enable_local_counterfactual_diag", False)
+        )
+        self.enable_expert_advantage_diag = bool(
+            self.trainer_config.get("enable_expert_advantage_diag", False)
+        )
+        self._last_expert_advantage_daily: Optional[pd.DataFrame] = None
+        self._last_expert_advantage_spearman: Optional[pd.DataFrame] = None
 
     def _autocast_ctx(self):
         if not self.amp_enabled or self.amp_dtype is None:
@@ -223,6 +260,81 @@ class QlibQuantMoE(Model):
             return
         self._warned_keys.add(key)
         print(msg)
+
+    def _maybe_fill_nonfinite_feature(self, x_np: np.ndarray, *, context: str) -> np.ndarray:
+        finite = np.isfinite(x_np)
+        if bool(finite.all()):
+            return x_np
+        bad_count = int((~finite).sum())
+        total = int(np.size(x_np))
+        if not self.fill_nonfinite_feature:
+            return x_np
+        self._feature_nonfinite_fill_count += bad_count
+        self._feature_nonfinite_fill_total += total
+        self._warn_once(
+            "fill_nonfinite_feature",
+            ">>> [Data] fill_nonfinite_feature=True; replacing residual non-finite "
+            f"feature values with 0.0 ({bad_count}/{total} in {context}). "
+            "This handles TSDatasetH window padding / newly-listed or suspended edge cases "
+            "after Qlib feature processors.",
+        )
+        return np.nan_to_num(np.asarray(x_np), nan=0.0, posinf=0.0, neginf=0.0)
+
+    def _require_finite_tensor(
+        self,
+        x: torch.Tensor,
+        *,
+        name: str,
+        context: str,
+        dtype: torch.dtype | None = None,
+    ) -> torch.Tensor:
+        bad = ~torch.isfinite(x)
+        if bad.any().item():
+            bad_count = int(bad.sum().item())
+            total = int(bad.numel())
+            raise RuntimeError(
+                f"{context}: {name} contains {bad_count}/{total} NaN/Inf values. "
+                "Qlib feature inputs are expected to be preprocessed with Fillna; "
+                "check handler infer_processors / market-state assets."
+            )
+        out = x.to(self.device)
+        if dtype is not None:
+            out = out.to(dtype=dtype)
+        return out
+
+    @staticmethod
+    def _resolve_summary_source_from_config(cfg: Dict[str, Any], prefix: str) -> str:
+        explicit = cfg.get(f"{prefix}_summary_source", None)
+        if explicit is None:
+            explicit = "batch" if bool(cfg.get(f"{prefix}_use_layer_summary", False)) else "none"
+        source = str(explicit).strip().lower()
+        valid_sources = {"none", "batch", "day_asset"}
+        if source not in valid_sources:
+            raise ValueError(f"Unsupported {prefix}_summary_source: {source}. Supported: {sorted(valid_sources)}")
+        return source
+
+    def _router_summary_source(self) -> str:
+        return self._resolve_summary_source_from_config(self.model_config, "router")
+
+    def _pooling_summary_source(self) -> str:
+        return self._resolve_summary_source_from_config(self.model_config, "pooling")
+
+    def _requires_day_summary_asset(self) -> bool:
+        hierarchical_needs_day_summary = bool(self.model_config.get("use_hierarchical_state_field", False)) and bool(
+            self.model_config.get("global_state_use_day_summary", True)
+        )
+        return hierarchical_needs_day_summary or any(
+            source == "day_asset"
+            for source in (self._router_summary_source(), self._pooling_summary_source())
+        )
+
+    def _resolved_market_day_summary_path(self) -> Optional[str]:
+        if self.market_day_summary_path:
+            return str(self.market_day_summary_path)
+        if not self.market_state_path:
+            return None
+        sibling = derive_market_state_sibling_path(self.market_state_path, target="observation")
+        return str(sibling) if sibling is not None else None
 
     def _set_global_seed(self, seed: Optional[int]) -> None:
         if seed is None:
@@ -276,6 +388,9 @@ class QlibQuantMoE(Model):
             dims.append("context_len=auto")
             dims.append("num_alphas=auto")
 
+        router_summary_source = self._router_summary_source()
+        pooling_summary_source = self._pooling_summary_source()
+
         if self.market_state_path:
             macro_dim = cfg_get("d_macro_input", 0)
             dim_str = str(macro_dim) if int(macro_dim or 0) > 0 else "auto"
@@ -287,6 +402,18 @@ class QlibQuantMoE(Model):
             mode = cfg_get("regime_internal_mode", "long")
             lag = cfg_get("regime_internal_lag", 5)
             macro_desc = f"internal({mode}, lag={lag})"
+
+        day_summary_desc = "none"
+        if self._requires_day_summary_asset():
+            ds_path = self._resolved_market_day_summary_path()
+            ds_dim = cfg_get("d_day_summary_input", 0)
+            ds_dim_str = str(ds_dim) if int(ds_dim or 0) > 0 else "auto"
+            ds_name = Path(ds_path).name if ds_path else "missing"
+            day_summary_desc = (
+                f"day_asset({ds_name}, dim={ds_dim_str}, "
+                f"shift={self.market_day_summary_shift}, strict={self.market_day_summary_strict}, "
+                f"missing={self.market_day_summary_missing_policy})"
+            )
 
         emb_type = str(cfg_get("value_embedding_type", "shared_linear"))
         if emb_type == "feature_tokenizer":
@@ -305,7 +432,26 @@ class QlibQuantMoE(Model):
             f"feat_sel={on_off(cfg_get('use_feature_selection', False))}",
             f"alibi={on_off(cfg_get('use_alibi', False))}",
             f"macro={macro_desc}",
+            f"router_summary={router_summary_source}",
+            f"pooling_summary={pooling_summary_source}",
+            f"day_summary={day_summary_desc}",
         ]
+        if bool(cfg_get("use_hierarchical_state_field", False)):
+            global_sources = []
+            if bool(cfg_get("global_state_use_macro", True)):
+                global_sources.append("macro")
+            if bool(cfg_get("global_state_use_day_summary", True)):
+                global_sources.append("day")
+            model_parts.append(
+                "hsf="
+                f"on(g={cfg_get('d_global_state', 'n/a')},"
+                f"l={cfg_get('d_local_state', 'n/a')},"
+                f"gsrc={'+'.join(global_sources) or 'none'},"
+                f"local={cfg_get('local_state_input_mode', 'n/a')},"
+                f"fusion={cfg_get('state_fusion_mode', 'sum_norm')})"
+            )
+        else:
+            model_parts.append("hsf=off(legacy_regime_embedding)")
         macro_drop = float(cfg_get("regime_macro_dropout", 0.0) or 0.0)
         if macro_drop > 0:
             model_parts.append(f"macro_drop={macro_drop:g}")
@@ -389,7 +535,19 @@ class QlibQuantMoE(Model):
                 ("router_noise", "Logit noise std"),
                 ("router_temperature", "Softmax temperature"),
                 ("router_z_loss_coef", "Z-loss coefficient"),
+                ("router_aux_loss_type", "Router aux loss"),
+                ("router_usage_entropy_coef", "Usage entropy coefficient"),
+                ("router_use_stock_token", "Use stock-token router"),
+                ("router_stock_scale_init", "Initial stock router scale"),
                 ("router_use_layer_summary", "Use layer summary token"),
+                ("router_summary_source", "Summary source"),
+            ],
+            "Representation Pooling": [
+                ("temporal_pooling_mode", "Temporal pooling mode"),
+                ("temporal_pooling_heads", "Temporal pooling heads"),
+                ("use_cross_stock_attention", "Enable cross-stock context"),
+                ("cross_stock_attention_heads", "Cross-stock attention heads"),
+                ("cross_stock_residual_scale_init", "Cross-stock residual scale"),
             ],
             "Feature Selection": [
                 ("use_feature_selection", "Enable feature selection"),
@@ -401,8 +559,29 @@ class QlibQuantMoE(Model):
                 ("use_alibi", "Use ALiBi bias"),
             ],
             "Regime Context Encoder": [
+                ("use_hierarchical_state_field", "Enable hierarchical state field"),
+                ("d_global_state", "Global state dimension"),
+                ("d_local_state", "Local state dimension"),
+                ("global_state_use_macro", "Global state uses macro"),
+                ("global_state_use_day_summary", "Global state uses day summary"),
+                ("local_state_input_mode", "Local state deterministic stats"),
+                ("state_fusion_mode", "State branch fusion mode"),
+                ("local_router_scale_init", "Initial local router scale"),
+                ("local_pooling_scale_init", "Initial local pooling query scale"),
+                ("local_pooling_alpha_scale_init", "Initial local pooling alpha scale"),
+                ("local_film_scale_init", "Initial local FiLM scale"),
+                ("local_scale_learnable", "Learn local residual scales"),
+                ("router_use_global_state", "Router uses global state"),
+                ("router_use_local_state", "Router uses local state"),
+                ("film_use_global_state", "FiLM uses global state"),
+                ("film_use_local_state", "FiLM uses local state"),
+                ("pooling_use_global_state", "Pooling uses global state"),
+                ("pooling_use_local_state", "Pooling uses local state"),
+            ],
+            "Legacy Regime Context Encoder": [
                 ("use_external_macro", "Use external macro features"),
                 ("d_macro_input", "Macro input dimension"),
+                ("d_day_summary_input", "Day summary input dimension"),
                 ("regime_macro_dropout", "Macro dropout"),
                 ("regime_internal_mode", "Internal mode (short/long)"),
                 ("regime_internal_lag", "Internal lag steps"),
@@ -411,6 +590,10 @@ class QlibQuantMoE(Model):
             ],
             "Pooling": [
                 ("pooling_alpha", "Attention vs mean weight"),
+                ("pooling_alpha_scale", "Adaptive alpha scale"),
+                ("pooling_num_queries", "Pooling query count"),
+                ("pooling_mode", "Pooling mode"),
+                ("pooling_summary_source", "Summary source"),
             ],
         }
         
@@ -463,10 +646,22 @@ class QlibQuantMoE(Model):
             ("total_steps", total_steps or "N/A", "Total training steps"),
             ("random_seed", self.random_seed, "Random seed"),
             ("num_workers", self.num_workers, "DataLoader workers"),
+            ("fill_nonfinite_feature", self.fill_nonfinite_feature, "Post-window feature Fillna"),
+            ("enable_local_counterfactual_diag", self.enable_local_counterfactual_diag, "Local counterfactual eval diag"),
+            ("enable_expert_advantage_diag", self.enable_expert_advantage_diag, "Expert advantage eval diag"),
             ("label_dim", self.label_dim, "Label dimension"),
             ("market_state_path", Path(self.market_state_path).name if self.market_state_path else "None", "Market state file"),
             ("market_state_shift", self.market_state_shift, "Market state shift"),
             ("market_state_strict", self.market_state_strict, "Strict market state"),
+            ("market_state_missing_policy", self.market_state_missing_policy, "Missing market state policy"),
+            (
+                "market_day_summary_path",
+                Path(self._resolved_market_day_summary_path()).name if self._resolved_market_day_summary_path() else "None",
+                "Day summary file",
+            ),
+            ("market_day_summary_shift", self.market_day_summary_shift, "Day summary shift"),
+            ("market_day_summary_strict", self.market_day_summary_strict, "Strict day summary"),
+            ("market_day_summary_missing_policy", self.market_day_summary_missing_policy, "Missing day summary policy"),
         ]
         for name, value, desc in trainer_attrs:
             if isinstance(value, float):
@@ -484,6 +679,7 @@ class QlibQuantMoE(Model):
         bx: torch.Tensor,
         by: Optional[torch.Tensor],
         bmacro: Optional[torch.Tensor],
+        bday_summary: Optional[torch.Tensor],
         *,
         f_ids: torch.Tensor,
         optimizer: torch.optim.Optimizer,
@@ -492,13 +688,33 @@ class QlibQuantMoE(Model):
             return
         self.net.train(True)
 
-        bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
+        bx_t = self._require_finite_tensor(bx, name="bx", context="sanity_check")
         by_t = None if by is None else by.to(self.device).float()
-        macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
+        macro_t = (
+            None
+            if bmacro is None
+            else self._require_finite_tensor(bmacro, name="bmacro", context="sanity_check", dtype=torch.float32)
+        )
+        day_summary_t = (
+            None
+            if bday_summary is None
+            else self._require_finite_tensor(
+                bday_summary,
+                name="bday_summary",
+                context="sanity_check",
+                dtype=torch.float32,
+            )
+        )
 
         optimizer.zero_grad(set_to_none=True)
         with self._autocast_ctx():
-            out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
+            out = self.net(
+                bx_t,
+                f_ids,
+                labels=by_t,
+                macro_features=macro_t,
+                day_summary_features=day_summary_t,
+            )
             loss = getattr(out, "loss", None)
         if loss is None:
             self._warn_once(
@@ -592,24 +808,132 @@ class QlibQuantMoE(Model):
         return _Wrapped(tsds, dates)
 
     def _ensure_market_state(self) -> None:
-        if self._market_state is not None or not self.market_state_path:
-            return
-        df = load_market_state_df(self.market_state_path)
-        self._market_state = make_market_state_lookup(df, shift=self.market_state_shift)
-        print(
-            ">>> [MarketState] loaded "
-            f"{self.market_state_path} (dates={len(df)}, dim={df.shape[1]}), "
-            f"shift={self.market_state_shift}, strict={self.market_state_strict}"
-        )
-        # auto-config model to accept macro features
-        self.model_config["use_external_macro"] = True
-        self.model_config["d_macro_input"] = int(self._market_state.dim)
+        if bool(self.model_config.get("use_hierarchical_state_field", False)) and bool(
+            self.model_config.get("global_state_use_macro", True)
+        ):
+            if not self.market_state_path:
+                raise FileNotFoundError(
+                    "Hierarchical global_state_use_macro=True requires trainer_config.market_state_path."
+                )
+
+        if self._market_state is None and self.market_state_path:
+            df = load_market_state_df(self.market_state_path)
+            self._market_state_df = df.copy()
+            self._market_state = make_market_state_lookup(df, shift=self.market_state_shift)
+            print(
+                ">>> [MarketState] loaded "
+                f"{self.market_state_path} (dates={len(df)}, dim={df.shape[1]}), "
+                f"shift={self.market_state_shift}, strict={self.market_state_strict}"
+            )
+            self.model_config["use_external_macro"] = True
+            self.model_config["d_macro_input"] = int(self._market_state.dim)
+
+        if self._requires_day_summary_asset() and self._market_day_summary is None:
+            resolved_path = self._resolved_market_day_summary_path()
+            if not resolved_path:
+                raise FileNotFoundError(
+                    "day_asset summary mode requires market_day_summary_path or an observation sibling next to market_state_path"
+                )
+            self.market_day_summary_path = resolved_path
+            self.trainer_config["market_day_summary_path"] = resolved_path
+            df = load_market_state_df(resolved_path)
+            self._market_day_summary_df = df.copy()
+            self._market_day_summary = make_market_state_lookup(df, shift=self.market_day_summary_shift)
+            print(
+                ">>> [MarketDaySummary] loaded "
+                f"{resolved_path} (dates={len(df)}, dim={df.shape[1]}), "
+                f"shift={self.market_day_summary_shift}, strict={self.market_day_summary_strict}"
+            )
+            self.model_config["d_day_summary_input"] = int(self._market_day_summary.dim)
 
     def _macro_from_dates(self, dates: List[pd.Timestamp]) -> Optional[torch.Tensor]:
         if self._market_state is None:
             return None
-        arr = lookup_market_state(self._market_state, dates, strict=self.market_state_strict)
+        self._note_missing_lookup_dates(
+            dates,
+            lookup=self._market_state,
+            kind="market_state",
+            policy=self.market_state_missing_policy,
+        )
+        arr = lookup_market_state(
+            self._market_state,
+            dates,
+            strict=self.market_state_strict,
+            missing_policy=self.market_state_missing_policy,
+        )
         return torch.from_numpy(arr).float()
+
+    def _day_summary_from_dates(self, dates: List[pd.Timestamp]) -> Optional[torch.Tensor]:
+        if self._market_day_summary is None:
+            return None
+        self._note_missing_lookup_dates(
+            dates,
+            lookup=self._market_day_summary,
+            kind="market_day_summary",
+            policy=self.market_day_summary_missing_policy,
+        )
+        arr = lookup_market_state(
+            self._market_day_summary,
+            dates,
+            strict=self.market_day_summary_strict,
+            missing_policy=self.market_day_summary_missing_policy,
+        )
+        return torch.from_numpy(arr).float()
+
+    def _note_missing_lookup_dates(
+        self,
+        dates: List[pd.Timestamp],
+        *,
+        lookup: MarketStateLookup,
+        kind: str,
+        policy: str,
+    ) -> None:
+        missing: List[pd.Timestamp] = []
+        for d in dates:
+            dt = pd.Timestamp(d).normalize()
+            if dt.tz is not None:
+                dt = dt.tz_convert(None)
+            if dt not in lookup.by_date:
+                missing.append(dt)
+        if not missing:
+            return
+        unique = set(missing)
+        if kind == "market_state":
+            self._market_state_missing_hits += len(missing)
+            self._market_state_missing_dates.update(unique)
+        else:
+            self._market_day_summary_missing_hits += len(missing)
+            self._market_day_summary_missing_dates.update(unique)
+        shown = ", ".join(str(d.date()) for d in sorted(unique)[:6])
+        self._warn_once(
+            f"{kind}_missing_policy",
+            f">>> [{kind}] missing {len(unique)} unique date(s) in batch "
+            f"({len(missing)} sample hits); policy={policy}. first={shown}",
+        )
+
+    def _print_missing_lookup_summary(self) -> None:
+        def _fmt(kind: str, unique_dates: set[pd.Timestamp], hits: int, policy: str) -> None:
+            if not unique_dates and hits <= 0:
+                return
+            shown = ", ".join(str(d.date()) for d in sorted(unique_dates)[:10])
+            more = "" if len(unique_dates) <= 10 else f", ... (+{len(unique_dates) - 10} more)"
+            print(
+                f">>> [{kind}] missing_lookup_summary: unique_days={len(unique_dates)}, "
+                f"sample_hits={hits}, policy={policy}, dates=[{shown}{more}]"
+            )
+
+        _fmt(
+            "market_state",
+            self._market_state_missing_dates,
+            self._market_state_missing_hits,
+            self.market_state_missing_policy,
+        )
+        _fmt(
+            "market_day_summary",
+            self._market_day_summary_missing_dates,
+            self._market_day_summary_missing_hits,
+            self.market_day_summary_missing_policy,
+        )
 
     # ---------- helpers ----------
     def _make_pbar(self, it, *, desc: str, total: Optional[int] = None, leave: bool = False):
@@ -720,7 +1044,23 @@ class QlibQuantMoE(Model):
         m = self._macro_from_dates([pd.Timestamp(dt)] * bsz)
         if m is None:
             return None
-        return torch.nan_to_num(m, 0.0).to(self.device).float()
+        return self._require_finite_tensor(m, name="macro_features", context=f"macro day {dt}", dtype=torch.float32)
+
+    def _day_summary_tensor_for_day(self, dt: pd.Timestamp, bsz: int) -> Optional[torch.Tensor]:
+        if self._market_day_summary is None:
+            return None
+        bsz = int(bsz)
+        if bsz <= 0:
+            return None
+        s = self._day_summary_from_dates([pd.Timestamp(dt)] * bsz)
+        if s is None:
+            return None
+        return self._require_finite_tensor(
+            s,
+            name="day_summary_features",
+            context=f"day summary day {dt}",
+            dtype=torch.float32,
+        )
 
     def _stack_feature_batch_from_row_indices(
         self,
@@ -743,13 +1083,14 @@ class QlibQuantMoE(Model):
             raw_x, _ = self._extract_sample(tsds[int(i)])
             x_np = self._as_numpy(raw_x)
             x_np = self._coerce_feature_dim(x_np, expected_dim=num_alphas, context=context)
+            x_np = self._maybe_fill_nonfinite_feature(x_np, context=context)
             xs.append(torch.from_numpy(np.asarray(x_np)).float())
 
         if not xs:
             return None
 
         bx = torch.stack(xs, dim=0)  # [B,T,N]
-        return torch.nan_to_num(bx, 0.0).to(self.device)
+        return self._require_finite_tensor(bx, name="bx", context=context)
 
     @staticmethod
     def _select_spaced_dates(dates: List[pd.Timestamp], k: int) -> List[pd.Timestamp]:
@@ -1002,6 +1343,7 @@ class QlibQuantMoE(Model):
                 assert ys is not None
                 ys.append(None if y_np is None else torch.from_numpy(np.asarray(y_np)).float())
 
+            x_np = self._maybe_fill_nonfinite_feature(x_np, context="batch collate")
             xs.append(torch.from_numpy(np.asarray(x_np)).float())
 
             if require_datetime:
@@ -1022,7 +1364,7 @@ class QlibQuantMoE(Model):
         return bx, ys, dts, pos
 
     def _collate_train(self, samples: List[Any]):
-        need_dt = self._market_state is not None
+        need_dt = (self._market_state is not None) or (self._market_day_summary is not None)
         bx, ys, dts, _ = self._collect_batch_fields(
             samples,
             with_label=True,
@@ -1032,11 +1374,12 @@ class QlibQuantMoE(Model):
 
         bx = bx  # [B,T,F]
         by = self._stack_labels_or_none(ys)
-        if self._market_state is None:
+        if self._market_state is None and self._market_day_summary is None:
             return bx, by
         assert dts is not None
-        bmacro = self._macro_from_dates(dts)
-        return bx, by, bmacro
+        bmacro = self._macro_from_dates(dts) if self._market_state is not None else None
+        bday_summary = self._day_summary_from_dates(dts) if self._market_day_summary is not None else None
+        return bx, by, bmacro, bday_summary
 
     def _collate_eval_daily(self, samples: List[Any]):
         """
@@ -1058,32 +1401,33 @@ class QlibQuantMoE(Model):
         by = self._stack_labels_or_none(ys)
 
         # macro is optional; if enabled, we look up per-sample datetime then return it alongside day key
-        bmacro = None
-        if self._market_state is not None:
-            bmacro = self._macro_from_dates(dts)
-
-        return bx, by, bmacro, day
+        bmacro = self._macro_from_dates(dts) if self._market_state is not None else None
+        bday_summary = self._day_summary_from_dates(dts) if self._market_day_summary is not None else None
+        if bmacro is None and bday_summary is None:
+            return bx, by, day
+        return bx, by, bmacro, bday_summary, day
 
     def _collate_feat(self, samples: List[Any]):
-        need_dt = self._market_state is not None
+        need_dt = (self._market_state is not None) or (self._market_day_summary is not None)
         bx, _, dts, _ = self._collect_batch_fields(
             samples,
             with_label=False,
             require_datetime=need_dt,
             require_pos=False,
         )
-        if self._market_state is None:
+        if self._market_state is None and self._market_day_summary is None:
             return bx
         assert dts is not None
-        bmacro = self._macro_from_dates(dts)
-        return bx, bmacro
+        bmacro = self._macro_from_dates(dts) if self._market_state is not None else None
+        bday_summary = self._day_summary_from_dates(dts) if self._market_day_summary is not None else None
+        return bx, bmacro, bday_summary
 
     def _collate_feat_with_pos(self, samples: List[Any]):
         """
         Predict-only collate that returns positional indices so we can scatter predictions
         back to `tsds.get_index()` order when using a `batch_sampler` that reorders samples.
         """
-        need_dt = self._market_state is not None
+        need_dt = (self._market_state is not None) or (self._market_day_summary is not None)
         bx, _, dts, pos = self._collect_batch_fields(
             samples,
             with_label=False,
@@ -1092,18 +1436,19 @@ class QlibQuantMoE(Model):
         )
         assert pos is not None
         pos_t = torch.tensor(pos, dtype=torch.long)
-        if self._market_state is None:
+        if self._market_state is None and self._market_day_summary is None:
             return bx, pos_t
         assert dts is not None
-        bmacro = self._macro_from_dates(dts)
-        return bx, bmacro, pos_t
+        bmacro = self._macro_from_dates(dts) if self._market_state is not None else None
+        bday_summary = self._day_summary_from_dates(dts) if self._market_day_summary is not None else None
+        return bx, bmacro, bday_summary, pos_t
 
     def _make_daily_loader(self, tsds, *, shuffle: bool, train: bool) -> DataLoader:
         """
         使用 FixedDailyBatchSampler 做日度截面 batch.
         - train=True/False: 都用 _collate_train（valid 也需要 label 做监控）。
         """
-        if self._market_state is not None:
+        if self._market_state is not None or self._market_day_summary is not None:
             tsds = self._wrap_with_datetime(tsds)
         sampler = FixedDailyBatchSampler(tsds, self.batch_size, shuffle=shuffle, seed=self.random_seed)
         return DataLoader(
@@ -1207,32 +1552,95 @@ class QlibQuantMoE(Model):
         skip_nan_loss = 0
         skip_no_loss = 0
         opt_steps = 0
-        daily_buffer = defaultdict(lambda: {"p": [], "y": []}) if not train else None
+        daily_buffer = (
+            defaultdict(
+                lambda: {
+                    "p": [],
+                    "y": [],
+                    "p_zero": [],
+                    "p_shuffle": [],
+                    "p_time": [],
+                    "p_factor": [],
+                    "p_attn": [],
+                    "p_mean": [],
+                    "time_ratio": [],
+                    "pooling_alpha": [],
+                }
+            )
+            if not train
+            else None
+        )
+        use_local_cf_diag = bool(
+            (not train)
+            and self.enable_local_counterfactual_diag
+            and bool(getattr(self.net, "use_hierarchical_state_field", False))
+        )
+        use_expert_adv_diag = bool((not train) and self.enable_expert_advantage_diag)
+
+        def _corr_np(p: np.ndarray, y: np.ndarray) -> float:
+            if p.size < 2 or y.size < 2:
+                return float("nan")
+            if np.std(p) <= 0 or np.std(y) <= 0:
+                return float("nan")
+            return float(np.corrcoef(p, y)[0, 1])
+
+        def _rank_corr_np(p: np.ndarray, y: np.ndarray) -> float:
+            if p.size < 2 or y.size < 2:
+                return float("nan")
+            rp = pd.Series(p).rank().to_numpy()
+            ry = pd.Series(y).rank().to_numpy()
+            if np.std(rp) <= 0 or np.std(ry) <= 0:
+                return float("nan")
+            return float(np.corrcoef(rp, ry)[0, 1])
+
         accum_steps = self.grad_accum_steps if (train and optimizer is not None) else 1
         accum_count = 0
 
         iterator = pbar if pbar is not None else loader
         for step, batch in enumerate(iterator):
             day_key = None
-            if isinstance(batch, (tuple, list)) and len(batch) == 4:
-                bx, by, bmacro, day_key = batch
+            if isinstance(batch, (tuple, list)) and len(batch) == 5:
+                bx, by, bmacro, bday_summary, day_key = batch
+            elif isinstance(batch, (tuple, list)) and len(batch) == 4:
+                bx, by, bmacro, bday_summary = batch
             elif isinstance(batch, (tuple, list)) and len(batch) == 3:
-                bx, by, bmacro = batch
+                bx, by, day_key = batch
+                bmacro = None
+                bday_summary = None
             else:
                 bx, by = batch
                 bmacro = None
-            bx_t = torch.nan_to_num(bx, 0.0).to(self.device)  # [B,T,F]
+                bday_summary = None
+            bx_t = self._require_finite_tensor(bx, name="bx", context="train/valid loop")  # [B,T,F]
             if self.label_dim > 0 and by is None:
                 raise RuntimeError(
                     "by is None in training/valid loop while label_dim>0; "
                     "check schema validation and label_dim."
                 )
             by_t = None if by is None else by.to(self.device).float()
-            macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
+            macro_t = (
+                None
+                if bmacro is None
+                else self._require_finite_tensor(bmacro, name="bmacro", context="train/valid loop", dtype=torch.float32)
+            )
+            day_summary_t = (
+                None
+                if bday_summary is None
+                else self._require_finite_tensor(
+                    bday_summary,
+                    name="bday_summary",
+                    context="train/valid loop",
+                    dtype=torch.float32,
+                )
+            )
 
             # 屏蔽非法 label
             if by_t is not None:
-                valid = torch.isfinite(by_t)
+                if by_t.shape[0] != bx_t.shape[0]:
+                    raise RuntimeError(
+                        f"Label batch size mismatch: bx.shape={tuple(bx_t.shape)}, by.shape={tuple(by_t.shape)}"
+                    )
+                valid = torch.isfinite(by_t.reshape(by_t.shape[0], -1)).all(dim=1)
                 if valid.sum().item() < 2:
                     skip_invalid_label += 1
                     if pbar is not None and (step + 1) % max(1, self.tqdm_update_every) == 0:
@@ -1242,6 +1650,8 @@ class QlibQuantMoE(Model):
                 by_t = by_t[valid]
                 if macro_t is not None:
                     macro_t = macro_t[valid]
+                if day_summary_t is not None:
+                    day_summary_t = day_summary_t[valid]
 
             if train and optimizer is not None and accum_count == 0:
                 optimizer.zero_grad(set_to_none=True)
@@ -1249,7 +1659,13 @@ class QlibQuantMoE(Model):
             with torch.set_grad_enabled(train):
                 with self._autocast_ctx():
                     # Note: date_ids removed - regime signal is computed from internal statistics
-                    out = self.net(bx_t, f_ids, labels=by_t, macro_features=macro_t)
+                    out = self.net(
+                        bx_t,
+                        f_ids,
+                        labels=by_t,
+                        macro_features=macro_t,
+                        day_summary_features=day_summary_t,
+                    )
                     loss = getattr(out, "loss", None)
 
                 if train and optimizer is not None and loss is not None:
@@ -1305,6 +1721,60 @@ class QlibQuantMoE(Model):
                 elif train and optimizer is not None and loss is None:
                     skip_no_loss += 1
 
+            cf_zero_vec = None
+            cf_shuffle_vec = None
+            expert_diag_vecs: Dict[str, np.ndarray] = {}
+            if use_local_cf_diag and by_t is not None and getattr(out, "scores", None) is not None:
+                try:
+                    with torch.no_grad():
+                        with self._autocast_ctx():
+                            out_zero = self.net(
+                                bx_t,
+                                f_ids,
+                                macro_features=macro_t,
+                                day_summary_features=day_summary_t,
+                                local_state_mode="zero",
+                            )
+                            out_shuffle = self.net(
+                                bx_t,
+                                f_ids,
+                                macro_features=macro_t,
+                                day_summary_features=day_summary_t,
+                                local_state_mode="shuffle",
+                            )
+                    cf_zero_vec = out_zero.scores.view(-1).detach().float().cpu().numpy()
+                    cf_shuffle_vec = out_shuffle.scores.view(-1).detach().float().cpu().numpy()
+                except Exception as e:
+                    self._warn_once(
+                        "local_counterfactual_diag_failed",
+                        f">>> [Warn] local counterfactual diagnostics failed and will be skipped: {e}",
+                    )
+
+            if use_expert_adv_diag and by_t is not None and getattr(out, "scores", None) is not None:
+                try:
+                    with torch.no_grad():
+                        with self._autocast_ctx():
+                            diag_runs = {
+                                "p_time": dict(expert_mode="time_only"),
+                                "p_factor": dict(expert_mode="factor_only"),
+                                "p_attn": dict(pooling_mode_override="attn_only"),
+                                "p_mean": dict(pooling_mode_override="mean_only"),
+                            }
+                            for key, kwargs in diag_runs.items():
+                                diag_out = self.net(
+                                    bx_t,
+                                    f_ids,
+                                    macro_features=macro_t,
+                                    day_summary_features=day_summary_t,
+                                    **kwargs,
+                                )
+                                expert_diag_vecs[key] = diag_out.scores.view(-1).detach().float().cpu().numpy()
+                except Exception as e:
+                    self._warn_once(
+                        "expert_advantage_diag_failed",
+                        f">>> [Warn] expert advantage diagnostics failed and will be skipped: {e}",
+                    )
+
             n_batches += 1
 
             # ---- one-time diagnostics for "loss never moves" ----
@@ -1352,6 +1822,17 @@ class QlibQuantMoE(Model):
                     buf = daily_buffer[pd.to_datetime(day_key).normalize()]
                     buf["p"].append(p_vec)
                     buf["y"].append(y_vec)
+                    if cf_zero_vec is not None and cf_zero_vec.shape == p_vec.shape:
+                        buf["p_zero"].append(cf_zero_vec)
+                    if cf_shuffle_vec is not None and cf_shuffle_vec.shape == p_vec.shape:
+                        buf["p_shuffle"].append(cf_shuffle_vec)
+                    for diag_key, diag_vec in expert_diag_vecs.items():
+                        if diag_vec.shape == p_vec.shape:
+                            buf[diag_key].append(diag_vec)
+                    if getattr(out, "avg_time_ratio", None) is not None:
+                        buf["time_ratio"].append(float(out.avg_time_ratio))
+                    if getattr(out, "metrics", None) and "pooling_alpha_mean" in out.metrics:
+                        buf["pooling_alpha"].append(float(out.metrics["pooling_alpha_mean"]))
                 else:
                     if p_vec.size >= 2 and y_vec.size >= 2:
                         if np.std(p_vec) > 0 and np.std(y_vec) > 0:
@@ -1365,6 +1846,14 @@ class QlibQuantMoE(Model):
                             ric = np.corrcoef(rank_p, rank_y)[0, 1]
                             meters["rank_ic_batch"] += float(ric)
                             meters["rank_ic"] += float(ric)  # backward-compatible alias (batch-level)
+                    if cf_zero_vec is not None and cf_zero_vec.shape == p_vec.shape:
+                        meters["score_delta_zero_local"] += float(np.std(p_vec - cf_zero_vec))
+                        ric_full = _rank_corr_np(p_vec, y_vec)
+                        ric_zero = _rank_corr_np(cf_zero_vec, y_vec)
+                        if np.isfinite(ric_full) and np.isfinite(ric_zero):
+                            meters["rankic_drop_zero_local"] += float(ric_full - ric_zero)
+                    if cf_shuffle_vec is not None and cf_shuffle_vec.shape == p_vec.shape:
+                        meters["score_delta_shuffle_local"] += float(np.std(p_vec - cf_shuffle_vec))
 
             if getattr(out, "avg_gate_entropy", None) is not None:
                 meters["gate_entropy"] += float(out.avg_gate_entropy)
@@ -1450,7 +1939,11 @@ class QlibQuantMoE(Model):
         if not train and daily_buffer:
             ics = []
             rics = []
-            for _, v in daily_buffer.items():
+            score_delta_zero = []
+            score_delta_shuffle = []
+            rankic_drop_zero = []
+            expert_rows = []
+            for day, v in daily_buffer.items():
                 p = np.concatenate(v["p"], axis=0) if v["p"] else None
                 y = np.concatenate(v["y"], axis=0) if v["y"] else None
                 if p is None or y is None or p.size < 2 or y.size < 2:
@@ -1460,7 +1953,55 @@ class QlibQuantMoE(Model):
                 rp = pd.Series(p).rank().to_numpy()
                 ry = pd.Series(y).rank().to_numpy()
                 if np.std(rp) > 0 and np.std(ry) > 0:
-                    rics.append(float(np.corrcoef(rp, ry)[0, 1]))
+                    full_ric = float(np.corrcoef(rp, ry)[0, 1])
+                    rics.append(full_ric)
+
+                    p_zero = np.concatenate(v["p_zero"], axis=0) if v.get("p_zero") else None
+                    if p_zero is not None and p_zero.shape == p.shape:
+                        score_delta_zero.append(float(np.std(p - p_zero)))
+                        zero_ric = _rank_corr_np(p_zero, y)
+                        if np.isfinite(zero_ric):
+                            rankic_drop_zero.append(float(full_ric - zero_ric))
+
+                    p_shuffle = np.concatenate(v["p_shuffle"], axis=0) if v.get("p_shuffle") else None
+                    if p_shuffle is not None and p_shuffle.shape == p.shape:
+                        score_delta_shuffle.append(float(np.std(p - p_shuffle)))
+
+                if use_expert_adv_diag:
+                    p_time = np.concatenate(v["p_time"], axis=0) if v.get("p_time") else None
+                    p_factor = np.concatenate(v["p_factor"], axis=0) if v.get("p_factor") else None
+                    p_attn = np.concatenate(v["p_attn"], axis=0) if v.get("p_attn") else None
+                    p_mean = np.concatenate(v["p_mean"], axis=0) if v.get("p_mean") else None
+                    if (
+                        p_time is not None
+                        and p_factor is not None
+                        and p_attn is not None
+                        and p_mean is not None
+                        and p_time.shape == p.shape
+                        and p_factor.shape == p.shape
+                        and p_attn.shape == p.shape
+                        and p_mean.shape == p.shape
+                    ):
+                        ic_time = _corr_np(p_time, y)
+                        ic_factor = _corr_np(p_factor, y)
+                        ic_attn = _corr_np(p_attn, y)
+                        ic_mean = _corr_np(p_mean, y)
+                        row = {
+                            "date": str(pd.Timestamp(day).date()),
+                            "ic_time_only": float(ic_time),
+                            "ic_factor_only": float(ic_factor),
+                            "ic_attn_pool_only": float(ic_attn),
+                            "ic_mean_pool_only": float(ic_mean),
+                            "delta_time_factor": float(ic_time - ic_factor)
+                            if np.isfinite(ic_time) and np.isfinite(ic_factor)
+                            else float("nan"),
+                            "delta_attn_mean": float(ic_attn - ic_mean)
+                            if np.isfinite(ic_attn) and np.isfinite(ic_mean)
+                            else float("nan"),
+                            "time_ratio": float(np.mean(v["time_ratio"])) if v.get("time_ratio") else float("nan"),
+                            "pooling_alpha": float(np.mean(v["pooling_alpha"])) if v.get("pooling_alpha") else float("nan"),
+                        }
+                        expert_rows.append(row)
 
             ic_daily = float(np.mean(ics)) if ics else float("nan")
             ric_daily = float(np.mean(rics)) if rics else float("nan")
@@ -1470,6 +2011,31 @@ class QlibQuantMoE(Model):
             # Backward-compatible aliases (these are daily-level on valid/test with chunk loader)
             avg["ic_raw"] = ic_daily
             avg["rank_ic"] = ric_daily
+            if score_delta_zero:
+                avg["score_delta_zero_local"] = float(np.mean(score_delta_zero))
+                avg["score_delta_zero_local_p50"] = float(np.median(score_delta_zero))
+            if score_delta_shuffle:
+                avg["score_delta_shuffle_local"] = float(np.mean(score_delta_shuffle))
+                avg["score_delta_shuffle_local_p50"] = float(np.median(score_delta_shuffle))
+            if rankic_drop_zero:
+                avg["rankic_drop_zero_local"] = float(np.mean(rankic_drop_zero))
+                avg["rankic_drop_zero_local_p50"] = float(np.median(rankic_drop_zero))
+            if expert_rows:
+                expert_df = pd.DataFrame(expert_rows)
+                self._last_expert_advantage_daily = expert_df
+                for col in ("delta_time_factor", "delta_attn_mean"):
+                    vals = pd.to_numeric(expert_df[col], errors="coerce").dropna()
+                    if not vals.empty:
+                        avg[f"{col}_mean"] = float(vals.mean())
+                        avg[f"{col}_std"] = float(vals.std(ddof=0))
+                if {"time_ratio", "delta_time_factor"}.issubset(expert_df.columns):
+                    rho = expert_df[["time_ratio", "delta_time_factor"]].corr(method="spearman").iloc[0, 1]
+                    if np.isfinite(rho):
+                        avg["corr_time_ratio_delta_time_factor"] = float(rho)
+                if {"pooling_alpha", "delta_attn_mean"}.issubset(expert_df.columns):
+                    rho = expert_df[["pooling_alpha", "delta_attn_mean"]].corr(method="spearman").iloc[0, 1]
+                    if np.isfinite(rho):
+                        avg["corr_pooling_alpha_delta_attn_mean"] = float(rho)
 
         return avg
 
@@ -1527,11 +2093,12 @@ class QlibQuantMoE(Model):
 
         # 3) Init network from first batch
         first = next(iter(train_loader))
-        if isinstance(first, (tuple, list)) and len(first) == 3:
-            bx0, by0, bmacro0 = first
+        if isinstance(first, (tuple, list)) and len(first) == 4:
+            bx0, by0, bmacro0, bday_summary0 = first
         else:
             bx0, by0 = first
             bmacro0 = None
+            bday_summary0 = None
         if self.label_dim > 0 and by0 is None:
             raise RuntimeError(
                 "First training batch has by=None while label_dim>0. "
@@ -1546,7 +2113,14 @@ class QlibQuantMoE(Model):
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
 
         if self.debug_sanity_check:
-            self._sanity_check_batch(bx0, by0, bmacro0, f_ids=f_ids, optimizer=optimizer)
+            self._sanity_check_batch(
+                bx0,
+                by0,
+                bmacro0,
+                bday_summary0,
+                f_ids=f_ids,
+                optimizer=optimizer,
+            )
 
         # Warmup scheduler
         total_training_steps = None
@@ -1741,6 +2315,59 @@ class QlibQuantMoE(Model):
                 rec.save_objects(train_curve=train_curve)
             except Exception as e:
                 print(f">>> [Train] save train_curve failed: {e}")
+        if rec is not None and self.enable_expert_advantage_diag and self._last_expert_advantage_daily is not None:
+            try:
+                expert_df = self._last_expert_advantage_daily
+                spearman_rows = []
+                for left, right in (
+                    ("time_ratio", "delta_time_factor"),
+                    ("pooling_alpha", "delta_attn_mean"),
+                ):
+                    if left in expert_df.columns and right in expert_df.columns:
+                        rho = expert_df[[left, right]].corr(method="spearman").iloc[0, 1]
+                        spearman_rows.append({"feature": left, "target": right, "spearman": float(rho)})
+                if self._market_state_df is not None and "date" in expert_df.columns:
+                    state_df = self._market_state_df.copy()
+                    state_df.index = pd.to_datetime(state_df.index).normalize()
+                    joined = expert_df.copy()
+                    joined["_date"] = pd.to_datetime(joined["date"]).dt.normalize()
+                    joined = joined.set_index("_date").join(state_df, how="left", rsuffix="_state")
+                    state_cols = [
+                        c
+                        for c in state_df.columns
+                        if c in joined.columns and pd.api.types.is_numeric_dtype(joined[c])
+                    ]
+                    for target in ("delta_time_factor", "delta_attn_mean"):
+                        if target not in joined.columns:
+                            continue
+                        for col in state_cols:
+                            pair = joined[[col, target]].apply(pd.to_numeric, errors="coerce").dropna()
+                            if len(pair) < 5:
+                                continue
+                            rho = pair.corr(method="spearman").iloc[0, 1]
+                            if np.isfinite(rho):
+                                spearman_rows.append(
+                                    {"feature": str(col), "target": target, "spearman": float(rho)}
+                                )
+                self._last_expert_advantage_spearman = pd.DataFrame(spearman_rows)
+                rec.save_objects(
+                    expert_advantage_daily=expert_df,
+                    expert_advantage_spearman=self._last_expert_advantage_spearman,
+                )
+                try:
+                    local_dir = Path(rec.get_local_dir())
+                    local_dir.mkdir(parents=True, exist_ok=True)
+                    expert_df.to_csv(local_dir / "expert_advantage_daily.csv", index=False)
+                    self._last_expert_advantage_spearman.to_csv(
+                        local_dir / "expert_advantage_spearman.csv",
+                        index=False,
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f">>> [Train] save expert_advantage diagnostics failed: {e}")
+
+        self._print_missing_lookup_summary()
 
         return self
 
@@ -1771,20 +2398,40 @@ class QlibQuantMoE(Model):
 
         with torch.no_grad():
             for batch in loader:
-                if isinstance(batch, (tuple, list)) and len(batch) == 3:
-                    bx, bmacro, bpos = batch
+                if isinstance(batch, (tuple, list)) and len(batch) == 4:
+                    bx, bmacro, bday_summary, bpos = batch
                 elif isinstance(batch, (tuple, list)) and len(batch) == 2:
                     bx, bpos = batch
                     bmacro = None
+                    bday_summary = None
                 else:
                     raise RuntimeError(f"Unexpected predict batch format: {type(batch)}")
 
                 bx = self._coerce_bx_feature_dim(bx, expected_dim=num_alphas, context="predict")
-                bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
-                macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
+                bx_t = self._require_finite_tensor(bx, name="bx", context="predict")
+                macro_t = (
+                    None
+                    if bmacro is None
+                    else self._require_finite_tensor(bmacro, name="bmacro", context="predict", dtype=torch.float32)
+                )
+                day_summary_t = (
+                    None
+                    if bday_summary is None
+                    else self._require_finite_tensor(
+                        bday_summary,
+                        name="bday_summary",
+                        context="predict",
+                        dtype=torch.float32,
+                    )
+                )
                 with self._autocast_ctx():
                     # Note: date_ids removed - regime signal is computed from internal statistics
-                    out = self.net(bx_t, f_ids, macro_features=macro_t)
+                    out = self.net(
+                        bx_t,
+                        f_ids,
+                        macro_features=macro_t,
+                        day_summary_features=day_summary_t,
+                    )
                 score = out.scores.detach().cpu().numpy()
                 pos = bpos.detach().cpu().numpy().astype(int)
                 if score.shape[0] != pos.shape[0]:
@@ -1813,8 +2460,14 @@ class QlibQuantMoE(Model):
             Keys (if available):
             - time_ratio: router time-expert ratio (avg over layers & samples per day)
             - gate_entropy: router gate entropy (avg over layers & samples per day)
+            - pooling_alpha_mean / pooling_alpha_std
             - time_tau / time_half_life: regime-adaptive time-scale diagnostics
             - factor_gate_*: regime-adaptive factor gate diagnostics
+            - global_state_* / local_state_*: deterministic hyper-state diagnostics
+            - *_sensitivity: branch projection average L2 norms
+            - *_stock_std: cross-sectional heterogeneity diagnostics
+            - *_chunk_std: chunk-to-chunk stability under the daily chunk loader
+            - *_chunk_count: number of chunks used to compute each chunk_std value
         """
         assert self.net is not None
         self._ensure_market_state()
@@ -1828,13 +2481,18 @@ class QlibQuantMoE(Model):
         num_alphas = self._get_num_alphas()
         f_ids = torch.arange(num_alphas, device=self.device)
 
-        # Router can use batch-level "layer summary" (market mean/std). Therefore we must NOT mix dates
-        # inside a batch; otherwise day-level diagnostics become meaningless.
         df_idx = pd.DataFrame({"datetime": dates})
         df_idx["int_idx"] = np.arange(len(df_idx), dtype=int)
         by_day = df_idx.groupby("datetime", sort=True)["int_idx"].apply(lambda x: x.to_numpy(dtype=int))
 
         metric_keys = (
+            "global_state_norm",
+            "global_state_cross_sectional_variance",
+            "local_state_norm",
+            "local_state_cross_sectional_variance",
+            "pooling_alpha_mean",
+            "pooling_alpha_std",
+            "time_ratio_stock_std",
             "time_tau",
             "time_half_life",
             "factor_gate_mean",
@@ -1842,10 +2500,28 @@ class QlibQuantMoE(Model):
             "factor_gate_entropy",
             "factor_gate_topk_mass_5",
             "factor_gate_topk_mass_10",
+            "router_global_sensitivity",
+            "router_local_sensitivity",
+            "router_local_logit_std",
+            "film_global_sensitivity",
+            "film_local_sensitivity",
+            "pool_global_sensitivity",
+            "pool_local_sensitivity",
+            "query_local_norm",
+            "query_branch_norm",
+            "alpha_local_logit_std",
+            "alpha_branch_logit_std",
         )
+        chunk_metric_alias = {
+            "time_ratio_chunk": "time_ratio_chunk_std",
+            "gate_entropy_chunk": "gate_entropy_chunk_std",
+            "pooling_alpha_chunk": "pooling_alpha_chunk_std",
+        }
 
         sum_by_day: Dict[pd.Timestamp, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
         cnt_by_day: Dict[pd.Timestamp, int] = defaultdict(int)
+        chunk_by_day: Dict[pd.Timestamp, Dict[str, List[float]]] = defaultdict(lambda: defaultdict(list))
+        global_state_day_by_day: Dict[pd.Timestamp, List[np.ndarray]] = defaultdict(list)
 
         for dt, row_idx in by_day.items():
             row_idx = np.asarray(row_idx, dtype=int)
@@ -1870,10 +2546,38 @@ class QlibQuantMoE(Model):
                     continue
 
                 macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), bsz)
+                day_summary_t = self._day_summary_tensor_for_day(pd.Timestamp(dt), bsz)
 
                 with torch.no_grad():
                     with self._autocast_ctx():
-                        out = self.net(bx_t, f_ids, macro_features=macro_t)
+                        out = self.net(
+                            bx_t,
+                            f_ids,
+                            macro_features=macro_t,
+                            day_summary_features=day_summary_t,
+                        )
+                        if bool(getattr(self.net, "use_hierarchical_state_field", False)) and getattr(
+                            self.net, "global_state_encoder", None
+                        ) is not None:
+                            try:
+                                day_summary_embedding, _ = self.net._encode_day_summary(
+                                    day_summary_t,
+                                    batch_size=bsz,
+                                )
+                                _, global_state_day = self.net.global_state_encoder(
+                                    batch_size=bsz,
+                                    macro_features=macro_t
+                                    if bool(getattr(self.net, "global_state_use_macro", True))
+                                    else None,
+                                    day_summary_embedding=day_summary_embedding
+                                    if bool(getattr(self.net, "global_state_use_day_summary", True))
+                                    else None,
+                                )
+                                global_state_day_by_day[pd.Timestamp(dt)].append(
+                                    global_state_day.detach().float().cpu().numpy().reshape(-1)
+                                )
+                            except Exception:
+                                pass
 
                 cnt_by_day[pd.Timestamp(dt)] += bsz
 
@@ -1882,20 +2586,28 @@ class QlibQuantMoE(Model):
                     try:
                         gw = torch.stack(out.gate_weights, dim=0)  # [L,B,2]
                         tr = gw[:, :, 0].mean(dim=0).detach().cpu().numpy()  # [B]
+                        tr_chunk = float(np.mean(tr))
                         sum_by_day[pd.Timestamp(dt)]["time_ratio"] += float(np.sum(tr))
+                        chunk_by_day[pd.Timestamp(dt)]["time_ratio_chunk"].append(tr_chunk)
                     except Exception:
                         pass
                 elif getattr(out, "avg_time_ratio", None) is not None:
-                    sum_by_day[pd.Timestamp(dt)]["time_ratio"] += float(out.avg_time_ratio) * bsz
+                    tr_chunk = float(out.avg_time_ratio)
+                    sum_by_day[pd.Timestamp(dt)]["time_ratio"] += tr_chunk * bsz
+                    chunk_by_day[pd.Timestamp(dt)]["time_ratio_chunk"].append(tr_chunk)
 
                 if getattr(out, "avg_gate_entropy", None) is not None:
-                    sum_by_day[pd.Timestamp(dt)]["gate_entropy"] += float(out.avg_gate_entropy) * bsz
+                    ge_chunk = float(out.avg_gate_entropy)
+                    sum_by_day[pd.Timestamp(dt)]["gate_entropy"] += ge_chunk * bsz
+                    chunk_by_day[pd.Timestamp(dt)]["gate_entropy_chunk"].append(ge_chunk)
 
                 # Model-provided diagnostics (batch-mean scalars) -> accumulate by sample count
                 m = getattr(out, "metrics", None) or {}
                 for k in metric_keys:
                     if k in m:
                         sum_by_day[pd.Timestamp(dt)][k] += float(m[k]) * bsz
+                if "pooling_alpha_mean" in m:
+                    chunk_by_day[pd.Timestamp(dt)]["pooling_alpha_chunk"].append(float(m["pooling_alpha_mean"]))
 
         if not cnt_by_day:
             return {}
@@ -1906,6 +2618,37 @@ class QlibQuantMoE(Model):
             data = {dt: (sum_by_day[dt][k] / max(1, cnt_by_day[dt])) for dt in dts_sorted if k in sum_by_day[dt]}
             if data:
                 out_series[k] = pd.Series(data, dtype=float).sort_index()
+        if global_state_day_by_day:
+            dts_vec = sorted(global_state_day_by_day.keys())
+            global_state_day = {
+                dt: np.mean(np.vstack(global_state_day_by_day[dt]), axis=0)
+                for dt in dts_vec
+                if global_state_day_by_day[dt]
+            }
+            if global_state_day:
+                dts_vec = sorted(global_state_day.keys())
+                mat = np.vstack([global_state_day[dt] for dt in dts_vec])
+                center = np.mean(mat, axis=0, keepdims=True)
+                day_variance = np.mean(np.square(mat - center), axis=1)
+                out_series["global_state_day_variance"] = pd.Series(
+                    {dt: float(v) for dt, v in zip(dts_vec, day_variance)},
+                    dtype=float,
+                ).sort_index()
+        for chunk_key, std_key in chunk_metric_alias.items():
+            data = {
+                dt: float(np.std(chunk_by_day[dt][chunk_key], ddof=0))
+                for dt in dts_sorted
+                if chunk_key in chunk_by_day[dt] and chunk_by_day[dt][chunk_key]
+            }
+            if data:
+                out_series[std_key] = pd.Series(data, dtype=float).sort_index()
+            count_data = {
+                dt: float(len(chunk_by_day[dt][chunk_key]))
+                for dt in dts_sorted
+                if chunk_key in chunk_by_day[dt] and chunk_by_day[dt][chunk_key]
+            }
+            if count_data:
+                out_series[f"{chunk_key}_count"] = pd.Series(count_data, dtype=float).sort_index()
         return out_series
 
     def _collect_gate_series(self, dataset: DatasetH, segment: str = "test") -> pd.Series:
@@ -2107,6 +2850,7 @@ class QlibQuantMoE(Model):
             T = int(bx_t.shape[1])
             N = int(bx_t.shape[2])
             macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), B)
+            day_summary_t = self._day_summary_tensor_for_day(pd.Timestamp(dt), B)
 
             with torch.no_grad():
                 with self._autocast_ctx():
@@ -2115,6 +2859,7 @@ class QlibQuantMoE(Model):
                         bx_t,
                         f_ids[:N],
                         macro_features=macro_t,
+                        day_summary_features=day_summary_t,
                         return_attn=True,
                         attn_layers=layers_to_fetch,
                     )
@@ -2351,17 +3096,24 @@ class QlibQuantMoE(Model):
             except Exception:
                 local_dir = None
 
-        daily_series = self._collect_daily_diag_series(dataset, segment=segment)
-        gate_series = daily_series.get("time_ratio", pd.Series(dtype=float))
-        attn_maps = self._collect_attention_maps(
-            dataset,
-            segment=segment,
-            target_dates=target_dates,
-            max_dates=max_attn_days,
-            attn_layer=attn_layer,
-            attn_layers=attn_layers,
-            factor_use_last_time=factor_use_last_time,
-        )
+        was_training = bool(self.net.training) if self.net is not None else False
+        if self.net is not None:
+            self.net.eval()
+        try:
+            daily_series = self._collect_daily_diag_series(dataset, segment=segment)
+            gate_series = daily_series.get("time_ratio", pd.Series(dtype=float))
+            attn_maps = self._collect_attention_maps(
+                dataset,
+                segment=segment,
+                target_dates=target_dates,
+                max_dates=max_attn_days,
+                attn_layer=attn_layer,
+                attn_layers=attn_layers,
+                factor_use_last_time=factor_use_last_time,
+            )
+        finally:
+            if self.net is not None:
+                self.net.train(was_training)
 
         factor_topk_map: Dict[str, Dict[str, Any]] = {}
         factor_pool_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}

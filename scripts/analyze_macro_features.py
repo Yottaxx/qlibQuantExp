@@ -10,7 +10,7 @@ This script validates the precomputed market_state pkl files for:
 5. Potential look-ahead bias detection
 
 Usage:
-    python scripts/analyze_macro_features.py [--path artifacts/market_state/market_state_csi300.pkl]
+    python scripts/analyze_macro_features.py [--path artifacts/market_state/daily_market_field_csi300.pkl]
 """
 
 from __future__ import annotations
@@ -24,6 +24,12 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from module.utils.market_state import load_market_state_analysis_df
 
 
 def print_section(title: str) -> None:
@@ -559,8 +565,8 @@ def generate_report(
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze macro feature data quality")
-    parser.add_argument("--path", type=str, default="artifacts/market_state/market_state_csi300.pkl",
-                        help="Path to market_state pkl file")
+    parser.add_argument("--path", type=str, default="artifacts/market_state/daily_market_field_csi300.pkl",
+                        help="Path to market state asset (field or legacy mixed file).")
     parser.add_argument("--expected_warmup", type=int, default=None,
                         help="Override expected warmup (trading days). If omitted, infer from columns.")
     parser.add_argument(
@@ -585,7 +591,7 @@ def main():
         sys.exit(1)
     
     print(f"Loading: {pkl_path}")
-    df = pd.read_pickle(pkl_path)
+    df = load_market_state_analysis_df(pkl_path)
     df.index = pd.to_datetime(df.index)
     
     generate_report(df, pkl_path, expected_warmup=args.expected_warmup, value_space=args.value_space)

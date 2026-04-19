@@ -1,24 +1,10 @@
 import torch
 import torch.nn as nn
 
+
 class RegimeAdaptivePooling(nn.Module):
     """
-    Regime-aware factor pooling strategy that unifies Scheme A (Adaptive Alpha) 
-    and Scheme B (Conditioned Query) into a single flexible module.
-
-    Modes:
-    - "static": Standard attention pooling with static query and fixed alpha.
-    - "adaptive_alpha": Static query, but alpha (attn vs mean weight) is regime-dependent.
-    - "conditioned_query": Query is generated from regime, alpha is fixed.
-    - "full": Both query and alpha are regime-dependent.
-
-    Scheme A (Adaptive Alpha):
-        alpha = base_alpha + scale * sigmoid(MLP(regime))
-        pooled = alpha * attn_pooled + (1 - alpha) * mean_pooled
-
-    Scheme B (Conditioned Query):
-        query = MLP(regime)
-        attn_output = MHA(query, x, x)
+    Regime-aware factor pooling with optional hierarchical global/local conditioning.
     """
 
     def __init__(
@@ -30,40 +16,87 @@ class RegimeAdaptivePooling(nn.Module):
         base_alpha: float = 0.7,
         alpha_scale: float = 0.3,
         pooling_d_ff: int | None = None,
-        use_layer_summary: bool = False,  # New: Condition on layer summary
+        summary_source: str = "none",
+        *,
+        use_hierarchical_state_field: bool = False,
+        d_global_state: int | None = None,
+        d_local_state: int | None = None,
+        use_global_state: bool = True,
+        use_local_state: bool = True,
+        state_fusion_mode: str = "sum_norm",
+        local_pooling_scale_init: float = 0.1,
+        local_pooling_alpha_scale_init: float = 0.1,
+        local_scale_learnable: bool = True,
     ):
-        """
-        Args:
-            d_model: Feature dimension.
-            n_heads: Number of attention heads.
-            dropout: Dropout probability.
-            pooling_mode: One of ["static", "adaptive_alpha", "conditioned_query", "full"].
-            base_alpha: Base weight for attention pooling (default 0.7).
-            alpha_scale: Scaling factor for adaptive alpha adjustment (default 0.3).
-                         Effective alpha range: [base - scale, base + scale].
-            pooling_d_ff: Dimension of Feed Forward Network after attention. 
-                          If None, defaults to d_model.
-            use_layer_summary: If True, condtions query/alpha on concatenation of 
-                               [regime_embedding, layer_summary] (dim=2*d_model).
-        """
         super().__init__()
-        self.d_model = d_model
-        self.pooling_mode = pooling_mode.lower()
-        self.base_alpha = base_alpha
-        self.alpha_scale = alpha_scale
-        self.use_layer_summary = use_layer_summary
-        
-        d_ff = pooling_d_ff if pooling_d_ff is not None else d_model
-        
-        # Input dimension for regime-dependent modules
-        # If use_layer_summary is True, we concatenate regime (D) + summary (D) -> 2D
-        self.cond_dim = d_model * 2 if use_layer_summary else d_model
+        self.d_model = int(d_model)
+        self.pooling_mode = str(pooling_mode or "adaptive_alpha").strip().lower()
+        self.base_alpha = float(base_alpha)
+        self.alpha_scale = float(alpha_scale)
+        self.summary_source = str(summary_source or "none").strip().lower()
+        self.use_hierarchical_state_field = bool(use_hierarchical_state_field)
+        self.use_global_state = bool(use_global_state)
+        self.use_local_state = bool(use_local_state)
+        self.d_global_state = int(d_global_state if d_global_state is not None else d_model)
+        self.d_local_state = int(d_local_state if d_local_state is not None else d_model)
+        self.state_fusion_mode = str(state_fusion_mode or "sum_norm").strip().lower()
+        if self.state_fusion_mode not in {"sum_norm", "branch_mlp_v1", "bounded_sum_v1"}:
+            raise ValueError(f"Unsupported state_fusion_mode: {self.state_fusion_mode}")
+        self.use_branch_fusion = self.use_hierarchical_state_field and self.state_fusion_mode == "branch_mlp_v1"
+        self.use_bounded_sum = self.use_hierarchical_state_field and self.state_fusion_mode == "bounded_sum_v1"
 
+        valid_sources = {"none", "batch", "day_asset"}
+        if self.summary_source not in valid_sources:
+            raise ValueError(f"summary_source must be one of {valid_sources}, got {self.summary_source}")
+        self.use_summary_context = self.summary_source != "none"
+
+        d_ff = pooling_d_ff if pooling_d_ff is not None else d_model
         valid_modes = {"static", "adaptive_alpha", "conditioned_query", "full"}
         if self.pooling_mode not in valid_modes:
             raise ValueError(f"pooling_mode must be one of {valid_modes}, got {self.pooling_mode}")
 
-        # --- Components for Attention Mechanism ---
+        if self.use_hierarchical_state_field:
+            self.global_proj = nn.Linear(self.d_global_state, d_model, bias=False) if self.use_global_state else None
+            self.local_proj = nn.Linear(self.d_local_state, d_model, bias=False) if self.use_local_state else None
+            self.summary_proj = nn.Linear(d_model, d_model, bias=False) if self.use_summary_context else None
+            self.cond_norm = nn.LayerNorm(d_model)
+            self.cond_dim = d_model
+            self.branch_fusion = None
+            self.branch_day_norm = None
+            self.local_pooling_scale = None
+            self.local_pooling_alpha_scale = None
+            if self.use_branch_fusion:
+                self.branch_fusion = nn.Sequential(
+                    nn.Linear(d_model * 4, d_model),
+                    nn.GELU(),
+                    nn.Linear(d_model, d_model),
+                    nn.LayerNorm(d_model),
+                )
+                self.branch_day_norm = nn.LayerNorm(d_model)
+            elif self.use_bounded_sum:
+                pooling_init = torch.tensor(float(local_pooling_scale_init), dtype=torch.float32)
+                alpha_init = torch.tensor(float(local_pooling_alpha_scale_init), dtype=torch.float32)
+                if bool(local_scale_learnable):
+                    self.local_pooling_scale = nn.Parameter(pooling_init)
+                    self.local_pooling_alpha_scale = nn.Parameter(alpha_init)
+                else:
+                    if hasattr(self, "local_pooling_scale"):
+                        delattr(self, "local_pooling_scale")
+                    if hasattr(self, "local_pooling_alpha_scale"):
+                        delattr(self, "local_pooling_alpha_scale")
+                    self.register_buffer("local_pooling_scale", pooling_init)
+                    self.register_buffer("local_pooling_alpha_scale", alpha_init)
+        else:
+            self.global_proj = None
+            self.local_proj = None
+            self.summary_proj = None
+            self.cond_norm = None
+            self.branch_fusion = None
+            self.branch_day_norm = None
+            self.local_pooling_scale = None
+            self.local_pooling_alpha_scale = None
+            self.cond_dim = d_model * 2 if self.use_summary_context else d_model
+
         self.mha = nn.MultiheadAttention(
             embed_dim=d_model,
             num_heads=n_heads,
@@ -73,8 +106,7 @@ class RegimeAdaptivePooling(nn.Module):
             add_zero_attn=False,
         )
         self.attn_norm = nn.LayerNorm(d_model)
-        
-        # --- New: Feed Forward Network ---
+
         self.ffn = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
@@ -83,119 +115,219 @@ class RegimeAdaptivePooling(nn.Module):
         )
         self.ffn_norm = nn.LayerNorm(d_model)
 
-        # Implementation Logic:
-        # If static query (static / adaptive_alpha): learnable parameter
-        # If dynamic query (conditioned_query / full): projection from regime
-        
         self.use_dynamic_query = self.pooling_mode in {"conditioned_query", "full"}
+        self.query_norm = None
+        self.query_proj = None
+        self.query_day_proj = None
+        self.query_local_proj = None
+        self.query_branch_proj = None
+        self.query = None
         if self.use_dynamic_query:
-            # Scheme B: Regime -> Query
-            self.query_norm = nn.LayerNorm(self.cond_dim)
-            self.query_proj = nn.Linear(self.cond_dim, d_model, bias=False)
+            if self.use_branch_fusion:
+                self.query_day_proj = nn.Linear(d_model, d_model, bias=False)
+                self.query_local_proj = nn.Linear(d_model, d_model, bias=False)
+                self.query_branch_proj = nn.Linear(d_model, d_model, bias=False)
+            else:
+                self.query_norm = nn.LayerNorm(self.cond_dim)
+                self.query_proj = nn.Linear(self.cond_dim, d_model, bias=False)
         else:
-            # Static: Learnable parameter
             self.query = nn.Parameter(torch.randn(1, 1, d_model))
             nn.init.normal_(self.query, std=0.02)
 
-        # --- Components for Alpha Mechanism ---
         self.mean_norm = nn.LayerNorm(d_model)
-
         self.use_adaptive_alpha = self.pooling_mode in {"adaptive_alpha", "full"}
+        self.alpha_head = None
+        self.alpha_day_head = None
+        self.alpha_local_head = None
+        self.alpha_branch_head = None
         if self.use_adaptive_alpha:
-            # Scheme A: Regime -> Alpha adjustment
-            self.alpha_head = nn.Sequential(
-                nn.Linear(self.cond_dim, d_model // 4),
-                nn.GELU(),
-                nn.Linear(d_model // 4, 1),
-            )
+            if self.use_branch_fusion:
+                self.alpha_day_head = nn.Sequential(
+                    nn.Linear(d_model, d_model // 4),
+                    nn.GELU(),
+                    nn.Linear(d_model // 4, 1),
+                )
+                self.alpha_local_head = nn.Sequential(
+                    nn.Linear(d_model, d_model // 4),
+                    nn.GELU(),
+                    nn.Linear(d_model // 4, 1),
+                )
+                self.alpha_branch_head = nn.Sequential(
+                    nn.Linear(d_model, d_model // 4),
+                    nn.GELU(),
+                    nn.Linear(d_model // 4, 1),
+                )
+            else:
+                self.alpha_head = nn.Sequential(
+                    nn.Linear(self.cond_dim, d_model // 4),
+                    nn.GELU(),
+                    nn.Linear(d_model // 4, 1),
+                )
+
+    def _build_condition(
+        self,
+        global_state: torch.Tensor,
+        local_state: torch.Tensor | None,
+        summary_context: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, dict[str, float], dict[str, torch.Tensor] | None]:
+        if self.use_hierarchical_state_field:
+            parts = []
+            global_sensitivity = 0.0
+            local_sensitivity = 0.0
+            g_proj = None
+            l_proj = None
+            u_proj = None
+            if self.use_global_state:
+                if global_state is None:
+                    raise ValueError("Hierarchical pooling expects global_state.")
+                g_proj = self.global_proj(global_state)
+                parts.append(g_proj)
+                global_sensitivity = float(g_proj.detach().norm(dim=-1).mean().item())
+            if self.use_local_state:
+                if local_state is None:
+                    raise ValueError("Hierarchical pooling expects local_state.")
+                l_proj = self.local_proj(local_state)
+                parts.append(l_proj)
+                local_sensitivity = float(l_proj.detach().norm(dim=-1).mean().item())
+            if self.use_summary_context:
+                if summary_context is None:
+                    raise ValueError(f"summary_source='{self.summary_source}' but summary_context is None")
+                u_proj = self.summary_proj(summary_context)
+                parts.append(u_proj)
+            if not parts:
+                raise ValueError("Hierarchical pooling received no active conditioning branch.")
+            branches = None
+            if self.use_branch_fusion:
+                zero = parts[0].new_zeros(parts[0].shape)
+                g = g_proj if g_proj is not None else zero
+                l = l_proj if l_proj is not None else zero
+                u = u_proj if u_proj is not None else zero
+                cond_vector = self.branch_fusion(torch.cat([g, l, u, g * l], dim=-1))
+                branches = {"global": g, "local": l, "summary": u}
+            elif self.use_bounded_sum:
+                zero = parts[0].new_zeros(parts[0].shape)
+                g = g_proj if g_proj is not None else zero
+                l = l_proj if l_proj is not None else zero
+                u = u_proj if u_proj is not None else zero
+                scale = self.local_pooling_scale.to(device=g.device, dtype=g.dtype)
+                cond_vector = self.cond_norm(g + u + scale * l)
+                branches = {"global": g, "local": l, "summary": u}
+            else:
+                cond_vector = self.cond_norm(torch.stack(parts, dim=0).sum(dim=0))
+            diag = {
+                "pool_global_sensitivity": float(global_sensitivity),
+                "pool_local_sensitivity": float(local_sensitivity),
+                "local_pooling_scale": (
+                    float(self.local_pooling_scale.detach().item()) if self.local_pooling_scale is not None else 0.0
+                ),
+                "local_pooling_alpha_scale": (
+                    float(self.local_pooling_alpha_scale.detach().item())
+                    if self.local_pooling_alpha_scale is not None
+                    else 0.0
+                ),
+            }
+            return cond_vector, diag, branches
+
+        if self.use_summary_context:
+            if summary_context is None:
+                raise ValueError(f"summary_source='{self.summary_source}' but summary_context is None")
+            cond_vector = torch.cat([global_state, summary_context], dim=-1)
         else:
-            # Static alpha is handled in forward logic directly using self.base_alpha
-            pass
+            cond_vector = global_state
+        return cond_vector, {"pool_global_sensitivity": 0.0, "pool_local_sensitivity": 0.0}, None
 
     def forward(
-        self, 
-        x: torch.Tensor, 
-        regime_embedding: torch.Tensor,
-        layer_summary: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            x: [B, N, D] factor representations
-            regime_embedding: [B, D] regime context vector
-            layer_summary: [B, D] optional layer summary stats (if use_layer_summary=True)
+        self,
+        x: torch.Tensor,
+        global_state: torch.Tensor,
+        local_state: torch.Tensor | None = None,
+        summary_context: torch.Tensor | None = None,
+        pooling_mode_override: str | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float]]:
+        B, N, _ = x.shape
+        cond_vector, diag, branches = self._build_condition(global_state, local_state, summary_context)
+        diag.setdefault("query_local_norm", 0.0)
+        diag.setdefault("query_branch_norm", 0.0)
+        diag.setdefault("alpha_local_logit_std", 0.0)
+        diag.setdefault("alpha_branch_logit_std", 0.0)
 
-        Returns:
-            pooled: [B, D] aggregated representation
-            attention_weights: [B, N] (averaged over heads if n_heads > 1)
-            alpha: [B, 1] applied alpha values
-        """
-        B, N, D = x.shape
-        
-        # Prepare Conditioning Vector
-        if self.use_layer_summary:
-            if layer_summary is None:
-                raise ValueError("use_layer_summary=True but layer_summary is None")
-            # Concatenate [Regime, Summary] -> [B, 2D]
-            cond_vector = torch.cat([regime_embedding, layer_summary], dim=-1)
-        else:
-            cond_vector = regime_embedding
-        
-        # 1. Query Preparation
         if self.use_dynamic_query:
-            # Dynamic Query from Cond Vector
-            q_in = self.query_norm(cond_vector)
-            query = self.query_proj(q_in).unsqueeze(1) # [B, 1, D]
+            if self.use_branch_fusion:
+                if branches is None or self.branch_day_norm is None:
+                    raise RuntimeError("branch_mlp_v1 pooling is missing branch projections.")
+                day_cond = self.branch_day_norm(branches["global"] + branches["summary"])
+                query_day = self.query_day_proj(day_cond)
+                query_local = self.query_local_proj(branches["local"])
+                query_branch = self.query_branch_proj(cond_vector)
+                query = (query_day + query_branch + query_local).unsqueeze(1)
+                diag["query_local_norm"] = float(query_local.detach().norm(dim=-1).mean().item())
+                diag["query_branch_norm"] = float(query_branch.detach().norm(dim=-1).mean().item())
+            elif self.use_bounded_sum and branches is not None:
+                q_in = self.query_norm(cond_vector)
+                query = self.query_proj(q_in).unsqueeze(1)
+                scale = self.local_pooling_scale.to(device=cond_vector.device, dtype=cond_vector.dtype)
+                diag["query_local_norm"] = float((scale * branches["local"]).detach().norm(dim=-1).mean().item())
+            else:
+                q_in = self.query_norm(cond_vector)
+                query = self.query_proj(q_in).unsqueeze(1)
         else:
-            # Static Learnable Query
-            query = self.query.expand(B, -1, -1) # [B, 1, D]
+            query = self.query.expand(B, -1, -1)
 
-        # 2. Attention Pooling
-        # Need weights for interpretability
         attn_output, attn_weights_raw = self.mha(
             query=query,
             key=x,
             value=x,
             need_weights=True,
-            average_attn_weights=False,  # Get per-head [B, H, 1, N]
+            average_attn_weights=False,
         )
-        
-        # Process attention weights for return [B, N]
+
         if attn_weights_raw.dim() == 4:
-            attention_weights = attn_weights_raw.squeeze(2).mean(dim=1) # [B, N]
+            attention_weights = attn_weights_raw.squeeze(2).mean(dim=1)
         else:
             attention_weights = attn_weights_raw.squeeze(1)
 
-        # Apply Norm to MHA output (no residual for cross-attention)
-        attn_out = self.attn_norm(attn_output)  # [B, 1, D]
-        
-        # Pre-LN FFN with residual
+        attn_out = query + attn_output  # residual from query
+        attn_out = self.attn_norm(attn_out)
         attn_out = attn_out + self.ffn(self.ffn_norm(attn_out))
-        
-        attn_pooled = attn_out.squeeze(1) # [B, D]
+        attn_pooled = attn_out.squeeze(1)
 
-        # 3. Mean Pooling (Fallback)
-        mean_pooled = self.mean_norm(x.mean(dim=1)) # [B, D]
+        mean_pooled = self.mean_norm(x.mean(dim=1))
 
-        # 4. Alpha Calculation
         if self.use_adaptive_alpha:
-            # Adaptive Alpha
-            alpha_logit = self.alpha_head(cond_vector) # [B, 1]
-            # Map logit to [-1, 1] range via tanh, or [0, 1] via sigmoid?
-            # Analysis suggested: base_alpha + scale * (sigmoid(eps) - 0.5) * 2
-            # Let's use a cleaner approach:
-            # sigmoid(x) -> [0, 1]. (2*sig - 1) -> [-1, 1].
-            # alpha = base + scale * delta
-            alpha_delta = torch.tanh(alpha_logit) # [-1, 1]
+            if self.use_branch_fusion:
+                if branches is None or self.branch_day_norm is None:
+                    raise RuntimeError("branch_mlp_v1 pooling is missing branch projections.")
+                day_cond = self.branch_day_norm(branches["global"] + branches["summary"])
+                alpha_local_logit = self.alpha_local_head(branches["local"])
+                alpha_branch_logit = self.alpha_branch_head(cond_vector)
+                alpha_logit = self.alpha_day_head(day_cond) + alpha_branch_logit + alpha_local_logit
+                diag["alpha_local_logit_std"] = float(alpha_local_logit.detach().std(unbiased=False).item())
+                diag["alpha_branch_logit_std"] = float(alpha_branch_logit.detach().std(unbiased=False).item())
+            elif self.use_bounded_sum and branches is not None:
+                scale = self.local_pooling_alpha_scale.to(device=cond_vector.device, dtype=cond_vector.dtype)
+                alpha_cond = self.cond_norm(branches["global"] + branches["summary"] + scale * branches["local"])
+                alpha_day_cond = self.cond_norm(branches["global"] + branches["summary"])
+                alpha_logit = self.alpha_head(alpha_cond)
+                alpha_day_logit = self.alpha_head(alpha_day_cond)
+                diag["alpha_local_logit_std"] = float(
+                    (alpha_logit - alpha_day_logit).detach().std(unbiased=False).item()
+                )
+            else:
+                alpha_logit = self.alpha_head(cond_vector)
+            alpha_delta = torch.tanh(alpha_logit)
             alpha = self.base_alpha + self.alpha_scale * alpha_delta
-            
-            # Clamp for safety, though design usually keeps it safe.
-            # Avoid negative or >1 alpha if base+scale > 1 or base-scale < 0
             alpha = alpha.clamp(0.0, 1.0)
         else:
-            # Static Alpha (efficient tensor creation)
             alpha = x.new_full((B, 1), self.base_alpha)
 
-        # 5. Fusion
-        pooled = alpha * attn_pooled + (1 - alpha) * mean_pooled
-        
-        return pooled, attention_weights, alpha
+        override = str(pooling_mode_override or "").strip().lower()
+        if override:
+            if override == "attn_only":
+                pooled = attn_pooled
+            elif override == "mean_only":
+                pooled = mean_pooled
+            else:
+                raise ValueError(f"Unsupported pooling_mode_override: {pooling_mode_override}")
+        else:
+            pooled = alpha * attn_pooled + (1 - alpha) * mean_pooled
+        return pooled, attention_weights, alpha, diag

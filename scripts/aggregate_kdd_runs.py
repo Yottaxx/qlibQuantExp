@@ -94,6 +94,21 @@ def _find_experiment_id(mlruns_dir: Path, experiment_name: str) -> str:
     )
 
 
+def _find_run_dir_by_id(mlruns_dir: Path, run_id: str) -> Path:
+    candidates = [p for p in mlruns_dir.glob(f"*/{run_id}") if p.is_dir()]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise FileNotFoundError(
+            f"Run id '{run_id}' was not found under '{mlruns_dir}'. "
+            "Fill run_ids with valid MLflow run ids or verify your mlruns_dir."
+        )
+    raise RuntimeError(
+        f"Run id '{run_id}' matched multiple experiment folders under '{mlruns_dir}': "
+        + ", ".join(str(p) for p in candidates)
+    )
+
+
 def _as_float(x: Any) -> float:
     try:
         if x is None:
@@ -126,7 +141,7 @@ class RunRef:
     universe: str
     setting: str
     seed: int
-    experiment_name: str
+    experiment_name: Optional[str]
     run_id: str
 
 
@@ -163,12 +178,13 @@ def _iter_runs(cfg: dict) -> Tuple[List[int], List[RunRef]]:
             if universe not in universes:
                 raise KeyError(f"Unknown universe '{universe}' in run_groups[{setting}].")
 
-            exp_name = r.get("experiment_name", None) or universes[universe].get("experiment_name", None)
-            if not exp_name:
-                raise ValueError(
-                    f"Missing experiment_name for universe='{universe}'. "
-                    "Set `universes.<name>.experiment_name` or per-run override."
-                )
+            exp_name = r.get("experiment_name", None)
+            if exp_name in {"", "null", "None"}:
+                exp_name = None
+            if exp_name is None:
+                exp_name = universes[universe].get("experiment_name", None)
+            if isinstance(exp_name, str) and exp_name.strip() in {"", "null", "None"}:
+                exp_name = None
 
             run_ids = r.get("run_ids", None)
             if not isinstance(run_ids, dict):
@@ -185,7 +201,7 @@ def _iter_runs(cfg: dict) -> Tuple[List[int], List[RunRef]]:
                         universe=universe,
                         setting=setting,
                         seed=int(seed),
-                        experiment_name=str(exp_name),
+                        experiment_name=str(exp_name) if exp_name is not None else None,
                         run_id=str(rid),
                     )
                 )
@@ -193,9 +209,16 @@ def _iter_runs(cfg: dict) -> Tuple[List[int], List[RunRef]]:
     return seeds_int, out
 
 
-def _artifact_dir_for_run(mlruns_dir: Path, experiment_name: str, run_id: str) -> Path:
-    exp_id = _find_experiment_id(mlruns_dir, experiment_name)
-    return mlruns_dir / exp_id / run_id / "artifacts"
+def _artifact_dir_for_run(mlruns_dir: Path, experiment_name: Optional[str], run_id: str) -> Path:
+    if experiment_name:
+        try:
+            exp_id = _find_experiment_id(mlruns_dir, experiment_name)
+            candidate = mlruns_dir / exp_id / run_id / "artifacts"
+            if candidate.exists():
+                return candidate
+        except Exception:
+            pass
+    return _find_run_dir_by_id(mlruns_dir, run_id) / "artifacts"
 
 
 def _format_mean_std(mean: float, std: float, *, digits: int, pct: bool) -> str:
