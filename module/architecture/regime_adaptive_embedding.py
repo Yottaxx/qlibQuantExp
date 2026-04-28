@@ -2,6 +2,7 @@ import math
 
 import torch
 import torch.nn.functional as F
+from module.architecture import RMSNorm
 from torch import nn
 
 
@@ -52,7 +53,7 @@ class RegimeAdaptiveTimeEmbedding(nn.Module):
             nn.init.zeros_(self.pos)
 
         hidden = int(tau_mlp_hidden) if tau_mlp_hidden is not None else max(16, self.condition_dim // 2)
-        self.tau_norm = nn.LayerNorm(self.condition_dim)
+        self.tau_norm = RMSNorm(self.condition_dim)
         self.tau_fc1 = nn.Linear(self.condition_dim, hidden)
         self.tau_fc2 = nn.Linear(hidden, 1)
         self.tau_mlp_out_scale = float(tau_mlp_out_scale)
@@ -78,9 +79,12 @@ class RegimeAdaptiveTimeEmbedding(nn.Module):
             tau = tau.clamp_max(self.tau_max)
 
         lags = torch.arange(T - 1, -1, -1, device=regime_embedding.device, dtype=regime_embedding.dtype)
-        w = torch.exp(-lags.view(1, T) / tau)
+        decay_logits = -lags.view(1, T) / tau
+        w = torch.exp(decay_logits)
         if self.normalize_decay:
-            w = w / (w.mean(dim=-1, keepdim=True) + self.eps)
+            # Keep total time-embedding energy comparable across tau while avoiding
+            # the large mean-normalization amplification seen for short windows.
+            w = F.softmax(decay_logits, dim=-1) * float(T)
 
         pos = self.pos[:T].to(dtype=regime_embedding.dtype, device=regime_embedding.device)
         time_emb = w.unsqueeze(-1) * pos.unsqueeze(0)
@@ -118,11 +122,11 @@ class RegimeAdaptiveFactorGate(nn.Module):
         if not (self.use_global_state or self.use_local_state):
             raise ValueError("RegimeAdaptiveFactorGate requires at least one enabled state branch.")
 
-        self.factor_norm = nn.LayerNorm(self.d_model)
-        self.global_norm = nn.LayerNorm(self.global_dim) if self.use_global_state else None
-        self.local_norm = nn.LayerNorm(self.local_dim) if self.use_local_state else None
-        self.gamma_norm = nn.LayerNorm(self.d_model)
-        self.beta_norm = nn.LayerNorm(self.d_model)
+        self.factor_norm = RMSNorm(self.d_model)
+        self.global_norm = RMSNorm(self.global_dim) if self.use_global_state else None
+        self.local_norm = RMSNorm(self.local_dim) if self.use_local_state else None
+        self.gamma_norm = RMSNorm(self.d_model)
+        self.beta_norm = RMSNorm(self.d_model)
 
         self.proj_gamma_global = (
             nn.Linear(self.global_dim, self.d_model, bias=False) if self.use_global_state else None

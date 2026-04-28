@@ -6,6 +6,7 @@ for aggregating factor representations into stock-level scores.
 """
 import torch
 import torch.nn as nn
+from module.architecture import RMSNorm
 
 
 class AttentionPooling(nn.Module):
@@ -44,10 +45,10 @@ class AttentionPooling(nn.Module):
         )
         
         # Output normalization
-        self.norm = nn.LayerNorm(d_model)
+        self.norm = RMSNorm(d_model)
         
-        # Initialize query with small random values
-        nn.init.normal_(self.query, std=0.02)
+        # Initialize query with larger random values to break symmetry and prevent attention collapse
+        nn.init.normal_(self.query, std=1.0)
         
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

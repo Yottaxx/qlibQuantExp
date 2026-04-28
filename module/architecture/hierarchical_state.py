@@ -1,14 +1,65 @@
 import torch
 import torch.nn as nn
+from module.architecture import RMSNorm
+
+
+class XPanelStateEncoder(nn.Module):
+    """
+    Encode each stock's full time x factor panel into a state branch.
+
+    This keeps the global state exposed to the full raw [T, N] stock panel
+    without collapsing the daily cross-section before the conditioning MLP.
+    """
+
+    def __init__(
+        self,
+        *,
+        d_x_input: int,
+        d_state: int,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.d_x_input = int(d_x_input)
+        self.d_state = int(d_state)
+        if self.d_x_input <= 0:
+            raise ValueError("XPanelStateEncoder requires d_x_input > 0.")
+        if self.d_state <= 0:
+            raise ValueError("XPanelStateEncoder requires d_state > 0.")
+
+        self.stock_encoder = nn.Sequential(
+            RMSNorm(self.d_x_input),
+            nn.Linear(self.d_x_input, self.d_state),
+            nn.GELU(),
+            nn.Dropout(float(dropout or 0.0)),
+            RMSNorm(self.d_state),
+        )
+
+    def forward(self, x_features: torch.Tensor) -> torch.Tensor:
+        if x_features.ndim != 3:
+            raise ValueError(
+                "XPanelStateEncoder expects x_features [B,T,N], "
+                f"got shape {tuple(x_features.shape)}."
+            )
+        x_clean = torch.where(torch.isfinite(x_features), x_features, torch.zeros_like(x_features))
+        x_flat = x_clean.reshape(x_clean.shape[0], -1)
+        if int(x_flat.shape[-1]) != self.d_x_input:
+            raise ValueError(
+                f"XPanelStateEncoder expects flattened dim {self.d_x_input}, "
+                f"got {int(x_flat.shape[-1])} from shape {tuple(x_features.shape)}."
+            )
+
+        stock_state = self.stock_encoder(x_flat)  # [B, Dg]
+        return stock_state
 
 
 class GlobalStateEncoder(nn.Module):
     """
-    Stable day-level global state encoder.
+    Stable global state encoder.
 
-    Inputs are expected to be repeated across the daily batch. The encoder
-    reduces them to a single day vector and then broadcasts the encoded state
-    back to all samples in the batch.
+    Daily inputs may be repeated across the same-date stock batch, while the
+    x-panel branch can remain stock-specific. The returned `global_state` is
+    [B, Dg]; the second return value keeps the same [B, Dg] tensor for
+    diagnostics without collapsing the cross-section.
     """
 
     def __init__(
@@ -16,23 +67,43 @@ class GlobalStateEncoder(nn.Module):
         *,
         d_macro_input: int,
         d_day_summary_input: int,
+        d_internal_state_input: int = 0,
+        d_x_input: int = 0,
         d_global_state: int,
         use_macro: bool = True,
         use_day_summary: bool = True,
+        use_internal_state: bool = False,
+        use_x: bool = False,
         dropout: float = 0.0,
     ):
         super().__init__()
         self.use_macro = bool(use_macro)
         self.use_day_summary = bool(use_day_summary)
+        self.use_internal_state = bool(use_internal_state)
+        self.use_x = bool(use_x)
         self.d_macro_input = int(d_macro_input or 0)
         self.d_day_summary_input = int(d_day_summary_input or 0)
+        self.d_internal_state_input = int(d_internal_state_input or 0)
+        self.d_x_input = int(d_x_input or 0)
         self.d_global_state = int(d_global_state)
+
+        self.x_panel_encoder = None
+        if self.use_x:
+            self.x_panel_encoder = XPanelStateEncoder(
+                d_x_input=self.d_x_input,
+                d_state=self.d_global_state,
+                dropout=dropout,
+            )
 
         in_dim = 0
         if self.use_macro:
             in_dim += self.d_macro_input
         if self.use_day_summary:
             in_dim += self.d_day_summary_input
+        if self.use_internal_state:
+            in_dim += self.d_internal_state_input
+        if self.use_x:
+            in_dim += self.d_global_state
         if in_dim <= 0:
             raise ValueError("GlobalStateEncoder requires at least one enabled input branch.")
 
@@ -42,7 +113,7 @@ class GlobalStateEncoder(nn.Module):
             nn.GELU(),
             nn.Dropout(float(dropout or 0.0)),
             nn.Linear(hidden, self.d_global_state),
-            nn.LayerNorm(self.d_global_state),
+            RMSNorm(self.d_global_state),
         )
 
     def forward(
@@ -51,6 +122,8 @@ class GlobalStateEncoder(nn.Module):
         batch_size: int,
         macro_features: torch.Tensor | None = None,
         day_summary_embedding: torch.Tensor | None = None,
+        internal_state: torch.Tensor | None = None,
+        x_features: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         parts = []
         if self.use_macro:
@@ -61,16 +134,35 @@ class GlobalStateEncoder(nn.Module):
             if day_summary_embedding is None:
                 raise ValueError("GlobalStateEncoder expects day_summary_embedding but got None.")
             parts.append(day_summary_embedding)
+        if self.use_internal_state:
+            if internal_state is None:
+                raise ValueError("GlobalStateEncoder expects internal_state but got None.")
+            if internal_state.ndim != 2 or int(internal_state.shape[-1]) != self.d_internal_state_input:
+                raise ValueError(
+                    "GlobalStateEncoder expects internal_state [B,Dinternal], "
+                    f"got shape {tuple(internal_state.shape)}."
+            )
+            parts.append(internal_state)
+        if self.use_x:
+            if x_features is None:
+                raise ValueError("GlobalStateEncoder expects x_features but got None.")
+            if self.x_panel_encoder is None:
+                raise RuntimeError("GlobalStateEncoder use_x=True but x_panel_encoder is not initialized.")
+            parts.append(self.x_panel_encoder(x_features))
         if not parts:
             raise ValueError("GlobalStateEncoder received no active input branch.")
+        for part in parts:
+            if part.ndim != 2:
+                raise ValueError(f"GlobalStateEncoder expects 2D branch inputs, got shape {tuple(part.shape)}")
+            if int(part.shape[0]) != int(batch_size):
+                raise ValueError(
+                    f"GlobalStateEncoder branch batch mismatch: expected B={int(batch_size)}, "
+                    f"got shape {tuple(part.shape)}."
+                )
 
-        day_input = torch.cat(parts, dim=-1)
-        if day_input.ndim != 2:
-            raise ValueError(f"GlobalStateEncoder expects 2D inputs, got shape {tuple(day_input.shape)}")
-        day_input = day_input.mean(dim=0, keepdim=True)
-        day_state = self.encoder(day_input)  # [1, Dg]
-        global_state = day_state.expand(int(batch_size), -1)
-        return global_state, day_state
+        global_input = torch.cat(parts, dim=-1)
+        global_state = self.encoder(global_input)  # [B, Dg]
+        return global_state, global_state
 
 
 class LocalStateEncoder(nn.Module):
@@ -87,6 +179,8 @@ class LocalStateEncoder(nn.Module):
         d_local_state: int,
         input_mode: str = "last_mean_std_trend_vol",
         num_alphas: int | None = None,
+        d_internal_state_input: int = 0,
+        use_internal_state: bool = False,
         dropout: float = 0.0,
     ):
         super().__init__()
@@ -99,6 +193,8 @@ class LocalStateEncoder(nn.Module):
         self.d_global_state = int(d_global_state)
         self.d_local_state = int(d_local_state)
         self.num_alphas = int(num_alphas or 0)
+        self.use_internal_state = bool(use_internal_state)
+        self.d_internal_state_input = int(d_internal_state_input or 0)
         self.base_stats_dim = 6
 
         self.vector_projs = None
@@ -115,7 +211,7 @@ class LocalStateEncoder(nn.Module):
             self.vector_projs = nn.ModuleDict(
                 {
                     name: nn.Sequential(
-                        nn.LayerNorm(self.num_alphas),
+                        RMSNorm(self.num_alphas),
                         nn.Linear(self.num_alphas, branch_dim),
                         nn.GELU(),
                     )
@@ -124,6 +220,10 @@ class LocalStateEncoder(nn.Module):
             )
             self.stats_dim = self.base_stats_dim
             encoder_in = 4 * branch_dim + self.stats_dim + self.d_global_state
+        if self.use_internal_state:
+            if self.d_internal_state_input <= 0:
+                raise ValueError("LocalStateEncoder internal-state branch requires d_internal_state_input > 0.")
+            encoder_in += self.d_internal_state_input
 
         hidden = max(self.d_local_state * 2, 64)
         self.encoder = nn.Sequential(
@@ -131,7 +231,7 @@ class LocalStateEncoder(nn.Module):
             nn.GELU(),
             nn.Dropout(float(dropout or 0.0)),
             nn.Linear(hidden, self.d_local_state),
-            nn.LayerNorm(self.d_local_state),
+            RMSNorm(self.d_local_state),
         )
 
     @staticmethod
@@ -288,7 +388,12 @@ class LocalStateEncoder(nn.Module):
             vol_vec = torch.zeros_like(last_vec)
         return last_vec, window_mean_vec, trend_vec, vol_vec
 
-    def forward(self, x: torch.Tensor, global_state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        global_state: torch.Tensor,
+        internal_state: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.input_mode == "rich_stats_v1":
             stats = self._compute_rich_stats(x)
         else:
@@ -300,6 +405,21 @@ class LocalStateEncoder(nn.Module):
                 f"LocalStateEncoder batch mismatch: stats.shape={tuple(stats.shape)}, "
                 f"global_state.shape={tuple(global_state.shape)}"
             )
+        internal_part = None
+        if self.use_internal_state:
+            if internal_state is None:
+                raise ValueError("LocalStateEncoder expects internal_state but got None.")
+            if internal_state.ndim != 2 or int(internal_state.shape[0]) != int(stats.shape[0]):
+                raise ValueError(
+                    "LocalStateEncoder expects internal_state [B,Dinternal], "
+                    f"got shape {tuple(internal_state.shape)}."
+                )
+            if int(internal_state.shape[-1]) != self.d_internal_state_input:
+                raise ValueError(
+                    f"LocalStateEncoder internal_state expects D={self.d_internal_state_input}, "
+                    f"got {int(internal_state.shape[-1])}."
+                )
+            internal_part = internal_state.to(device=stats.device, dtype=stats.dtype)
         if self.input_mode == "factor_projection_v1":
             if self.vector_projs is None:
                 raise RuntimeError("factor_projection_v1 is configured without vector projections.")
@@ -321,5 +441,7 @@ class LocalStateEncoder(nn.Module):
             )
         else:
             local_input = torch.cat([stats, global_state], dim=-1)
+        if internal_part is not None:
+            local_input = torch.cat([local_input, internal_part], dim=-1)
         local_state = self.encoder(local_input)
         return local_state, stats

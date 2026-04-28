@@ -2,6 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
+from module.architecture import RMSNorm
 from transformers import PreTrainedModel
 
 from module.architecture.feature_selector import DifferentiableFeatureSelector
@@ -9,8 +10,13 @@ from module.architecture.feature_tokenizer import FeatureTokenizer
 from module.architecture.hierarchical_state import GlobalStateEncoder, LocalStateEncoder
 from module.architecture.moe_block import RegimeAdaptiveMoEBlock
 from module.architecture.regime_adaptive_embedding import RegimeAdaptiveFactorGate, RegimeAdaptiveTimeEmbedding
-from module.architecture.regime_adaptive_pooling import RegimeAdaptivePooling
-from module.architecture.regime_encoder import RegimeContextEncoder
+from module.architecture.regime_adaptive_pooling import RegimeAdaptivePooling, SimpleStaticFactorPooling
+from module.architecture.representation_layers import (
+    CrossStockContextLayer,
+    InnerCrossStockContextLayer,
+    LearnedTemporalPooling,
+)
+from module.architecture.regime_encoder import RegimeContextEncoder, compute_legacy_internal_stats
 from module.utils.losses import QuantLossFunctions
 from module.utils.model_configuration import QuantMoEConfig, QuantModelOutput
 from module.utils.utils import build_bidirectional_alibi_bias
@@ -34,6 +40,15 @@ class QuantMoEModel(PreTrainedModel):
         self.use_hierarchical_state_field = bool(getattr(config, "use_hierarchical_state_field", False))
         self.global_state_use_macro = bool(getattr(config, "global_state_use_macro", True))
         self.global_state_use_day_summary = bool(getattr(config, "global_state_use_day_summary", True))
+        self.global_state_use_internal_state = bool(getattr(config, "global_state_use_internal_state", False))
+        self.global_state_use_x = bool(getattr(config, "global_state_use_x", True))
+        self.local_state_use_internal_state = bool(getattr(config, "local_state_use_internal_state", False))
+        self.router_use_internal_batch_state = bool(getattr(config, "router_use_internal_batch_state", False))
+        self.use_internal_state_features = bool(
+            self.global_state_use_internal_state
+            or self.local_state_use_internal_state
+            or self.router_use_internal_batch_state
+        )
         hierarchical_uses_day_summary = self.use_hierarchical_state_field and self.global_state_use_day_summary
         self.uses_day_summary_asset = bool(
             hierarchical_uses_day_summary
@@ -76,7 +91,7 @@ class QuantMoEModel(PreTrainedModel):
                 nn.Linear(d_day_summary_input, d_model),
                 nn.GELU(),
                 nn.Linear(d_model, d_model),
-                nn.LayerNorm(d_model),
+                RMSNorm(d_model),
             )
 
         self.global_state_encoder = None
@@ -86,9 +101,13 @@ class QuantMoEModel(PreTrainedModel):
             self.global_state_encoder = GlobalStateEncoder(
                 d_macro_input=int(getattr(config, "d_macro_input", 0) or 0),
                 d_day_summary_input=d_model,
+                d_internal_state_input=int(getattr(config, "d_internal_state_input", 4) or 4),
+                d_x_input=int(config.context_len) * int(config.num_alphas),
                 d_global_state=int(getattr(config, "d_global_state", d_model) or d_model),
                 use_macro=self.global_state_use_macro,
                 use_day_summary=self.global_state_use_day_summary,
+                use_internal_state=self.global_state_use_internal_state,
+                use_x=self.global_state_use_x,
                 dropout=float(getattr(config, "regime_macro_dropout", 0.0) or 0.0),
             )
             self.local_state_encoder = LocalStateEncoder(
@@ -96,6 +115,8 @@ class QuantMoEModel(PreTrainedModel):
                 d_local_state=int(getattr(config, "d_local_state", d_model) or d_model),
                 input_mode=str(getattr(config, "local_state_input_mode", "last_mean_std_trend_vol")),
                 num_alphas=num_alphas,
+                d_internal_state_input=int(getattr(config, "d_internal_state_input", 4) or 4),
+                use_internal_state=self.local_state_use_internal_state,
                 dropout=float(getattr(config, "dropout", 0.0) or 0.0),
             )
         else:
@@ -164,36 +185,84 @@ class QuantMoEModel(PreTrainedModel):
             self.factor_gate = RegimeAdaptiveFactorGate(**factor_gate_kwargs)
 
         self.layers = nn.ModuleList([RegimeAdaptiveMoEBlock(config) for _ in range(config.n_layers)])
-        self.final_norm = nn.LayerNorm(d_model)
-        self.factor_pooling = RegimeAdaptivePooling(
+        self.inner_cross_stock_layers = None
+        if bool(getattr(config, "use_inner_cross_stock_attention", False)):
+            self.inner_cross_stock_layers = nn.ModuleList(
+                [
+                    InnerCrossStockContextLayer(
+                        d_model=d_model,
+                        n_heads=int(getattr(config, "inner_cross_stock_attention_heads", config.n_heads)),
+                        dropout=float(getattr(config, "dropout", 0.0) or 0.0),
+                        residual_scale_init=float(getattr(config, "inner_cross_stock_residual_scale_init", 0.05)),
+                        scale_learnable=bool(getattr(config, "inner_cross_stock_scale_learnable", True)),
+                        mode=str(getattr(config, "inner_cross_stock_mode", "day_token") or "day_token"),
+                        diag_factor_samples=int(getattr(config, "inner_cross_stock_diag_factor_samples", 8) or 0),
+                    )
+                    for _ in range(config.n_layers)
+                ]
+            )
+        self.final_norm = RMSNorm(d_model)
+        self.temporal_pooling = LearnedTemporalPooling(
             d_model=d_model,
-            n_heads=4,
-            dropout=config.dropout,
-            pooling_mode=config.pooling_mode,
-            base_alpha=config.pooling_alpha,
-            alpha_scale=config.pooling_alpha_scale,
-            pooling_d_ff=config.pooling_d_ff,
-            summary_source=self.pooling_summary_source,
-            use_hierarchical_state_field=self.use_hierarchical_state_field,
-            d_global_state=int(getattr(config, "d_global_state", d_model) or d_model),
-            d_local_state=int(getattr(config, "d_local_state", d_model) or d_model),
-            use_global_state=bool(getattr(config, "pooling_use_global_state", True)),
-            use_local_state=bool(getattr(config, "pooling_use_local_state", True)) and self.use_hierarchical_state_field,
-            state_fusion_mode=str(getattr(config, "state_fusion_mode", "sum_norm") or "sum_norm"),
-            local_pooling_scale_init=float(getattr(config, "local_pooling_scale_init", 0.1)),
-            local_pooling_alpha_scale_init=float(getattr(config, "local_pooling_alpha_scale_init", 0.1)),
-            local_scale_learnable=bool(getattr(config, "local_scale_learnable", True)),
+            n_heads=int(getattr(config, "temporal_pooling_heads", config.n_heads)),
+            dropout=float(getattr(config, "dropout", 0.0) or 0.0),
+            mode=str(getattr(config, "temporal_pooling_mode", "last") or "last"),
+            gru_residual_scale_init=float(getattr(config, "temporal_gru_residual_scale_init", 0.05)),
+            gru_residual_scale_learnable=bool(getattr(config, "temporal_gru_residual_scale_learnable", True)),
+            temporal_mhc_mix_init=float(getattr(config, "temporal_mhc_mix_init", 0.05)),
+            temporal_mhc_mix_max=float(getattr(config, "temporal_mhc_mix_max", 0.25)),
         )
+        self.cross_stock_attention = None
+        if bool(getattr(config, "use_cross_stock_attention", False)):
+            self.cross_stock_attention = CrossStockContextLayer(
+                d_model=d_model,
+                n_heads=int(getattr(config, "cross_stock_attention_heads", config.n_heads)),
+                dropout=float(getattr(config, "dropout", 0.0) or 0.0),
+                residual_scale_init=float(getattr(config, "cross_stock_residual_scale_init", 0.1)),
+                scale_learnable=bool(getattr(config, "cross_stock_scale_learnable", True)),
+            )
+        pooling_mode = str(getattr(config, "pooling_mode", "adaptive_alpha") or "adaptive_alpha").strip().lower()
+        if pooling_mode == "simple_static":
+            self.factor_pooling = SimpleStaticFactorPooling(
+                d_model=d_model,
+                n_heads=int(getattr(config, "n_heads", 4)),
+                dropout=config.dropout,
+                alpha=float(getattr(config, "pooling_alpha", 0.7)),
+            )
+        else:
+            self.factor_pooling = RegimeAdaptivePooling(
+                d_model=d_model,
+                n_heads=int(getattr(config, "n_heads", 4)),
+                dropout=config.dropout,
+                pooling_mode=pooling_mode,
+                base_alpha=config.pooling_alpha,
+                alpha_scale=config.pooling_alpha_scale,
+                pooling_d_ff=config.pooling_d_ff,
+                pooling_num_queries=int(getattr(config, "pooling_num_queries", 1) or 1),
+                summary_source=self.pooling_summary_source,
+                use_hierarchical_state_field=self.use_hierarchical_state_field,
+                d_global_state=int(getattr(config, "d_global_state", d_model) or d_model),
+                d_local_state=int(getattr(config, "d_local_state", d_model) or d_model),
+                use_global_state=bool(getattr(config, "pooling_use_global_state", True)),
+                use_local_state=bool(getattr(config, "pooling_use_local_state", True)) and self.use_hierarchical_state_field,
+                state_fusion_mode=str(getattr(config, "state_fusion_mode", "sum_norm") or "sum_norm"),
+                local_pooling_scale_init=float(getattr(config, "local_pooling_scale_init", 0.1)),
+                local_pooling_alpha_scale_init=float(getattr(config, "local_pooling_alpha_scale_init", 0.1)),
+                local_scale_learnable=bool(getattr(config, "local_scale_learnable", True)),
+            )
 
         self.pooling_summary_proj = None
         if self.pooling_summary_source == "batch":
             self.pooling_summary_proj = nn.Linear(2 * d_model, d_model, bias=False)
 
-        self.head = nn.Linear(d_model, 1)
+        self.head = nn.Linear(int(getattr(self.factor_pooling, "output_dim", d_model)), 1)
 
         self.post_init()
         with torch.no_grad():
-            nn.init.kaiming_normal_(self.head.weight, mode="fan_in", nonlinearity="linear")
+            head_init_std = float(getattr(self.config, "head_init_std", self.config.initializer_range) or 0.02)
+            if head_init_std <= 0:
+                head_init_std = float(getattr(self.config, "initializer_range", 0.02) or 0.02)
+            nn.init.normal_(self.head.weight, mean=0.0, std=head_init_std)
             if self.head.bias is not None:
                 nn.init.zeros_(self.head.bias)
 
@@ -201,6 +270,17 @@ class QuantMoEModel(PreTrainedModel):
         init_std = float(getattr(self.config, "initializer_range", 0.02))
         if init_std <= 0:
             init_std = 0.02
+
+        if getattr(module, "_rstmoe_router_init", False):
+            if isinstance(module, nn.Linear):
+                # Router final layer needs larger variance to break symmetry and prevent logit collapse.
+                # Default to 1.0 if not specified, which is much larger than 0.02.
+                router_std = float(getattr(self.config, "router_init_std", 1.0))
+                nn.init.normal_(module.weight, mean=0.0, std=router_std)
+                if module.bias is not None:
+                    # Optional: slight bias offset could also help, but zero is safer for now.
+                    nn.init.zeros_(module.bias)
+            return
 
         if getattr(module, "_rstmoe_zero_init", False):
             if isinstance(module, nn.Linear):
@@ -228,20 +308,27 @@ class QuantMoEModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
             return
 
+        if isinstance(module, RMSNorm):
+            nn.init.ones_(module.scale)
+            return
+
         if isinstance(module, nn.LayerNorm):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
             return
 
         if isinstance(module, nn.MultiheadAttention):
+            # Use scaled normal initialization (1 / sqrt(d_model)) instead of the global 0.02
+            # to prevent projection logits from collapsing, which leads to Attention Entropy = 0.999
+            mha_std = 1.0 / math.sqrt(self.config.d_model)
             if getattr(module, "in_proj_weight", None) is not None:
-                nn.init.normal_(module.in_proj_weight, mean=0.0, std=init_std)
+                nn.init.normal_(module.in_proj_weight, mean=0.0, std=mha_std)
             if getattr(module, "in_proj_bias", None) is not None:
                 nn.init.zeros_(module.in_proj_bias)
             if getattr(module, "bias_k", None) is not None:
-                nn.init.normal_(module.bias_k, mean=0.0, std=init_std)
+                nn.init.normal_(module.bias_k, mean=0.0, std=mha_std)
             if getattr(module, "bias_v", None) is not None:
-                nn.init.normal_(module.bias_v, mean=0.0, std=init_std)
+                nn.init.normal_(module.bias_v, mean=0.0, std=mha_std)
             return
 
     def _encode_day_summary(
@@ -260,9 +347,13 @@ class QuantMoEModel(PreTrainedModel):
             raise ValueError(
                 f"day_summary_features must be 2D [B,D], got shape {tuple(day_summary_features.shape)}"
             )
-        day_input = day_summary_features.mean(dim=0, keepdim=True)
-        day_state = self.day_summary_encoder(day_input)
-        return day_state.expand(int(batch_size), -1), day_state
+        if int(day_summary_features.shape[0]) != int(batch_size):
+            raise ValueError(
+                f"day_summary_features batch mismatch: expected B={int(batch_size)}, "
+                f"got shape {tuple(day_summary_features.shape)}"
+            )
+        day_state = self.day_summary_encoder(day_summary_features)
+        return day_state, day_state
 
     def forward(
         self,
@@ -280,6 +371,15 @@ class QuantMoEModel(PreTrainedModel):
     ) -> QuantModelOutput:
         device = x.device
         B, T, N = x.shape
+        router_internal_state = None
+        if self.use_internal_state_features:
+            router_internal_state = compute_legacy_internal_stats(
+                x,
+                internal_mode=getattr(self.config, "router_internal_mode", "long"),
+                internal_lag=int(getattr(self.config, "router_internal_lag", 5)),
+                internal_use_batch_stats=bool(getattr(self.config, "router_internal_use_batch_stats", True)),
+                internal_tail_threshold=float(getattr(self.config, "router_internal_tail_threshold", 2.0)),
+            )
 
         if factor_ids is None:
             factor_ids = torch.arange(N, device=device)
@@ -308,8 +408,14 @@ class QuantMoEModel(PreTrainedModel):
                 batch_size=B,
                 macro_features=macro_features if self.global_state_use_macro else None,
                 day_summary_embedding=day_summary_embedding if self.global_state_use_day_summary else None,
+                internal_state=router_internal_state if self.global_state_use_internal_state else None,
+                x_features=x if self.global_state_use_x else None,
             )
-            local_state, local_stats = self.local_state_encoder(x, global_state)
+            local_state, local_stats = self.local_state_encoder(
+                x,
+                global_state,
+                internal_state=router_internal_state if self.local_state_use_internal_state else None,
+            )
             if local_state_mode is not None:
                 mode = str(local_state_mode).strip().lower()
                 if mode == "zero":
@@ -351,7 +457,24 @@ class QuantMoEModel(PreTrainedModel):
             "local_pooling_scale": 0.0,
             "local_pooling_alpha_scale": 0.0,
             "local_film_scale": 0.0,
+            "router_internal_sensitivity": 0.0,
+            "router_internal_logit_std": 0.0,
+            "router_internal_scale": 0.0,
+            "router_internal_crowding": 0.0,
+            "router_internal_pc1_ratio": 0.0,
+            "router_internal_drift": 0.0,
+            "router_internal_tail": 0.0,
+            "inner_cross_stock_scale": 0.0,
+            "inner_cross_stock_token_std": 0.0,
+            "inner_cross_stock_context_norm": 0.0,
+            "inner_cross_stock_attention_entropy": 0.0,
         }
+        if router_internal_state is not None:
+            ris = router_internal_state.detach()
+            diag_metrics["router_internal_crowding"] = float(ris[:, 0].mean().item())
+            diag_metrics["router_internal_pc1_ratio"] = float(ris[:, 1].mean().item())
+            diag_metrics["router_internal_drift"] = float(ris[:, 2].mean().item())
+            diag_metrics["router_internal_tail"] = float(ris[:, 3].mean().item())
         if local_state is not None:
             diag_metrics["local_state_norm"] = float(local_state.detach().norm(dim=-1).mean().item())
             diag_metrics["local_state_cross_sectional_variance"] = float(
@@ -418,12 +541,24 @@ class QuantMoEModel(PreTrainedModel):
             attn_bias = (bias_time, None)
 
         z_losses = []
+        usage_losses = []
         entropies = []
         time_ratios = []
         gates_list = []
         router_global_sens = []
         router_local_sens = []
         router_local_logit_stds = []
+        router_stock_logit_stds = []
+        router_stock_scales = []
+        router_internal_sens = []
+        router_internal_logit_stds = []
+        router_internal_scales = []
+        router_usage_entropies = []
+        router_usage_imbalances = []
+        inner_cross_stock_scales = []
+        inner_cross_stock_token_stds = []
+        inner_cross_stock_context_norms = []
+        inner_cross_stock_entropies = []
         attn_maps: dict[str, dict[str, torch.Tensor]] = {}
 
         for idx, layer in enumerate(self.layers):
@@ -435,22 +570,40 @@ class QuantMoEModel(PreTrainedModel):
                 attn_bias=attn_bias,
                 return_attn=need_attn,
                 summary_context=day_summary_embedding,
+                router_internal_state=router_internal_state,
                 factor_film=factor_film,
                 feature_mask=feature_mask,
                 expert_mode=expert_mode,
             )
             z_losses.append(diag["z_loss"])
+            usage_losses.append(diag.get("usage_entropy_loss", diag["z_loss"] * 0.0))
             entropies.append(diag["entropy"])
             time_ratios.append(diag["time_ratio"])
             gates_list.append(diag["weights"])
             router_global_sens.append(float(diag.get("router_global_sensitivity", 0.0)))
             router_local_sens.append(float(diag.get("router_local_sensitivity", 0.0)))
             router_local_logit_stds.append(float(diag.get("router_local_logit_std", 0.0)))
+            router_stock_logit_stds.append(float(diag.get("router_stock_logit_std", 0.0)))
+            router_stock_scales.append(float(diag.get("router_stock_scale", 0.0)))
+            router_internal_sens.append(float(diag.get("router_internal_sensitivity", 0.0)))
+            router_internal_logit_stds.append(float(diag.get("router_internal_logit_std", 0.0)))
+            router_internal_scales.append(float(diag.get("router_internal_scale", 0.0)))
+            router_usage_entropies.append(float(diag.get("router_usage_entropy", 0.0)))
+            router_usage_imbalances.append(float(diag.get("router_usage_imbalance", 0.0)))
             if "local_router_scale" in diag:
                 diag_metrics["local_router_scale"] = float(diag.get("local_router_scale", 0.0))
 
             if need_attn and layer_attn is not None:
                 attn_maps[f"layer_{idx}"] = layer_attn
+
+            if self.inner_cross_stock_layers is not None:
+                h, inner_diag = self.inner_cross_stock_layers[idx](h)
+                inner_cross_stock_scales.append(float(inner_diag.get("inner_cross_stock_scale", 0.0)))
+                inner_cross_stock_token_stds.append(float(inner_diag.get("inner_cross_stock_token_std", 0.0)))
+                inner_cross_stock_context_norms.append(float(inner_diag.get("inner_cross_stock_context_norm", 0.0)))
+                inner_cross_stock_entropies.append(
+                    float(inner_diag.get("inner_cross_stock_attention_entropy", 0.0))
+                )
 
         if router_global_sens:
             diag_metrics["router_global_sensitivity"] = float(sum(router_global_sens) / len(router_global_sens))
@@ -460,9 +613,57 @@ class QuantMoEModel(PreTrainedModel):
             diag_metrics["router_local_logit_std"] = float(
                 sum(router_local_logit_stds) / len(router_local_logit_stds)
             )
+        if router_stock_logit_stds:
+            diag_metrics["router_stock_logit_std"] = float(
+                sum(router_stock_logit_stds) / len(router_stock_logit_stds)
+            )
+        if router_stock_scales:
+            diag_metrics["router_stock_scale"] = float(sum(router_stock_scales) / len(router_stock_scales))
+        if router_internal_sens:
+            diag_metrics["router_internal_sensitivity"] = float(
+                sum(router_internal_sens) / len(router_internal_sens)
+            )
+        if router_internal_logit_stds:
+            diag_metrics["router_internal_logit_std"] = float(
+                sum(router_internal_logit_stds) / len(router_internal_logit_stds)
+            )
+        if router_internal_scales:
+            diag_metrics["router_internal_scale"] = float(sum(router_internal_scales) / len(router_internal_scales))
+        if router_usage_entropies:
+            diag_metrics["router_usage_entropy"] = float(sum(router_usage_entropies) / len(router_usage_entropies))
+        if router_usage_imbalances:
+            diag_metrics["router_usage_imbalance"] = float(
+                sum(router_usage_imbalances) / len(router_usage_imbalances)
+            )
+        if inner_cross_stock_scales:
+            diag_metrics["inner_cross_stock_scale"] = float(
+                sum(inner_cross_stock_scales) / len(inner_cross_stock_scales)
+            )
+            diag_metrics["inner_cross_stock_token_std"] = float(
+                sum(inner_cross_stock_token_stds) / len(inner_cross_stock_token_stds)
+            )
+            diag_metrics["inner_cross_stock_context_norm"] = float(
+                sum(inner_cross_stock_context_norms) / len(inner_cross_stock_context_norms)
+            )
+            diag_metrics["inner_cross_stock_attention_entropy"] = float(
+                sum(inner_cross_stock_entropies) / len(inner_cross_stock_entropies)
+            )
 
         h = self.final_norm(h)
-        h_last = h[:, -1, :, :]
+        h_last, temporal_diag = self.temporal_pooling(h)
+        diag_metrics.update(temporal_diag)
+        if self.cross_stock_attention is not None:
+            h_last, cross_stock_diag = self.cross_stock_attention(h_last)
+            diag_metrics.update(cross_stock_diag)
+        else:
+            diag_metrics.update(
+                {
+                    "cross_stock_scale": 0.0,
+                    "cross_stock_token_std": 0.0,
+                    "cross_stock_context_norm": 0.0,
+                    "cross_stock_attention_entropy": 0.0,
+                }
+            )
 
         summary_context = None
         if self.pooling_summary_source == "batch":
@@ -531,11 +732,26 @@ class QuantMoEModel(PreTrainedModel):
                 if w.get("huber", 0.0) != 0.0:
                     l_huber = QuantLossFunctions.cs_huber_loss(p, y, self.config.huber_delta)
 
-                l_aux = (
-                    torch.stack(z_losses).mean() * self.config.router_z_loss_coef
+                aux_type = str(getattr(self.config, "router_aux_loss_type", "usage_entropy") or "usage_entropy").strip().lower()
+                z_stability = (
+                    torch.stack(z_losses).mean() * float(getattr(self.config, "router_z_stability_coef", 1e-3))
                     if z_losses
                     else torch.tensor(0.0, device=device)
                 )
+                if aux_type == "usage_entropy":
+                    l_aux = (
+                        torch.stack(usage_losses).mean()
+                        * float(getattr(self.config, "router_usage_entropy_coef", 0.05))
+                        if usage_losses
+                        else torch.tensor(0.0, device=device)
+                    )
+                    l_aux = l_aux + z_stability
+                else:
+                    l_aux = (
+                        torch.stack(z_losses).mean() * self.config.router_z_loss_coef
+                        if z_losses
+                        else torch.tensor(0.0, device=device)
+                    )
                 l_reg = reg_loss * self.config.selection_reg_lambda
 
                 main_loss = str(getattr(self.config, "main_loss", "listmle")).lower()
@@ -565,6 +781,7 @@ class QuantMoEModel(PreTrainedModel):
                     "loss_mse": float(l_mse.detach().item()),
                     "loss_ic": float(l_ic.detach().item()),
                     "loss_aux": float(l_aux.detach().item()),
+                    "loss_router_z_stability": float(z_stability.detach().item()),
                     "loss_sparsity": float(l_reg.detach().item()),
                     "valid_ratio": float(valid_ratio),
                 }
@@ -577,7 +794,7 @@ class QuantMoEModel(PreTrainedModel):
         else:
             metrics = {}
 
-        if hasattr(self.factor_pooling, "use_adaptive_alpha") and self.factor_pooling.use_adaptive_alpha:
+        if alpha_val is not None:
             alpha_mean = float(alpha_val.mean().item())
             alpha_std = float(alpha_val.std(unbiased=False).item())
             metrics["pooling_alpha_mean"] = alpha_mean

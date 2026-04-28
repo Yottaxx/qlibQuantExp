@@ -4,18 +4,21 @@ import argparse
 import copy
 import importlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MLRUNS_DIR = PROJECT_ROOT / "mlruns"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from qlib.utils import flatten_dict, init_instance_by_config
 from qlib.workflow import R
 from qlib.workflow.record_temp import PortAnaRecord, SigAnaRecord, SignalRecord
+from qlib.config import C
 
 import work_flow as workflow_helpers
 from module.utils.qlib_official_graphs import ensure_qlib_official_graphs
@@ -23,6 +26,19 @@ from module.utils.qlib_official_graphs import ensure_qlib_official_graphs
 
 def _log(message: str) -> None:
     print(message, flush=True)
+
+
+def _configure_mlruns_tracking() -> str:
+    """Pin qlib/mlflow tracking to the project-root mlruns directory."""
+    MLRUNS_DIR.mkdir(parents=True, exist_ok=True)
+    uri = f"file:{MLRUNS_DIR.resolve()}"
+    os.environ["MLFLOW_TRACKING_URI"] = uri
+    exp_manager = C.get("exp_manager", None)
+    if isinstance(exp_manager, dict):
+        kwargs = exp_manager.setdefault("kwargs", {})
+        if isinstance(kwargs, dict):
+            kwargs["uri"] = uri
+    return uri
 
 
 def _int_flag(value: str) -> int:
@@ -64,6 +80,12 @@ def parse_args() -> argparse.Namespace:
         help="Override model_config.pooling_summary_source.",
     )
     parser.add_argument("--label", type=str, required=True, help="Short variant label saved into the recorder.")
+    parser.add_argument(
+        "--qlib_kernels",
+        type=int,
+        default=1,
+        help="Qlib data-provider worker count. Use 1 on Windows to avoid joblib multiprocessing pipe permission errors.",
+    )
     parser.add_argument(
         "--experiment_suffix",
         type=str,
@@ -214,7 +236,11 @@ def _local_build_experiment_name(model_k: dict[str, Any], trainer_k: dict[str, A
         f"time{int(bool(model_k.get('use_regime_time_embedding', True)))}",
         f"film{int(bool(model_k.get('use_regime_factor_gate', True)))}",
         f"rSrc{model_k.get('router_summary_source', 'none')}",
+        f"rFuse{model_k.get('router_summary_fusion_mode', 'default')}",
+        f"tPool{model_k.get('temporal_pooling_mode', 'na')}",
+        f"pMode{model_k.get('pooling_mode', 'na')}",
         f"pSrc{model_k.get('pooling_summary_source', 'none')}",
+        f"iX{model_k.get('inner_cross_stock_mode', 'day_token')}",
         f"macro{int(bool(model_k.get('use_external_macro', True)))}",
         f"hsf{int(use_hsf)}",
         f"mDrop{model_k.get('regime_macro_dropout', 'na')}",
@@ -321,13 +347,17 @@ def _resolve_trainer_config(model: Any, fallback: dict[str, Any]) -> dict[str, A
 
 def main() -> None:
     args = parse_args()
+    tracking_uri = _configure_mlruns_tracking()
     workflow_module = _load_workflow_module(args.workflow_module)
+    if args.qlib_kernels is not None:
+        C.kernels = max(1, int(args.qlib_kernels))
     try:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(line_buffering=True)
     except Exception:
         pass
     _log(">>> [Phase 0] Cloning configs and applying market_state override...")
+    _log(f">>> [MLflow] tracking_uri={tracking_uri}")
     data_conf, model_conf, port_conf = _clone_conf_with_overrides(args, workflow_module)
 
     _log(">>> [Phase 0] Creating dataset...")
@@ -350,10 +380,18 @@ def main() -> None:
     variant_meta = {
         "label": str(args.label),
         "workflow_module": str(args.workflow_module),
+        "qlib_kernels": int(C.kernels),
         "market_state_path": str(args.market_state_path),
         "market_day_summary_path": ((model_conf.get("kwargs") or {}).get("trainer_config") or {}).get("market_day_summary_path"),
         "router_summary_source": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("router_summary_source"),
+        "router_summary_fusion_mode": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("router_summary_fusion_mode"),
+        "temporal_pooling_mode": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("temporal_pooling_mode"),
+        "pooling_mode": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("pooling_mode"),
+        "pooling_alpha": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("pooling_alpha"),
         "pooling_summary_source": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("pooling_summary_source"),
+        "factor_gate_scale": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("factor_gate_scale"),
+        "factor_gate_shift_scale": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("factor_gate_shift_scale"),
+        "inner_cross_stock_mode": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("inner_cross_stock_mode"),
         "use_hierarchical_state_field": bool(((model_conf.get("kwargs") or {}).get("model_config") or {}).get("use_hierarchical_state_field", False)),
         "d_global_state": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("d_global_state"),
         "d_local_state": ((model_conf.get("kwargs") or {}).get("model_config") or {}).get("d_local_state"),
@@ -383,10 +421,16 @@ def main() -> None:
         _log(f">>> [Variant] label={variant_meta['label']}")
         _log(f">>> [Variant] experiment_name={exp_name}")
         _log(f">>> [Variant] recorder_id={rec.id}")
+        _log(f">>> [Variant] qlib_kernels={variant_meta['qlib_kernels']}")
         _log(f">>> [Variant] market_state_path={variant_meta['market_state_path']}")
         _log(f">>> [Variant] market_day_summary_path={variant_meta['market_day_summary_path']}")
         _log(f">>> [Variant] router_summary_source={variant_meta['router_summary_source']}")
+        _log(f">>> [Variant] router_summary_fusion_mode={variant_meta['router_summary_fusion_mode']}")
+        _log(f">>> [Variant] temporal_pooling_mode={variant_meta['temporal_pooling_mode']}")
+        _log(f">>> [Variant] pooling_mode={variant_meta['pooling_mode']}")
+        _log(f">>> [Variant] pooling_alpha={variant_meta['pooling_alpha']}")
         _log(f">>> [Variant] pooling_summary_source={variant_meta['pooling_summary_source']}")
+        _log(f">>> [Variant] inner_cross_stock_mode={variant_meta['inner_cross_stock_mode']}")
         _log(f">>> [Variant] use_hierarchical_state_field={variant_meta['use_hierarchical_state_field']}")
         _log(f">>> [Variant] global_state_use_macro={variant_meta['global_state_use_macro']}")
         _log(f">>> [Variant] global_state_use_day_summary={variant_meta['global_state_use_day_summary']}")
@@ -398,7 +442,12 @@ def main() -> None:
             variant_label=str(args.label),
             market_state_variant=str(Path(args.market_state_path).name),
             router_summary_source=str(variant_meta["router_summary_source"]),
+            router_summary_fusion_mode=str(variant_meta["router_summary_fusion_mode"]),
+            temporal_pooling_mode=str(variant_meta["temporal_pooling_mode"]),
+            pooling_mode=str(variant_meta["pooling_mode"]),
+            pooling_alpha=str(variant_meta["pooling_alpha"]),
             pooling_summary_source=str(variant_meta["pooling_summary_source"]),
+            inner_cross_stock_mode=str(variant_meta["inner_cross_stock_mode"]),
             use_hierarchical_state_field=str(int(bool(variant_meta["use_hierarchical_state_field"]))),
             state_fusion_mode=str(variant_meta["state_fusion_mode"]),
         )
@@ -426,7 +475,14 @@ def main() -> None:
         resolved_model_conf["kwargs"]["trainer_config"] = copy.deepcopy(resolved_trainer_k)
         variant_meta["market_day_summary_path"] = resolved_trainer_k.get("market_day_summary_path")
         variant_meta["router_summary_source"] = resolved_model_k.get("router_summary_source")
+        variant_meta["router_summary_fusion_mode"] = resolved_model_k.get("router_summary_fusion_mode")
+        variant_meta["temporal_pooling_mode"] = resolved_model_k.get("temporal_pooling_mode")
+        variant_meta["pooling_mode"] = resolved_model_k.get("pooling_mode")
+        variant_meta["pooling_alpha"] = resolved_model_k.get("pooling_alpha")
         variant_meta["pooling_summary_source"] = resolved_model_k.get("pooling_summary_source")
+        variant_meta["factor_gate_scale"] = resolved_model_k.get("factor_gate_scale")
+        variant_meta["factor_gate_shift_scale"] = resolved_model_k.get("factor_gate_shift_scale")
+        variant_meta["inner_cross_stock_mode"] = resolved_model_k.get("inner_cross_stock_mode")
         variant_meta["use_hierarchical_state_field"] = bool(resolved_model_k.get("use_hierarchical_state_field", False))
         variant_meta["d_global_state"] = resolved_model_k.get("d_global_state")
         variant_meta["d_local_state"] = resolved_model_k.get("d_local_state")

@@ -27,6 +27,7 @@ from qlib.workflow import R
 
 from module.dataloader.sampler import FixedDailyBatchSampler, DailyChunkBatchSampler
 from module.quant_moe_model import QuantMoEModel
+from module.architecture.regime_encoder import compute_legacy_internal_stats
 from module.utils.model_configuration import QuantMoEConfig
 from module.utils.market_state import (
     MarketStateLookup,
@@ -69,6 +70,16 @@ class QlibQuantMoE(Model):
 
         # Optimizer / schedule
         self.lr = float(self.trainer_config.get("lr", 5e-4))
+        self.optimizer_name = str(self.trainer_config.get("optimizer", "adamw") or "adamw").strip().lower()
+        self.weight_decay = float(self.trainer_config.get("weight_decay", 0.01))
+        self.adam_betas = self._parse_adam_betas(self.trainer_config.get("adam_betas", (0.9, 0.999)))
+        self.adam_eps = float(self.trainer_config.get("adam_eps", 1e-8))
+        self.adam_amsgrad = bool(self._parse_optional_bool(self.trainer_config.get("adam_amsgrad", False)))
+        self.adam_foreach = self._parse_optional_bool(self.trainer_config.get("adam_foreach", None))
+        self.adam_fused = self._parse_optional_bool(self.trainer_config.get("adam_fused", None))
+        self.adamw_decay_matrix_only = bool(
+            self._parse_optional_bool(self.trainer_config.get("adamw_decay_matrix_only", False))
+        )
         self.epochs = int(self.trainer_config.get("n_epochs", 20))
         self.batch_size = int(self.trainer_config.get("batch_size", 1024))
         eval_bs_raw = self.trainer_config.get("eval_batch_size", None)
@@ -239,6 +250,87 @@ class QlibQuantMoE(Model):
         )
         self._last_expert_advantage_daily: Optional[pd.DataFrame] = None
         self._last_expert_advantage_spearman: Optional[pd.DataFrame] = None
+
+    @staticmethod
+    def _parse_adam_betas(value: Any) -> tuple[float, float]:
+        if isinstance(value, str):
+            raw = value.strip().strip("()[]")
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+        elif isinstance(value, (tuple, list)):
+            parts = list(value)
+        else:
+            raise ValueError(f"adam_betas must be a 2-item tuple/list/string, got {value!r}")
+        if len(parts) != 2:
+            raise ValueError(f"adam_betas must contain exactly 2 values, got {value!r}")
+        beta1, beta2 = float(parts[0]), float(parts[1])
+        if not (0.0 <= beta1 < 1.0 and 0.0 <= beta2 < 1.0):
+            raise ValueError(f"adam_betas must be in [0, 1), got {(beta1, beta2)!r}")
+        return beta1, beta2
+
+    @staticmethod
+    def _parse_optional_bool(value: Any) -> Optional[bool]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, np.integer)):
+            return bool(value)
+        if isinstance(value, str):
+            raw = value.strip().lower()
+            if raw in {"", "none", "null", "auto"}:
+                return None
+            if raw in {"1", "true", "yes", "y", "on"}:
+                return True
+            if raw in {"0", "false", "no", "n", "off"}:
+                return False
+        raise ValueError(f"Expected optional bool, got {value!r}")
+
+    def _build_optimizer(self) -> torch.optim.Optimizer:
+        if self.net is None:
+            raise RuntimeError("Cannot build optimizer before network initialization.")
+        if self.optimizer_name != "adamw":
+            raise ValueError(f"Unsupported optimizer={self.optimizer_name!r}; only 'adamw' is implemented.")
+
+        adamw_kwargs: dict[str, Any] = {
+            "lr": self.lr,
+            "betas": self.adam_betas,
+            "eps": self.adam_eps,
+            "amsgrad": self.adam_amsgrad,
+        }
+        if self.adam_foreach is not None:
+            adamw_kwargs["foreach"] = self.adam_foreach
+        if self.adam_fused is not None:
+            adamw_kwargs["fused"] = self.adam_fused
+
+        if self.adamw_decay_matrix_only and self.weight_decay > 0.0:
+            decay_params = []
+            no_decay_params = []
+            decay_count = 0
+            no_decay_count = 0
+            for name, param in self.net.named_parameters():
+                if not param.requires_grad:
+                    continue
+                lower_name = name.lower()
+                use_decay = param.ndim >= 2 and not lower_name.endswith(".bias") and "norm" not in lower_name
+                if use_decay:
+                    decay_params.append(param)
+                    decay_count += int(param.numel())
+                else:
+                    no_decay_params.append(param)
+                    no_decay_count += int(param.numel())
+            param_groups = []
+            if decay_params:
+                param_groups.append({"params": decay_params, "weight_decay": self.weight_decay})
+            if no_decay_params:
+                param_groups.append({"params": no_decay_params, "weight_decay": 0.0})
+            print(
+                ">>> [Optimizer] AdamW matrix-only decay: "
+                f"decay_params={decay_count:,}, no_decay_params={no_decay_count:,}, "
+                f"weight_decay={self.weight_decay:g}"
+            )
+            return optim.AdamW(param_groups, **adamw_kwargs)
+
+        return optim.AdamW(self.net.parameters(), weight_decay=self.weight_decay, **adamw_kwargs)
 
     def _autocast_ctx(self):
         if not self.amp_enabled or self.amp_dtype is None:
@@ -442,6 +534,10 @@ class QlibQuantMoE(Model):
                 global_sources.append("macro")
             if bool(cfg_get("global_state_use_day_summary", True)):
                 global_sources.append("day")
+            if bool(cfg_get("global_state_use_internal_state", False)):
+                global_sources.append("internal")
+            if bool(cfg_get("global_state_use_x", True)):
+                global_sources.append("x")
             model_parts.append(
                 "hsf="
                 f"on(g={cfg_get('d_global_state', 'n/a')},"
@@ -463,7 +559,10 @@ class QlibQuantMoE(Model):
             warmup_desc = "off"
 
         trainer_parts = [
+            f"optimizer={self.optimizer_name}",
             f"lr={self.lr:g}",
+            f"wd={self.weight_decay:g}",
+            f"betas=({self.adam_betas[0]:g},{self.adam_betas[1]:g})",
             f"epochs={self.epochs}",
             f"batch={self.batch_size}",
             f"eval_batch={self.eval_batch_size}",
@@ -503,6 +602,7 @@ class QlibQuantMoE(Model):
                 ("context_len", "Sequence length (T)"),
                 ("dropout", "Dropout rate"),
                 ("initializer_range", "Weight init std"),
+                ("head_init_std", "Regression head init std"),
             ],
             "Value Embedding": [
                 ("value_embedding_type", "Value embedding type"),
@@ -537,17 +637,30 @@ class QlibQuantMoE(Model):
                 ("router_z_loss_coef", "Z-loss coefficient"),
                 ("router_aux_loss_type", "Router aux loss"),
                 ("router_usage_entropy_coef", "Usage entropy coefficient"),
+                ("router_z_stability_coef", "Z-loss stability coefficient"),
                 ("router_use_stock_token", "Use stock-token router"),
                 ("router_stock_scale_init", "Initial stock router scale"),
+                ("router_use_internal_batch_state", "Use internal batch state"),
+                ("router_internal_fusion", "Internal router fusion"),
+                ("router_internal_scale_init", "Initial internal router scale"),
                 ("router_use_layer_summary", "Use layer summary token"),
                 ("router_summary_source", "Summary source"),
+                ("router_summary_fusion_mode", "Summary fusion mode"),
             ],
             "Representation Pooling": [
                 ("temporal_pooling_mode", "Temporal pooling mode"),
                 ("temporal_pooling_heads", "Temporal pooling heads"),
+                ("temporal_gru_residual_scale_init", "GRU residual scale"),
+                ("temporal_mhc_mix_init", "mHC-lite mix init"),
+                ("temporal_mhc_mix_max", "mHC-lite mix max"),
                 ("use_cross_stock_attention", "Enable cross-stock context"),
                 ("cross_stock_attention_heads", "Cross-stock attention heads"),
                 ("cross_stock_residual_scale_init", "Cross-stock residual scale"),
+                ("use_inner_cross_stock_attention", "Enable inner cross-stock"),
+                ("inner_cross_stock_attention_heads", "Inner cross-stock heads"),
+                ("inner_cross_stock_residual_scale_init", "Inner cross-stock scale"),
+                ("inner_cross_stock_mode", "Inner cross-stock mode"),
+                ("inner_cross_stock_diag_factor_samples", "Inner cross-stock diag samples"),
             ],
             "Feature Selection": [
                 ("use_feature_selection", "Enable feature selection"),
@@ -564,6 +677,9 @@ class QlibQuantMoE(Model):
                 ("d_local_state", "Local state dimension"),
                 ("global_state_use_macro", "Global state uses macro"),
                 ("global_state_use_day_summary", "Global state uses day summary"),
+                ("global_state_use_internal_state", "Global state uses internal batch state"),
+                ("global_state_use_x", "Global state uses full x panel"),
+                ("local_state_use_internal_state", "Local state uses internal batch state"),
                 ("local_state_input_mode", "Local state deterministic stats"),
                 ("state_fusion_mode", "State branch fusion mode"),
                 ("local_router_scale_init", "Initial local router scale"),
@@ -582,6 +698,7 @@ class QlibQuantMoE(Model):
                 ("use_external_macro", "Use external macro features"),
                 ("d_macro_input", "Macro input dimension"),
                 ("d_day_summary_input", "Day summary input dimension"),
+                ("d_internal_state_input", "Internal state dimension"),
                 ("regime_macro_dropout", "Macro dropout"),
                 ("regime_internal_mode", "Internal mode (short/long)"),
                 ("regime_internal_lag", "Internal lag steps"),
@@ -631,7 +748,15 @@ class QlibQuantMoE(Model):
             warmup_val = "disabled"
         
         trainer_attrs = [
+            ("optimizer", self.optimizer_name, "Optimizer"),
             ("lr", self.lr, "Learning rate"),
+            ("weight_decay", self.weight_decay, "AdamW weight decay"),
+            ("adam_betas", self.adam_betas, "AdamW betas"),
+            ("adam_eps", self.adam_eps, "AdamW epsilon"),
+            ("adam_amsgrad", self.adam_amsgrad, "AdamW AMSGrad"),
+            ("adam_foreach", self.adam_foreach, "AdamW foreach"),
+            ("adam_fused", self.adam_fused, "AdamW fused"),
+            ("adamw_decay_matrix_only", self.adamw_decay_matrix_only, "Decay only matrix weights"),
             ("epochs", self.epochs, "Number of epochs"),
             ("batch_size", self.batch_size, "Batch size (stocks/day)"),
             ("eval_batch_size", self.eval_batch_size, "Evaluation batch size (stocks/day)"),
@@ -1565,6 +1690,7 @@ class QlibQuantMoE(Model):
                     "p_mean": [],
                     "time_ratio": [],
                     "pooling_alpha": [],
+                    "chunk_count": 0,
                 }
             )
             if not train
@@ -1757,9 +1883,17 @@ class QlibQuantMoE(Model):
                             diag_runs = {
                                 "p_time": dict(expert_mode="time_only"),
                                 "p_factor": dict(expert_mode="factor_only"),
-                                "p_attn": dict(pooling_mode_override="attn_only"),
-                                "p_mean": dict(pooling_mode_override="mean_only"),
                             }
+                            pooling_mode = str(
+                                getattr(getattr(self.net, "config", None), "pooling_mode", "") or ""
+                            ).strip().lower()
+                            if pooling_mode != "mean_only":
+                                diag_runs.update(
+                                    {
+                                        "p_attn": dict(pooling_mode_override="attn_only"),
+                                        "p_mean": dict(pooling_mode_override="mean_only"),
+                                    }
+                                )
                             for key, kwargs in diag_runs.items():
                                 diag_out = self.net(
                                     bx_t,
@@ -1820,6 +1954,7 @@ class QlibQuantMoE(Model):
                 # then compute IC / RankIC on the full daily cross-section.
                 if not train and day_key is not None and daily_buffer is not None:
                     buf = daily_buffer[pd.to_datetime(day_key).normalize()]
+                    buf["chunk_count"] += 1
                     buf["p"].append(p_vec)
                     buf["y"].append(y_vec)
                     if cf_zero_vec is not None and cf_zero_vec.shape == p_vec.shape:
@@ -1943,7 +2078,9 @@ class QlibQuantMoE(Model):
             score_delta_shuffle = []
             rankic_drop_zero = []
             expert_rows = []
+            chunk_counts = []
             for day, v in daily_buffer.items():
+                chunk_counts.append(int(v.get("chunk_count", 0)))
                 p = np.concatenate(v["p"], axis=0) if v["p"] else None
                 y = np.concatenate(v["y"], axis=0) if v["y"] else None
                 if p is None or y is None or p.size < 2 or y.size < 2:
@@ -1972,20 +2109,17 @@ class QlibQuantMoE(Model):
                     p_factor = np.concatenate(v["p_factor"], axis=0) if v.get("p_factor") else None
                     p_attn = np.concatenate(v["p_attn"], axis=0) if v.get("p_attn") else None
                     p_mean = np.concatenate(v["p_mean"], axis=0) if v.get("p_mean") else None
-                    if (
-                        p_time is not None
-                        and p_factor is not None
-                        and p_attn is not None
-                        and p_mean is not None
-                        and p_time.shape == p.shape
-                        and p_factor.shape == p.shape
-                        and p_attn.shape == p.shape
-                        and p_mean.shape == p.shape
-                    ):
+                    if p_time is not None and p_factor is not None and p_time.shape == p.shape and p_factor.shape == p.shape:
                         ic_time = _corr_np(p_time, y)
                         ic_factor = _corr_np(p_factor, y)
-                        ic_attn = _corr_np(p_attn, y)
-                        ic_mean = _corr_np(p_mean, y)
+                        has_pool_compare = (
+                            p_attn is not None
+                            and p_mean is not None
+                            and p_attn.shape == p.shape
+                            and p_mean.shape == p.shape
+                        )
+                        ic_attn = _corr_np(p_attn, y) if has_pool_compare else float("nan")
+                        ic_mean = _corr_np(p_mean, y) if has_pool_compare else float("nan")
                         row = {
                             "date": str(pd.Timestamp(day).date()),
                             "ic_time_only": float(ic_time),
@@ -2020,6 +2154,9 @@ class QlibQuantMoE(Model):
             if rankic_drop_zero:
                 avg["rankic_drop_zero_local"] = float(np.mean(rankic_drop_zero))
                 avg["rankic_drop_zero_local_p50"] = float(np.median(rankic_drop_zero))
+            if chunk_counts:
+                avg["daily_chunk_count_mean"] = float(np.mean(chunk_counts))
+                avg["daily_chunk_count_max"] = float(np.max(chunk_counts))
             if expert_rows:
                 expert_df = pd.DataFrame(expert_rows)
                 self._last_expert_advantage_daily = expert_df
@@ -2109,7 +2246,7 @@ class QlibQuantMoE(Model):
             self._init_net(bx0)
 
         assert self.net is not None
-        optimizer = optim.AdamW(self.net.parameters(), lr=self.lr)
+        optimizer = self._build_optimizer()
         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
 
         if self.debug_sanity_check:
@@ -2503,6 +2640,13 @@ class QlibQuantMoE(Model):
             "router_global_sensitivity",
             "router_local_sensitivity",
             "router_local_logit_std",
+            "router_internal_sensitivity",
+            "router_internal_logit_std",
+            "router_internal_scale",
+            "router_internal_crowding",
+            "router_internal_pc1_ratio",
+            "router_internal_drift",
+            "router_internal_tail",
             "film_global_sensitivity",
             "film_local_sensitivity",
             "pool_global_sensitivity",
@@ -2511,6 +2655,16 @@ class QlibQuantMoE(Model):
             "query_branch_norm",
             "alpha_local_logit_std",
             "alpha_branch_logit_std",
+                "temporal_gru_output_norm",
+                "temporal_gru_output_std",
+                "temporal_gru_last_cosine",
+                "temporal_gru_residual_scale",
+                "temporal_mhc_mix",
+                "temporal_mhc_mix_max",
+                "inner_cross_stock_scale",
+            "inner_cross_stock_token_std",
+            "inner_cross_stock_context_norm",
+            "inner_cross_stock_attention_entropy",
         )
         chunk_metric_alias = {
             "time_ratio_chunk": "time_ratio_chunk_std",
@@ -2564,7 +2718,20 @@ class QlibQuantMoE(Model):
                                     day_summary_t,
                                     batch_size=bsz,
                                 )
-                                _, global_state_day = self.net.global_state_encoder(
+                                internal_state_t = None
+                                if bool(getattr(self.net, "global_state_use_internal_state", False)):
+                                    internal_state_t = compute_legacy_internal_stats(
+                                        bx_t,
+                                        internal_mode=getattr(self.net.config, "router_internal_mode", "long"),
+                                        internal_lag=int(getattr(self.net.config, "router_internal_lag", 5)),
+                                        internal_use_batch_stats=bool(
+                                            getattr(self.net.config, "router_internal_use_batch_stats", True)
+                                        ),
+                                        internal_tail_threshold=float(
+                                            getattr(self.net.config, "router_internal_tail_threshold", 2.0)
+                                        ),
+                                    )
+                                global_state_t, _ = self.net.global_state_encoder(
                                     batch_size=bsz,
                                     macro_features=macro_t
                                     if bool(getattr(self.net, "global_state_use_macro", True))
@@ -2572,9 +2739,13 @@ class QlibQuantMoE(Model):
                                     day_summary_embedding=day_summary_embedding
                                     if bool(getattr(self.net, "global_state_use_day_summary", True))
                                     else None,
+                                    internal_state=internal_state_t,
+                                    x_features=bx_t
+                                    if bool(getattr(self.net, "global_state_use_x", True))
+                                    else None,
                                 )
                                 global_state_day_by_day[pd.Timestamp(dt)].append(
-                                    global_state_day.detach().float().cpu().numpy().reshape(-1)
+                                    global_state_t.detach().float().mean(dim=0).cpu().numpy().reshape(-1)
                                 )
                             except Exception:
                                 pass

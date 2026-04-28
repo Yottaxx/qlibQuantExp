@@ -1,0 +1,42 @@
+﻿ M module/architecture/__init__.py
+ M module/architecture/attention_pooling.py
+ M module/architecture/hierarchical_state.py
+ M module/architecture/moe_block.py
+ M module/architecture/regime_adaptive_embedding.py
+ M module/architecture/regime_adaptive_pooling.py
+ M module/architecture/regime_encoder.py
+AM module/architecture/representation_layers.py
+ M module/model_adapter.py
+ M module/quant_moe_model.py
+ M module/utils/model_configuration.py
+ M scripts/run_workflow_market_state_variant.py
+?? .claude/
+?? claudeReview/
+?? field_day_asset.err
+?? human/
+?? mlruns_nested_legacy_20251228/
+?? next_step/3_3_market_state_design/completion_checklist_2026-04-05.md
+?? next_step/3_3_market_state_design/v1_closure_impl_status_2026-04-05.md
+?? next_step/antigravity_code_perf_audit/
+?? next_step/code_perf_audit/
+?? next_step/hierarchical_state_field/asset_reports/
+?? next_step/hierarchical_state_field/broad_market_reference_universe_plan_2026-04-10.md
+?? next_step/hierarchical_state_field/experiment/
+?? next_step/hierarchical_state_field/experiment_execution_plan_2026-04-09.md
+?? next_step/hierarchical_state_field/hSF_regime_semantics_plan_2026-04-18.md
+?? next_step/hierarchical_state_field/implementation_status_2026-04-09.md
+?? next_step/hierarchical_state_field/implementation_status_2026-04-17.md
+?? next_step/hierarchical_state_field/implementation_status_2026-04-18.md
+?? next_step/hierarchical_state_field/local_fusion_denoising_plan_2026-04-18.md
+?? next_step/hierarchical_state_field/macro_state_relative_complexity_plan_2026-04-18.md
+?? next_step/hierarchical_state_field/macro_state_theory_diagnosis_2026-04-18.md
+?? next_step/hierarchical_state_field/model_capacity_diagnosis_2026-04-17.md
+?? next_step/hierarchical_state_field/model_capacity_improvement_plan_2026-04-17.md
+?? next_step/hierarchical_state_field/tri_scope_macro_state_plan_2026-04-18.md
+?? next_step/hierarchical_state_field/xstock_v2_interim_analysis_2026-04-19.md
+?? next_step/stable_market_state_field/completion_checklist_2026-04-05.md
+?? next_step/stable_market_state_field/csi300_field_vs_legacy_eval_plan.md
+?? next_step/stable_market_state_field/experiment_progress_2026-04-04.md
+?? next_step/stable_market_state_field/implementation_status_2026-04-04.md
+?? next_step/stable_market_state_field/v1_closure_impl_status_2026-04-05.md
+?? visualizations/

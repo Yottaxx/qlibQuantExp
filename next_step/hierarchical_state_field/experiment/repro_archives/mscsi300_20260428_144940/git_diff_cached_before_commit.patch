@@ -1,0 +1,137 @@
+﻿diff --git a/module/architecture/representation_layers.py b/module/architecture/representation_layers.py
+new file mode 100644
+index 0000000..2fdd6d1
+--- /dev/null
++++ b/module/architecture/representation_layers.py
+@@ -0,0 +1,131 @@
++import math
++
++import torch
++import torch.nn as nn
++from einops import rearrange
++
++
++class LearnedTemporalPooling(nn.Module):
++    """Pool the time axis for each stock token."""
++
++    def __init__(self, d_model: int, n_heads: int = 4, dropout: float = 0.0, mode: str = "last"):
++        super().__init__()
++        self.d_model = int(d_model)
++        self.mode = str(mode or "last").strip().lower()
++        valid_modes = {"last", "learned_query_mha_v1"}
++        if self.mode not in valid_modes:
++            raise ValueError(f"Unsupported temporal_pooling_mode: {self.mode}")
++
++        self.query = None
++        self.mha = None
++        self.norm = None
++        if self.mode == "learned_query_mha_v1":
++            self.query = nn.Parameter(torch.randn(1, 1, self.d_model) * 0.02)
++            self.mha = nn.MultiheadAttention(
++                embed_dim=self.d_model,
++                num_heads=int(n_heads),
++                dropout=float(dropout),
++                bias=False,
++                batch_first=True,
++            )
++            self.norm = nn.LayerNorm(self.d_model)
++
++    def forward(self, h: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
++        if h.ndim != 4:
++            raise ValueError(f"LearnedTemporalPooling expects [B,T,N,D], got {tuple(h.shape)}")
++        B, T, N, D = h.shape
++        h_last = h[:, -1, :, :]
++        if self.mode == "last":
++            return h_last, {
++                "temporal_pool_attention_entropy": 0.0,
++                "temporal_pool_last_residual_ratio": 0.0,
++            }
++
++        x = rearrange(h, "b t n d -> (b n) t d")
++        query = self.query.expand(B * N, -1, -1)
++        pooled, attn = self.mha(
++            query=query,
++            key=x,
++            value=x,
++            need_weights=True,
++            average_attn_weights=False,
++        )
++        pooled = pooled.squeeze(1).reshape(B, N, D)
++        out = self.norm(h_last + pooled)
++
++        with torch.no_grad():
++            attn_prob = attn.squeeze(2) if attn.dim() == 4 else attn
++            entropy = -(attn_prob * torch.log(attn_prob.clamp_min(1e-9))).sum(dim=-1)
++            entropy = entropy / math.log(max(int(T), 2))
++            residual_ratio = pooled.detach().norm(dim=-1).mean() / h_last.detach().norm(dim=-1).mean().clamp_min(1e-9)
++
++        return out, {
++            "temporal_pool_attention_entropy": float(entropy.mean().item()),
++            "temporal_pool_last_residual_ratio": float(residual_ratio.item()),
++        }
++
++
++class CrossStockContextLayer(nn.Module):
++    """Broadcast a learned cross-stock context back to every factor token."""
++
++    def __init__(
++        self,
++        d_model: int,
++        n_heads: int = 4,
++        dropout: float = 0.0,
++        residual_scale_init: float = 0.1,
++        scale_learnable: bool = True,
++    ):
++        super().__init__()
++        self.d_model = int(d_model)
++        self.mha = nn.MultiheadAttention(
++            embed_dim=self.d_model,
++            num_heads=int(n_heads),
++            dropout=float(dropout),
++            bias=False,
++            batch_first=True,
++        )
++        self.norm = nn.LayerNorm(self.d_model)
++        scale = torch.tensor(float(residual_scale_init), dtype=torch.float32)
++        if bool(scale_learnable):
++            self.residual_scale = nn.Parameter(scale)
++        else:
++            self.register_buffer("residual_scale", scale)
++
++    def forward(self, h_last: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
++        if h_last.ndim != 3:
++            raise ValueError(f"CrossStockContextLayer expects [B,N,D], got {tuple(h_last.shape)}")
++        B, N, _ = h_last.shape
++        if B <= 1:
++            return h_last, {
++                "cross_stock_scale": float(self.residual_scale.detach().item()),
++                "cross_stock_token_std": 0.0,
++                "cross_stock_context_norm": 0.0,
++                "cross_stock_attention_entropy": 0.0,
++            }
++
++        stock_token = h_last.mean(dim=1).unsqueeze(0)  # [1,B,D]
++        ctx, attn = self.mha(
++            query=stock_token,
++            key=stock_token,
++            value=stock_token,
++            need_weights=True,
++            average_attn_weights=False,
++        )
++        ctx = ctx.squeeze(0)
++        scale = self.residual_scale.to(device=h_last.device, dtype=h_last.dtype)
++        out = self.norm(h_last + scale * ctx.unsqueeze(1))
++
++        with torch.no_grad():
++            attn_prob = attn.squeeze(0)
++            entropy = -(attn_prob * torch.log(attn_prob.clamp_min(1e-9))).sum(dim=-1)
++            entropy = entropy / math.log(max(int(B), 2))
++            token_std = stock_token.squeeze(0).detach().std(dim=0, unbiased=False).mean()
++            context_norm = ctx.detach().norm(dim=-1).mean()
++
++        return out, {
++            "cross_stock_scale": float(scale.detach().item()),
++            "cross_stock_token_std": float(token_std.item()),
++            "cross_stock_context_norm": float(context_norm.item()),
++            "cross_stock_attention_entropy": float(entropy.mean().item()),
++        }
