@@ -1,0 +1,15 @@
+[setup] seed=43 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed43
+[load] loaded backbone from mlruns/867178867749867261/659cb7dccb784796b674257e4d13baf8/artifacts/model in 2.7s (device=cuda)
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.1302
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.078812 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99979 cur_logit_std=0.04566 s1/common=2.6054 peakability_ent[std1,std3]=[0.9296,0.8156] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4.197e+04
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9573 top10=0.1903 hold_ric=0.16119
+[probe] ArmA-prime(k1) hold_ric=0.16153 cross_stock_wstd=0.0016 | ArmC(k4) hold_ric=0.16119
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07524 | ArmA(static hold)=0.07524 gap=+0.00000 | ArmA'(cond k1)=0.07450 gap=-0.00074 | ArmC(k4)=0.07524 gap=+0.00000 | ASP std-contrib=+0.00007 | any_helps=False
