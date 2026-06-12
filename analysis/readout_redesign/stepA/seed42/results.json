@@ -1,0 +1,77 @@
+{
+  "seed": 42,
+  "base": "tau_scale_05",
+  "loaded_from": "mlruns/867178867749867261/917808d52d9a4a13b36c6e20a4155d55/artifacts/model",
+  "model_valid_rank_ic": 0.0810624372285624,
+  "T": 8,
+  "D": 64,
+  "designs": {
+    "baseline": {
+      "valid_rank_ic": 0.07502562667081188,
+      "hold_rank_ic": 0.15599159067114968,
+      "diag": {},
+      "bonus_vs_baseline": 0.0,
+      "gate_pass": false
+    },
+    "d1pma": {
+      "valid_rank_ic": 0.07482738404040028,
+      "hold_rank_ic": 0.1490341419062145,
+      "diag": {
+        "gate_g": 0.48529255390167236,
+        "attn_over_T": [
+          0.115,
+          0.128,
+          0.121,
+          0.112,
+          0.129,
+          0.118,
+          0.134,
+          0.142
+        ]
+      },
+      "bonus_vs_baseline": -0.00019824263041159917,
+      "gate_pass": false
+    },
+    "duala": {
+      "valid_rank_ic": 0.07091713338770513,
+      "hold_rank_ic": 0.1558788499798259,
+      "diag": {
+        "head_zT_norm": 0.41135919094085693,
+        "head_zF_norm": 0.03670363500714302
+      },
+      "bonus_vs_baseline": -0.004108493283106751,
+      "gate_pass": false
+    },
+    "dualb": {
+      "valid_rank_ic": 0.07323753174426127,
+      "hold_rank_ic": 0.16045632408510882,
+      "diag": {
+        "head_zT_norm": 0.4271566569805145,
+        "head_zF_norm": 0.08144737780094147
+      },
+      "bonus_vs_baseline": -0.001788094926550604,
+      "gate_pass": false
+    },
+    "d3cid": {
+      "valid_rank_ic": 0.08038284272576877,
+      "hold_rank_ic": 0.15990543269434643,
+      "diag": {
+        "W_per_t": [
+          0.01,
+          0.008,
+          0.009,
+          0.009,
+          0.012,
+          0.011,
+          0.011,
+          1.001
+        ],
+        "W_last_frac": 0.9352560639381409
+      },
+      "bonus_vs_baseline": 0.005357216054956898,
+      "gate_pass": true
+    }
+  },
+  "baseline_rank_ic": 0.07502562667081188,
+  "any_design_passes": true
+}

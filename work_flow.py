@@ -20,6 +20,8 @@ pip install plotly spicy statsmodels
 """
 from typing import Optional, List, Tuple, Dict, Any
 import sys
+import os
+import json
 
 import numpy as np
 import pandas as pd
@@ -103,7 +105,7 @@ data_conf = {
         "segments": {
             "train": ("2008-01-01", "2020-03-31"),
             "valid": ("2020-07-01", "2022-12-31"),
-            "test": ("2020-04-01", "2020-06-30"),
+            "test":("2020-07-01", "2022-12-31"),
         },
     },
 }
@@ -192,14 +194,19 @@ model_conf = {
             # to estimate covariance matrix. If using internal_mode, ensure batch_size is large enough.
             # "assert_batch_size_min": 100,
             "seed": 42,
+            "device": "auto",
+            "deterministic_mode": "warn",
+            "seed_workers": True,
+            "train_sampler_mode": "sampled_daily",
+            "sampler_diag": True,
             # "early_stop": 5,
             "train_stop_key": "loss_main",
-            "train_stop_threshold": 1.33,
+            "train_stop_threshold": 1.35,
             "min_epochs": 5,
             "consecutive_k": 2,
             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
-            "market_state_path": "market_state_csi300.pkl",
+            "market_state_path": "data/market_state_csi300.pkl",
             "market_state_shift": 0,
             "market_state_strict": True,
             # Warmup 配置（与 adapter 中的默认值一致）：
@@ -227,8 +234,8 @@ port_conf = {
         },
     },
     "backtest": {
-        "start_time": "2020-04-01",
-        "end_time": "2020-06-30",
+        "start_time": "2020-07-01",
+        "end_time": "2022-12-31",
         "account": 100000000,
         "benchmark": "SH000300",
         "exchange_kwargs": {
@@ -272,6 +279,7 @@ MODEL_CONFIG_KEYS_FULL = [
     "router_temperature",
     "router_z_loss_coef",
     "router_use_layer_summary",
+    "router_mode",
     "use_alibi",
     "use_feature_selection",
     "selection_reg_lambda",
@@ -291,6 +299,11 @@ MODEL_CONFIG_KEYS_FULL = [
     "regime_internal_use_batch_stats",
     "regime_internal_tail_threshold",
     "pooling_alpha",
+    # provenance fix (review 2026-06-07): these were dropped from run_conf_resolved + the MLflow note.
+    "pool_n_heads",
+    "temporal_readout",
+    "temporal_readout_init",
+    "temporal_readout_gate_init",
 ]
 
 
@@ -299,6 +312,65 @@ def _pformat(obj: Any) -> str:
         return pprint.pformat(obj, width=120, sort_dicts=False)
     except TypeError:
         return pprint.pformat(obj, width=120)
+
+
+def _deep_update(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+    for k, v in (src or {}).items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _deep_update(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+
+
+def _load_json_env(name: str) -> Dict[str, Any]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return {}
+    try:
+        obj = json.loads(raw)
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse {name} as JSON: {e}") from e
+    if not isinstance(obj, dict):
+        raise RuntimeError(f"{name} must decode to a JSON object")
+    return obj
+
+
+def _apply_env_overrides() -> None:
+    """
+    Optional config entrypoint for experiment runners.
+
+    Environment variables:
+    - QIB_MODEL_OVERRIDES_JSON: merged into model_conf.kwargs.model_config
+    - QIB_TRAINER_OVERRIDES_JSON: merged into model_conf.kwargs.trainer_config
+    - QIB_DATA_OVERRIDES_JSON: deep-merged into data_conf
+    - QIB_PORT_OVERRIDES_JSON: deep-merged into port_conf
+    - QIB_RUN_SETTING: saved into trainer_config.run_setting
+    """
+    mk = ((model_conf.get("kwargs") or {}).get("model_config") or {})
+    tk = ((model_conf.get("kwargs") or {}).get("trainer_config") or {})
+
+    model_overrides = _load_json_env("QIB_MODEL_OVERRIDES_JSON")
+    trainer_overrides = _load_json_env("QIB_TRAINER_OVERRIDES_JSON")
+    data_overrides = _load_json_env("QIB_DATA_OVERRIDES_JSON")
+    port_overrides = _load_json_env("QIB_PORT_OVERRIDES_JSON")
+
+    if model_overrides:
+        _deep_update(mk, model_overrides)
+    if trainer_overrides:
+        _deep_update(tk, trainer_overrides)
+    run_setting = os.environ.get("QIB_RUN_SETTING", "").strip()
+    if run_setting:
+        tk["run_setting"] = run_setting
+    if data_overrides:
+        _deep_update(data_conf, data_overrides)
+    if port_overrides:
+        _deep_update(port_conf, port_overrides)
+
+    if any([model_overrides, trainer_overrides, data_overrides, port_overrides, run_setting]):
+        print(">>> [Config:env] Applied experiment overrides")
+        if run_setting:
+            print(f">>> [Config:env] run_setting={run_setting}")
 
 
 def _resolve_model_config(model, fallback: Dict[str, Any]) -> Dict[str, Any]:
@@ -392,6 +464,7 @@ def _build_experiment_name(model_k: Dict[str, Any], trainer_k: Dict[str, Any]) -
         f"fgs{_slugify(mk.get('factor_gate_scale', 'na'))}",
         f"fsh{_slugify(mk.get('factor_gate_shift_scale', 'na'))}",
         f"rSum{_bool01(mk.get('router_use_layer_summary', False))}",
+        f"rMode{_slugify(mk.get('router_mode', 'learned'))}",
         f"featSel{_bool01(mk.get('use_feature_selection', False))}",
         f"mseNorm{_bool01(mk.get('mse_normalize', False))}",
         f"macro{_bool01(mk.get('use_external_macro', False))}",
@@ -399,6 +472,8 @@ def _build_experiment_name(model_k: Dict[str, Any], trainer_k: Dict[str, Any]) -
         f"pool{_slugify(mk.get('pooling_alpha', 'na'))}",
         f"ms{_slugify(ms_name)}",
     ]
+    if tk.get("run_setting", None):
+        parts.append(f"setting{_slugify(tk.get('run_setting'))}")
     return "_".join(parts)
 
 
@@ -664,6 +739,709 @@ def _load_run_conf(rec) -> Dict:
     except Exception:
         pass
     return {"data_conf": data_conf, "model_conf": model_conf, "port_conf": port_conf}
+
+
+def _rec_load_optional(rec, name: str, default=None):
+    try:
+        return rec.load_object(name)
+    except Exception:
+        return default
+
+
+def _as_numeric_series(obj: Any, *, name: str = "value") -> pd.Series:
+    if obj is None:
+        return pd.Series(dtype=float, name=name)
+    if isinstance(obj, pd.Series):
+        s = obj.copy()
+    elif isinstance(obj, pd.DataFrame):
+        df = obj.copy()
+        cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        if "score" in df.columns:
+            s = df["score"]
+        elif "label" in df.columns:
+            s = df["label"]
+        elif cols:
+            s = df[cols[0]]
+        elif df.shape[1] == 1:
+            s = df.iloc[:, 0]
+        else:
+            return pd.Series(dtype=float, name=name)
+    else:
+        try:
+            s = pd.Series(obj)
+        except Exception:
+            return pd.Series(dtype=float, name=name)
+    s = pd.to_numeric(s, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    s.name = name
+    return s
+
+
+def _metric_rows_to_csv_md(
+    *,
+    rec,
+    rows: List[Dict[str, Any]],
+    bucket_df: pd.DataFrame,
+    verification: Dict[str, Any],
+    summary_notes: List[str],
+) -> None:
+    local_dir = Path(rec.get_local_dir())
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["group", "metric"]).reset_index(drop=True)
+    matrix_path = local_dir / "diagnostic_matrix.csv"
+    df.to_csv(matrix_path, index=False)
+
+    bucket_path = local_dir / "diagnostic_regime_buckets.csv"
+    if not isinstance(bucket_df, pd.DataFrame) or bucket_df.empty:
+        bucket_df = pd.DataFrame(columns=["bucket_type", "bucket", "days"])
+    bucket_df.to_csv(bucket_path, index=False)
+
+    lines = [
+        "# Minimum Required Diagnostic Matrix",
+        "",
+        "## Verification",
+    ]
+    for k, v in verification.items():
+        lines.append(f"- {k}: {v}")
+    lines.extend(["", "## Summary Notes"])
+    lines.extend(summary_notes or ["- No automatic bottleneck note was generated."])
+    lines.extend(["", "## Metric Matrix"])
+    if not df.empty:
+        lines.append(df.to_markdown(index=False))
+    else:
+        lines.append("- No metrics were generated.")
+    if isinstance(bucket_df, pd.DataFrame) and not bucket_df.empty:
+        lines.extend(["", "## Regime Buckets", bucket_df.to_markdown(index=False)])
+
+    summary_path = local_dir / "diagnostic_summary.md"
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    try:
+        rec.save_objects(
+            diagnostic_matrix=df,
+            diagnostic_regime_buckets=bucket_df,
+            diagnostic_verification=verification,
+            diagnostic_summary={"path": str(summary_path), "notes": summary_notes},
+        )
+    except Exception as e:
+        print(f"[Diagnostics] save_objects failed: {e}")
+
+
+def _series_stats_for_diag(s: pd.Series) -> Dict[str, float]:
+    x = pd.to_numeric(s, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    if x.empty:
+        return {}
+    return {
+        "mean": float(x.mean()),
+        "std": float(x.std()),
+        "p10": float(x.quantile(0.10)),
+        "p50": float(x.quantile(0.50)),
+        "p90": float(x.quantile(0.90)),
+        "first": float(x.iloc[0]),
+        "last": float(x.iloc[-1]),
+    }
+
+
+def _entropy_norm_from_weights(w: np.ndarray) -> float:
+    w = np.asarray(w, dtype=float).reshape(-1)
+    w = np.clip(np.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0), 0.0, None)
+    s = float(w.sum())
+    if s <= 0 or w.size < 2:
+        return np.nan
+    p = w / s
+    return float(-(p * np.log(p + 1e-12)).sum() / np.log(w.size))
+
+
+def _topk_mass_from_weights(w: np.ndarray, k: int = 10) -> float:
+    w = np.asarray(w, dtype=float).reshape(-1)
+    w = np.clip(np.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0), 0.0, None)
+    s = float(w.sum())
+    if s <= 0:
+        return np.nan
+    p = w / s
+    k = min(max(1, int(k)), int(p.size))
+    return float(np.sort(p)[::-1][:k].sum())
+
+
+def _effective_rank_from_weights(w: np.ndarray) -> float:
+    ent = _entropy_norm_from_weights(w)
+    n = int(np.asarray(w).reshape(-1).size)
+    if not np.isfinite(ent) or n <= 0:
+        return np.nan
+    return float(np.exp(ent * np.log(n)))
+
+
+def _jaccard_stability(top_ids_by_day: Dict[str, Dict[str, Any]], *, k: int = 10) -> float:
+    if not isinstance(top_ids_by_day, dict) or len(top_ids_by_day) < 2:
+        return np.nan
+    vals = []
+    last = None
+    for dt in sorted(top_ids_by_day.keys()):
+        ids = top_ids_by_day.get(dt, {}).get("top_ids", [])
+        cur = set([int(i) for i in ids[:k]])
+        if last is not None and (last or cur):
+            vals.append(float(len(last & cur) / max(1, len(last | cur))))
+        last = cur
+    return float(np.mean(vals)) if vals else np.nan
+
+
+def _js_divergence(p: np.ndarray, q: np.ndarray) -> float:
+    p = np.asarray(p, dtype=float).reshape(-1)
+    q = np.asarray(q, dtype=float).reshape(-1)
+    p = np.clip(np.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0), 0.0, None)
+    q = np.clip(np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0), 0.0, None)
+    ps = float(p.sum())
+    qs = float(q.sum())
+    if ps <= 0 or qs <= 0 or p.shape != q.shape:
+        return np.nan
+    p = p / ps
+    q = q / qs
+    m = 0.5 * (p + q)
+    kl_pm = float(np.sum(p * (np.log(p + 1e-12) - np.log(m + 1e-12))))
+    kl_qm = float(np.sum(q * (np.log(q + 1e-12) - np.log(m + 1e-12))))
+    return float(0.5 * (kl_pm + kl_qm))
+
+
+def _attention_summary(attn_maps: Any) -> Dict[str, float]:
+    vals: Dict[str, List[float]] = {
+        "time_diag_mass": [],
+        "time_local_mass": [],
+        "time_long_range_mass": [],
+        "factor_entropy_norm": [],
+        "factor_top10_mass": [],
+        "factor_effective_rank": [],
+        "pool_entropy_norm": [],
+        "pool_top10_mass": [],
+    }
+    if not isinstance(attn_maps, dict):
+        return {}
+
+    for _, maps in attn_maps.items():
+        if not isinstance(maps, dict):
+            continue
+        t = maps.get("time", None)
+        if t is not None:
+            a = np.asarray(t, dtype=float)
+            if a.ndim == 2 and a.shape[0] == a.shape[1] and a.size > 0:
+                row = a / (a.sum(axis=1, keepdims=True) + 1e-12)
+                n = int(row.shape[0])
+                diag_mask = np.eye(n, dtype=bool)
+                local_mask = np.fromfunction(lambda i, j: np.abs(i - j) <= 1, (n, n), dtype=int).astype(bool)
+                vals["time_diag_mass"].append(float(row[diag_mask].sum() / n))
+                vals["time_local_mass"].append(float(row[local_mask].sum() / n))
+                vals["time_long_range_mass"].append(float(row[~local_mask].sum() / n))
+        f = maps.get("factor", None)
+        if f is not None:
+            a = np.asarray(f, dtype=float)
+            if a.ndim == 2 and a.size > 0:
+                row = a / (a.sum(axis=1, keepdims=True) + 1e-12)
+                mean_received = row.mean(axis=0)
+                vals["factor_entropy_norm"].append(_entropy_norm_from_weights(mean_received))
+                vals["factor_top10_mass"].append(_topk_mass_from_weights(mean_received, 10))
+                vals["factor_effective_rank"].append(_effective_rank_from_weights(mean_received))
+        p = maps.get("factor_pool", None)
+        if p is not None:
+            w = np.asarray(p, dtype=float).reshape(-1)
+            vals["pool_entropy_norm"].append(_entropy_norm_from_weights(w))
+            vals["pool_top10_mass"].append(_topk_mass_from_weights(w, 10))
+
+    out = {}
+    for k, seq in vals.items():
+        arr = np.asarray(seq, dtype=float)
+        arr = arr[np.isfinite(arr)]
+        if arr.size > 0:
+            out[f"{k}_mean"] = float(arr.mean())
+    return out
+
+
+def generate_minimum_diagnostic_matrix(
+    rec,
+    *,
+    model=None,
+    dataset: Optional[TSDatasetH] = None,
+    segment: str = "test",
+) -> pd.DataFrame:
+    """
+    Generate the minimum required diagnostic matrix for a single setting.
+
+    This function is intentionally artifact-driven so it can run after the
+    existing SignalRecord/PortAnaRecord/export_visuals pipeline without
+    perturbing training.
+    """
+    print(">>> [Diagnostics] Generate minimum required diagnostic matrix...")
+    run_conf = _load_run_conf(rec)
+    mk = ((run_conf or {}).get("model_conf") or {}).get("kwargs") or {}
+    model_k = mk.get("model_config", {}) or {}
+    trainer_k = mk.get("trainer_config", {}) or {}
+    use_time = bool(model_k.get("use_regime_time_embedding", False))
+    use_film = bool(model_k.get("use_regime_factor_gate", False))
+
+    rows: List[Dict[str, Any]] = []
+    logged: Dict[str, float] = {}
+
+    def add(group: str, metric: str, value: Any, *, note: str = "") -> None:
+        try:
+            v = float(value)
+        except Exception:
+            return
+        if not np.isfinite(v):
+            return
+        rows.append({"group": group, "metric": metric, "value": v, "note": note})
+        prefix_map = {
+            "performance": "perf",
+            "optimization": "opt",
+            "router": "router",
+            "time_embedding": "time",
+            "factor_film": "film",
+            "attention_pooling": "attention",
+            "regime": "regime",
+            "portfolio": "portfolio",
+            "sampler": "sampler",
+            "expert": "expert",
+            "router_oracle": "router_oracle",
+            "temporal": "temporal",
+            "runtime": "runtime",
+        }
+        pfx = prefix_map.get(group, group)
+        logged[f"{pfx}/{metric}"] = v
+
+    runtime_flags = _rec_load_optional(rec, "runtime_flags", default={})
+    if isinstance(runtime_flags, dict):
+        for k in [
+            "cuda_available",
+            "cuda_device_count",
+            "seed",
+            "deterministic_algorithms",
+            "deterministic_warn_only",
+            "cudnn_deterministic",
+            "cudnn_benchmark",
+            "seed_workers",
+            "sampler_diag",
+        ]:
+            if k in runtime_flags:
+                add("runtime", k, runtime_flags.get(k))
+
+    # performance
+    ic = _as_numeric_series(_rec_load_optional(rec, "sig_analysis/ic.pkl"), name="ic")
+    ric = _as_numeric_series(_rec_load_optional(rec, "sig_analysis/ric.pkl"), name="rank_ic")
+    if not ic.empty:
+        add("performance", "daily_ic_mean", ic.mean())
+        add("performance", "daily_ic_std", ic.std())
+        add("performance", "icir", ic.mean() / ic.std() if ic.std() > 0 else np.nan)
+        add("performance", "ic_win_rate", (ic > 0).mean())
+    if not ric.empty:
+        add("performance", "daily_rank_ic_mean", ric.mean())
+        add("performance", "daily_rank_ic_std", ric.std())
+        add("performance", "rank_icir", ric.mean() / ric.std() if ric.std() > 0 else np.nan)
+        add("performance", "rolling20_rank_ic_mean", ric.rolling(20, min_periods=5).mean().mean())
+        add("performance", "rolling20_rank_ic_min", ric.rolling(20, min_periods=5).mean().min())
+        add("performance", "rolling60_rank_ic_mean", ric.rolling(60, min_periods=10).mean().mean())
+        add("performance", "rolling60_rank_ic_min", ric.rolling(60, min_periods=10).mean().min())
+        k = max(1, int(np.ceil(len(ric) * 0.05)))
+        add("performance", "worst5_day_rank_ic_mean", ric.sort_values().iloc[:k].mean())
+
+    # prediction-to-portfolio bridge
+    pred = _as_numeric_series(_rec_load_optional(rec, "pred.pkl"), name="score")
+    label = _as_numeric_series(_rec_load_optional(rec, "label.pkl"), name="label")
+    top_bottom_by_day: Dict[pd.Timestamp, float] = {}
+    if not pred.empty and not label.empty:
+        df_pl = pd.concat([pred.rename("score"), label.rename("label")], axis=1, join="inner").dropna()
+        if isinstance(df_pl.index, pd.MultiIndex) and "datetime" in (df_pl.index.names or []):
+            for dt, sub in df_pl.groupby(level="datetime", sort=True):
+                if len(sub) < 2:
+                    continue
+                top = sub.sort_values("score", ascending=False).head(30)["label"].mean()
+                bot = sub.sort_values("score", ascending=True).head(30)["label"].mean()
+                top_bottom_by_day[pd.Timestamp(dt).normalize()] = float(top - bot)
+            if top_bottom_by_day:
+                spread = pd.Series(top_bottom_by_day, dtype=float).sort_index()
+                add("performance", "top_bottom_spread_mean", spread.mean())
+                add("performance", "top_bottom_spread_std", spread.std())
+                add("portfolio", "top_bottom_spread", spread.mean())
+
+    # optimization
+    train_curve = _rec_load_optional(rec, "train_curve")
+    if isinstance(train_curve, dict) and train_curve:
+        df_tc = pd.DataFrame(train_curve)
+        if not df_tc.empty:
+            last = df_tc.iloc[-1]
+            if "valid_main" in df_tc and "train_main" in df_tc:
+                add("optimization", "loss_gap_last", _as_float(last.get("valid_main")) - _as_float(last.get("train_main")))
+            if "valid_rank_ic" in df_tc and "train_rank_ic" in df_tc:
+                add(
+                    "optimization",
+                    "rank_ic_gap_last",
+                    _as_float(last.get("train_rank_ic")) - _as_float(last.get("valid_rank_ic")),
+                )
+            if "valid_rank_ic" in df_tc and df_tc["valid_rank_ic"].notna().any():
+                best = float(pd.to_numeric(df_tc["valid_rank_ic"], errors="coerce").max())
+                final = _as_float(last.get("valid_rank_ic"))
+                add("optimization", "post_peak_decay", best - final)
+            for col in [
+                "train_score_std",
+                "valid_score_std",
+                "train_label_std",
+                "valid_label_std",
+                "train_grad_norm",
+                "train_grad_nonfinite_steps",
+                "train_grad_nonfinite_rate",
+                "train_grad_skipped_steps",
+                "train_grad_skipped_rate",
+                "train_optimizer_steps",
+                "train_lr",
+            ]:
+                if col in df_tc:
+                    add("optimization", col + "_last", _as_float(last.get(col)))
+            for col in df_tc.columns:
+                if str(col).startswith("valid_router_layer_"):
+                    metric = str(col).replace("valid_router_layer_", "layer_", 1) + "_last"
+                    add("router", metric, _as_float(last.get(col)))
+                if str(col).startswith("train_sampler_"):
+                    metric = str(col).replace("train_sampler_", "", 1) + "_last"
+                    add("sampler", metric, _as_float(last.get(col)))
+                if str(col).startswith("valid_expert_layer_"):
+                    metric = str(col).replace("valid_expert_layer_", "layer_", 1) + "_last"
+                    add("expert", metric, _as_float(last.get(col)))
+                elif str(col).startswith("train_expert_layer_"):
+                    metric = str(col).replace("train_expert_layer_", "train_layer_", 1) + "_last"
+                    add("expert", metric, _as_float(last.get(col)))
+
+    # daily diagnostic series saved by export_visuals
+    diag_names = [
+        "time_embedding_norm",
+        "time_embedding_to_value_norm_ratio",
+        "gate_entropy",
+        "time_tau",
+        "time_half_life",
+        "time_tau_std",
+        "time_tau_p10",
+        "time_tau_p90",
+        "time_tau_range_util",
+        "film_gamma_strength",
+        "film_beta_strength",
+        "factor_gate_mean",
+        "factor_gate_std",
+        "factor_gate_entropy",
+        "factor_gate_topk_mass_5",
+        "factor_gate_topk_mass_10",
+    ]
+    try:
+        n_layers_diag = int(model_k.get("n_layers", 0) or 0)
+    except Exception:
+        n_layers_diag = 0
+    for layer_idx in range(max(0, n_layers_diag)):
+        for suffix in [
+            "time_expert_norm",
+            "factor_expert_norm",
+            "time_contrib_norm",
+            "factor_contrib_norm",
+            "contrib_norm_ratio",
+            "expert_cosine",
+            "time_winner_ratio",
+        ]:
+            diag_names.append(f"expert_layer_{layer_idx}_{suffix}")
+    diag_series: Dict[str, pd.Series] = {}
+    for name in diag_names:
+        obj = _rec_load_optional(rec, f"st_disentangle_{name}_series")
+        s = _as_numeric_series(obj, name=name)
+        if not s.empty:
+            s.index = pd.to_datetime(s.index).normalize()
+            diag_series[name] = s.sort_index()
+    gate_series = _as_numeric_series(_rec_load_optional(rec, "st_disentangle_gate_series"), name="time_ratio")
+    if not gate_series.empty:
+        gate_series.index = pd.to_datetime(gate_series.index).normalize()
+        diag_series["time_ratio"] = gate_series.sort_index()
+
+    # router
+    if "time_ratio" in diag_series:
+        s = diag_series["time_ratio"]
+        st = _series_stats_for_diag(s)
+        add("router", "time_ratio_mean", st.get("mean"))
+        add("router", "time_ratio_std", st.get("std"))
+        add("router", "factor_ratio_mean", 1.0 - st.get("mean", np.nan))
+        add("router", "collapse_ratio", ((s < 0.1) | (s > 0.9)).mean())
+        if not ric.empty:
+            rr = ra.spearman_rho(s, ra.normalize_dt_index(ric))[0]
+            add("router", "time_ratio_vs_rank_ic_spearman", rr)
+    if "gate_entropy" in diag_series:
+        add("router", "entropy_norm_mean", diag_series["gate_entropy"].mean() / np.log(2.0))
+
+    # time embedding: skip entirely if disabled or absent
+    if use_time and "time_tau" in diag_series:
+        tau = diag_series["time_tau"]
+        st = _series_stats_for_diag(tau)
+        add("time_embedding", "tau_mean", st.get("mean"))
+        add("time_embedding", "tau_std", st.get("std"))
+        add("time_embedding", "tau_p10", st.get("p10"))
+        add("time_embedding", "tau_p90", st.get("p90"))
+        span = _as_float(model_k.get("time_tau_max")) - _as_float(model_k.get("time_tau_min"))
+        if span > 0:
+            add("time_embedding", "tau_range_utilization", (st.get("p90", np.nan) - st.get("p10", np.nan)) / span)
+        add("time_embedding", "tau_drift", st.get("last", np.nan) - st.get("first", np.nan))
+        if not ric.empty:
+            add("time_embedding", "tau_vs_rank_ic_spearman", ra.spearman_rho(tau, ra.normalize_dt_index(ric))[0])
+    if use_time:
+        if "time_embedding_norm" in diag_series:
+            add("temporal", "embedding_norm_mean", diag_series["time_embedding_norm"].mean())
+        if "time_embedding_to_value_norm_ratio" in diag_series:
+            add(
+                "temporal",
+                "embedding_to_value_norm_ratio_mean",
+                diag_series["time_embedding_to_value_norm_ratio"].mean(),
+            )
+        if "time_tau_range_util" in diag_series:
+            add("temporal", "tau_range_utilization_daily_mean", diag_series["time_tau_range_util"].mean())
+
+    for name, series in diag_series.items():
+        if not str(name).startswith("expert_layer_"):
+            continue
+        if series is not None and len(series) > 0:
+            add("expert", f"{name}_daily_mean", pd.to_numeric(series, errors="coerce").mean())
+
+    # factor FiLM: skip entirely if disabled or absent
+    gate_profiles = _rec_load_optional(rec, "st_disentangle_factor_gate_profiles", default={})
+    pool_profiles = _rec_load_optional(rec, "st_disentangle_pool_profiles", default={})
+    overlap_series = _as_numeric_series(
+        _rec_load_optional(rec, "st_disentangle_film_pool_topk_overlap_series"),
+        name="film_pool_top10_overlap",
+    )
+    if use_film:
+        if "film_gamma_strength" in diag_series:
+            add("factor_film", "gamma_strength_mean", diag_series["film_gamma_strength"].mean())
+        if "film_beta_strength" in diag_series:
+            add("factor_film", "beta_strength_mean", diag_series["film_beta_strength"].mean())
+        for name in ["factor_gate_entropy", "factor_gate_topk_mass_5", "factor_gate_topk_mass_10"]:
+            if name in diag_series:
+                add("factor_film", name + "_mean", diag_series[name].mean())
+        if isinstance(gate_profiles, dict) and gate_profiles:
+            add("factor_film", "top10_factor_stability", _jaccard_stability(gate_profiles, k=10))
+        if not overlap_series.empty:
+            add("factor_film", "film_pool_top10_overlap", overlap_series.mean())
+
+    # attention/pooling
+    attn_summary = _attention_summary(_rec_load_optional(rec, "st_disentangle_attn_maps", default={}))
+    for k, v in attn_summary.items():
+        add("attention_pooling", k, v)
+    for src, dst in {
+        "time_diag_mass_mean": "attention_diag_mass_mean",
+        "time_local_mass_mean": "attention_local_mass_mean",
+        "time_long_range_mass_mean": "attention_long_range_mass_mean",
+    }.items():
+        if src in attn_summary:
+            add("temporal", dst, attn_summary[src])
+    if isinstance(pool_profiles, dict) and pool_profiles:
+        pool_masses = []
+        for _, prof in pool_profiles.items():
+            pool_masses.append(_topk_mass_from_weights(prof.get("weights", []), 10))
+        if pool_masses:
+            add("attention_pooling", "pooling_top10_mass_daily_mean", np.nanmean(pool_masses))
+    if use_film and not overlap_series.empty:
+        add("attention_pooling", "pooling_top10_vs_film_top10_overlap", overlap_series.mean())
+
+    if model is not None and dataset is not None and hasattr(model, "collect_router_oracle_diagnostics"):
+        try:
+            oracle_metrics = model.collect_router_oracle_diagnostics(dataset, segment=segment)
+        except Exception as e:
+            print(f"[Diagnostics] router oracle diagnostics failed: {e}")
+            oracle_metrics = {}
+        if isinstance(oracle_metrics, dict):
+            for k, v in oracle_metrics.items():
+                add("router_oracle", k, v)
+            if "router_time_advantage" in oracle_metrics:
+                add("temporal", "forced_time_rank_ic_contribution", oracle_metrics.get("router_time_advantage"))
+
+    # portfolio
+    analysis_df = _rec_load_optional(rec, "portfolio_analysis/port_analysis_1day.pkl")
+    if isinstance(analysis_df, pd.DataFrame):
+        ann_with = _get_port_analysis_risk(analysis_df, key="excess_return_with_cost", metric="annualized_return")
+        ann_without = _get_port_analysis_risk(analysis_df, key="excess_return_without_cost", metric="annualized_return")
+        add("portfolio", "annualized_return_with_cost", ann_with)
+        add("portfolio", "annualized_return_without_cost", ann_without)
+        add("portfolio", "cost_drag", ann_without - ann_with)
+        add("portfolio", "information_ratio_with_cost", _get_port_analysis_risk(analysis_df, key="excess_return_with_cost", metric="information_ratio"))
+        add("portfolio", "max_drawdown_with_cost", _get_port_analysis_risk(analysis_df, key="excess_return_with_cost", metric="max_drawdown"))
+    report_normal_df = _rec_load_optional(rec, "portfolio_analysis/report_normal_1day.pkl")
+    if isinstance(report_normal_df, pd.DataFrame) and "turnover" in report_normal_df.columns:
+        add("portfolio", "turnover", pd.to_numeric(report_normal_df["turnover"], errors="coerce").mean())
+
+    # regime buckets
+    bucket_rows: List[Dict[str, Any]] = []
+    ms_path = trainer_k.get("market_state_path", None)
+    ms_df = pd.DataFrame()
+    try:
+        ms_file = (
+            resolve_market_state_path(ms_path, search_dirs=[Path(rec.get_local_dir()), Path(__file__).resolve().parent])
+            if ms_path
+            else None
+        )
+        if ms_file is not None:
+            ms_df = load_market_state_df(ms_file)
+            shift = int(trainer_k.get("market_state_shift", 0) or 0)
+            if shift:
+                ms_df = ms_df.shift(shift)
+            ms_df.index = pd.to_datetime(ms_df.index).normalize()
+    except Exception as e:
+        print(f"[Diagnostics] market_state load failed: {e}")
+        ms_df = pd.DataFrame()
+
+    metric_df = pd.DataFrame(index=ra.normalize_dt_index(ric).index if not ric.empty else pd.DatetimeIndex([]))
+    if not ric.empty:
+        metric_df["rank_ic"] = ra.normalize_dt_index(ric)
+    if not ic.empty:
+        metric_df["ic"] = ra.normalize_dt_index(ic)
+    if top_bottom_by_day:
+        metric_df["top_bottom_spread"] = pd.Series(top_bottom_by_day, dtype=float).sort_index()
+    for k in ["time_ratio", "time_tau", "factor_gate_topk_mass_10", "factor_gate_entropy"]:
+        if k in diag_series:
+            metric_df[k] = diag_series[k]
+
+    if not ms_df.empty and not metric_df.empty:
+        fit_rng = _get_segment_range(run_conf.get("data_conf", {}), "train")
+        fit_ranges = [fit_rng] if fit_rng is not None else []
+        features = {
+            "pc1": "market_state_corr_pc1_ratio",
+            "tail": "market_state_tail_2sigma",
+            "corr_mean_abs": "market_state_corr_mean_abs",
+            "market_vol_20": "market_vol_20",
+        }
+        joined = metric_df.join(ms_df, how="inner")
+        for short, feat in features.items():
+            if feat not in joined.columns:
+                continue
+            src = ms_df[feat]
+            if fit_ranges:
+                mask = ra.build_fit_mask(ms_df.index, fit_ranges)
+                src = src.loc[mask]
+            edges = ra.fit_quantile_edges(src)
+            if not edges:
+                continue
+            bcol = f"bucket_{short}"
+            joined[bcol] = ra.assign_quantile_bucket(joined[feat], edges=edges)
+            for b, sub in joined.groupby(bcol):
+                row = {"bucket_type": short, "bucket": str(b), "days": int(len(sub))}
+                for m in ["rank_ic", "ic", "top_bottom_spread", "time_ratio", "time_tau", "factor_gate_topk_mass_10", "factor_gate_entropy"]:
+                    if m in sub.columns:
+                        row[f"{m}_mean"] = _as_float(pd.to_numeric(sub[m], errors="coerce").mean())
+                bucket_rows.append(row)
+            if "rank_ic" in joined.columns:
+                means = joined.groupby(bcol)["rank_ic"].mean()
+                if len(means.dropna()) >= 2:
+                    add("regime", f"{short}_rank_ic_spread", float(means.max() - means.min()))
+
+        if {"market_state_corr_pc1_ratio", "market_state_tail_2sigma"}.issubset(joined.columns):
+            src_pc1 = ms_df["market_state_corr_pc1_ratio"]
+            src_tail = ms_df["market_state_tail_2sigma"]
+            if fit_ranges:
+                mask = ra.build_fit_mask(ms_df.index, fit_ranges)
+                src_pc1 = src_pc1.loc[mask]
+                src_tail = src_tail.loc[mask]
+            pc1_med = float(pd.to_numeric(src_pc1, errors="coerce").median())
+            tail_med = float(pd.to_numeric(src_tail, errors="coerce").median())
+            joined["bucket_pc1_tail_2x2"] = ra.assign_regime_2x2(
+                joined["market_state_corr_pc1_ratio"],
+                joined["market_state_tail_2sigma"],
+                pc1_median=pc1_med,
+                tail_median=tail_med,
+            )
+            for b, sub in joined.groupby("bucket_pc1_tail_2x2"):
+                row = {"bucket_type": "pc1_tail_2x2", "bucket": str(b), "days": int(len(sub))}
+                for m in ["rank_ic", "ic", "top_bottom_spread", "time_ratio", "time_tau", "factor_gate_topk_mass_10", "factor_gate_entropy"]:
+                    if m in sub.columns:
+                        row[f"{m}_mean"] = _as_float(pd.to_numeric(sub[m], errors="coerce").mean())
+                bucket_rows.append(row)
+            if "rank_ic" in joined.columns:
+                means = joined.groupby("bucket_pc1_tail_2x2")["rank_ic"].mean()
+                if len(means.dropna()) >= 2:
+                    add("regime", "pc1_tail_2x2_rank_ic_spread", float(means.max() - means.min()))
+
+            if use_film and isinstance(gate_profiles, dict) and gate_profiles:
+                prof_df = pd.DataFrame(
+                    {
+                        pd.Timestamp(k).normalize(): np.asarray(v.get("weights", []), dtype=float)
+                        for k, v in gate_profiles.items()
+                        if v.get("weights", None) is not None
+                    }
+                ).T
+                prof_join = joined[["bucket_pc1_tail_2x2"]].join(prof_df, how="inner")
+                bucket_vecs = []
+                for _, sub in prof_join.groupby("bucket_pc1_tail_2x2"):
+                    arr = sub.drop(columns=["bucket_pc1_tail_2x2"]).to_numpy(dtype=float)
+                    if arr.size > 0:
+                        bucket_vecs.append(np.nanmean(arr, axis=0))
+                js_vals = []
+                for i in range(len(bucket_vecs)):
+                    for j in range(i + 1, len(bucket_vecs)):
+                        js_vals.append(_js_divergence(bucket_vecs[i], bucket_vecs[j]))
+                if js_vals:
+                    add("factor_film", "gate_js_divergence_regime_mean", np.nanmean(js_vals))
+
+        # router/time correlations with regime features
+        if "time_ratio" in joined.columns:
+            for short, feat in features.items():
+                if feat in joined.columns:
+                    add("router", f"time_ratio_vs_{short}_spearman", ra.spearman_rho(joined["time_ratio"], joined[feat])[0])
+        if use_time and "time_tau" in joined.columns:
+            if "market_vol_20" in joined.columns:
+                add("time_embedding", "tau_vs_volatility_spearman", ra.spearman_rho(joined["time_tau"], joined["market_vol_20"])[0])
+            if "market_state_tail_2sigma" in joined.columns:
+                add("time_embedding", "tau_vs_tail_spearman", ra.spearman_rho(joined["time_tau"], joined["market_state_tail_2sigma"])[0])
+
+    bucket_df = pd.DataFrame(bucket_rows)
+
+    verification = {
+        "perf/*": any(k.startswith("perf/") for k in logged),
+        "opt/*": any(k.startswith("opt/") for k in logged),
+        "router/*": any(k.startswith("router/") for k in logged),
+        "time/*": any(k.startswith("time/") for k in logged),
+        "film/*": any(k.startswith("film/") for k in logged),
+        "attention/*": any(k.startswith("attention/") for k in logged),
+        "regime/*": any(k.startswith("regime/") for k in logged),
+        "portfolio/*": any(k.startswith("portfolio/") for k in logged),
+        "sampler/*": any(k.startswith("sampler/") for k in logged),
+        "expert/*": any(k.startswith("expert/") for k in logged),
+        "router_oracle/*": any(k.startswith("router_oracle/") for k in logged),
+        "temporal/*": any(k.startswith("temporal/") for k in logged),
+        "runtime/*": any(k.startswith("runtime/") for k in logged),
+        "time_module_enabled": use_time,
+        "film_module_enabled": use_film,
+        "time_tau_metrics_present_when_disabled": (not use_time) and any(k.startswith("time/tau") for k in logged),
+        "film_metrics_present_when_disabled": (not use_film) and any(k.startswith("film/") for k in logged),
+    }
+
+    summary_notes: List[str] = []
+    metric_map = {f"{r['group']}/{r['metric']}": r["value"] for r in rows}
+    if metric_map.get("time_embedding/tau_range_utilization", 1.0) < 0.01:
+        summary_notes.append("- Bottleneck candidate: tau under-adaptive; tau range utilization is very low.")
+    if use_time and metric_map.get("temporal/forced_time_rank_ic_contribution", 0.0) <= 0.0:
+        summary_notes.append(
+            "- Temporal path looks weak in forced-time diagnostics, but it is not refuted without a separate experiment."
+        )
+    if metric_map.get("attention_pooling/factor_entropy_norm_mean", 0.0) > 0.98:
+        summary_notes.append("- Bottleneck candidate: factor attention too uniform.")
+    if metric_map.get("optimization/post_peak_decay", 0.0) > 0.005:
+        summary_notes.append("- Bottleneck candidate: optimization mismatch; valid RankIC decays after its peak.")
+    if metric_map.get("regime/pc1_tail_2x2_rank_ic_spread", 0.0) > 0.03:
+        summary_notes.append("- Bottleneck candidate: regime-specific failure; 2x2 regime RankIC spread is large.")
+    if use_film and metric_map.get("factor_film/film_pool_top10_overlap", 1.0) < 0.25:
+        summary_notes.append("- Bottleneck candidate: FiLM may be weak/disconnected from final pooling.")
+
+    try:
+        if logged:
+            R.log_metrics(step=0, **logged)
+    except Exception as e:
+        print(f"[Diagnostics] R.log_metrics failed: {e}")
+
+    _metric_rows_to_csv_md(
+        rec=rec,
+        rows=rows,
+        bucket_df=bucket_df,
+        verification=verification,
+        summary_notes=summary_notes,
+    )
+    print(">>> [Diagnostics] Saved diagnostic_matrix.csv and diagnostic_summary.md")
+    return pd.DataFrame(rows)
 
 
 def print_metrics_summary(rec) -> None:
@@ -1893,6 +2671,7 @@ def generate_paper_report(
 # 5. 主流程：训练 + 分析 + 回测 + 报告
 # =============================================================================
 if __name__ == "__main__":
+    _apply_env_overrides()
     # 1) 实例化数据和模型
     dataset = init_instance_by_config(data_conf)
     model = init_instance_by_config(model_conf)
@@ -2012,6 +2791,9 @@ if __name__ == "__main__":
         # 2.7 统一输出所有指标（包含 Graph 路径）
         print_metrics_summary(rec)
 
-        # 2.8 生成论文级报告
+        # 2.8 最小必需诊断矩阵（MLflow groups + csv/md artifacts）
+        generate_minimum_diagnostic_matrix(rec, model=model, dataset=dataset, segment="test")
+
+        # 2.9 生成论文级报告
         print(">>> [Phase 4] Generate Paper-level Report...")
         generate_paper_report(rec, model_name="RST-MoE", dataset=dataset, segment="test")

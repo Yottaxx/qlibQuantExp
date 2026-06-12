@@ -34,6 +34,7 @@ class QuantMoEConfig(PretrainedConfig):
             time_tau_init: float = 5.0,
             time_emb_init_std: float = 0.02,
             time_decay_normalize: bool = True,
+            time_tau_mlp_out_scale: float = 0.01,
             use_regime_factor_gate: bool = True,
             factor_gate_scale: float = 0.5,
             factor_gate_shift_scale: float = 0.0,
@@ -42,6 +43,7 @@ class QuantMoEConfig(PretrainedConfig):
             router_temperature: float = 1.0, # softmax temperature (lower => sharper)
             router_z_loss_coef: float = 0.01,  # 防止 collapse，比原 1e-3 更安全
             router_use_layer_summary: bool = False,  # add per-layer market summary token to router input
+            router_mode: str = "learned",
             use_alibi: bool = False,
             use_feature_selection: bool = False,
             selection_reg_lambda: float = 1e-5,  # 修复后降低（原 1e-3 会过强）
@@ -65,6 +67,15 @@ class QuantMoEConfig(PretrainedConfig):
             regime_internal_tail_threshold: float = 2.0,
             # pooling
             pooling_alpha: float = 0.7,  # Weight for attention vs mean pooling
+            pool_n_heads: int = 1,       # attention-pool heads (1=current; >1 for pool-forensics R1)
+            # temporal readout (time-readout-bonus-20260607): learned temporal aggregation over T
+            # BEFORE the (unchanged) factor pool. ""=current last-step behavior.
+            temporal_readout: str = "",
+            # init-ablation (task #14): init of the temporal-AGGREGATION params (tr_A/tr_A_N/tr_collapse).
+            # "onehot_last"=z==h[:,-1] (control-nesting); "uniform_mean"=1/T+noise (sum-preserving diverse).
+            temporal_readout_init: str = "onehot_last",
+            # d1pma/duals tr_gate initial value (0.0=>g=0.5 current; -2=>g~0.12; +2=>g~0.88). Gate-init sweep.
+            temporal_readout_gate_init: float = 0.0,
             **kwargs
     ):
 
@@ -106,6 +117,7 @@ class QuantMoEConfig(PretrainedConfig):
         self.time_tau_init = time_tau_init
         self.time_emb_init_std = time_emb_init_std
         self.time_decay_normalize = time_decay_normalize
+        self.time_tau_mlp_out_scale = float(time_tau_mlp_out_scale)
 
         self.use_regime_factor_gate = use_regime_factor_gate
         self.factor_gate_scale = factor_gate_scale
@@ -115,6 +127,20 @@ class QuantMoEConfig(PretrainedConfig):
         self.router_temperature = router_temperature
         self.router_z_loss_coef = router_z_loss_coef
         self.router_use_layer_summary = router_use_layer_summary
+        router_mode = str(router_mode or "learned").strip().lower()
+        router_alias = {
+            "learn": "learned",
+            "learned": "learned",
+            "fixed": "fixed_05",
+            "fixed05": "fixed_05",
+            "fixed_05": "fixed_05",
+            "fixed_0.5": "fixed_05",
+            "uniform": "fixed_05",
+        }
+        router_mode = router_alias.get(router_mode, router_mode)
+        if router_mode not in {"learned", "fixed_05"}:
+            raise ValueError("Unsupported router_mode: %s. Supported: learned, fixed_05" % router_mode)
+        self.router_mode = router_mode
         self.use_alibi = use_alibi
 
         self.use_feature_selection = use_feature_selection
@@ -156,6 +182,28 @@ class QuantMoEConfig(PretrainedConfig):
         self.regime_internal_tail_threshold = regime_internal_tail_threshold
         
         self.pooling_alpha = pooling_alpha
+        self.pool_n_heads = int(pool_n_heads)
+
+        # temporal readout design (see quant_moe_model.forward). Allow-list guards typos.
+        temporal_readout = str(temporal_readout or "").strip().lower()
+        allowed_temporal_readout = {"", "d3cid", "d3cin", "d3mix", "d1pma", "duala", "dualb"}
+        if temporal_readout not in allowed_temporal_readout:
+            raise ValueError(
+                "Unsupported temporal_readout: %s. Supported: %s"
+                % (temporal_readout, sorted(allowed_temporal_readout))
+            )
+        self.temporal_readout = temporal_readout
+
+        # init-ablation knobs (task #14). Allow-list guards typos; gate_init is a free float.
+        temporal_readout_init = str(temporal_readout_init or "onehot_last").strip().lower()
+        allowed_tr_init = {"onehot_last", "uniform_mean"}
+        if temporal_readout_init not in allowed_tr_init:
+            raise ValueError(
+                "Unsupported temporal_readout_init: %s. Supported: %s"
+                % (temporal_readout_init, sorted(allowed_tr_init))
+            )
+        self.temporal_readout_init = temporal_readout_init
+        self.temporal_readout_gate_init = float(temporal_readout_gate_init)
 
 
 # ==========================================
@@ -186,6 +234,15 @@ class QuantModelOutput(ModelOutput):
 
     # Attention pooling weights over factors (for interpretability): [B, N]
     factor_pool_weights: Optional[torch.FloatTensor] = None
+
+    # Required diagnostic matrix support. These are optional and only populated
+    # when the corresponding module is enabled.
+    router_logit_margins: Optional[List[torch.FloatTensor]] = None
+    router_entropy_values: Optional[List[torch.FloatTensor]] = None
+    time_tau_values: Optional[torch.FloatTensor] = None
+    factor_gate_importance: Optional[torch.FloatTensor] = None
+    film_gamma_strength_by_factor: Optional[torch.FloatTensor] = None
+    film_beta_strength_by_factor: Optional[torch.FloatTensor] = None
 
     # scores 用于predict
     scores: Optional[torch.FloatTensor] = None

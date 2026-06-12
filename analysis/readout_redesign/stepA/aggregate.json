@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "d1pma": {
+      "bonus_mean": -0.001746622014962597,
+      "n_pass": 1
+    },
+    "duala": {
+      "bonus_mean": -0.0033865260326232543,
+      "n_pass": 1
+    },
+    "dualb": {
+      "bonus_mean": -0.005563100876479175,
+      "n_pass": 0
+    },
+    "d3cid": {
+      "bonus_mean": -0.0006414339200936462,
+      "n_pass": 1
+    }
+  },
+  "winner": "d3cid",
+  "any_pass": false,
+  "n": 6
+}

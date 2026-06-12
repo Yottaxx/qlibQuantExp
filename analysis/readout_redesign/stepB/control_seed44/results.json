@@ -1,0 +1,49 @@
+{
+  "arm": "control",
+  "seed": 44,
+  "base": "tau_scale_05",
+  "loaded_from": "mlruns/867178867749867261/21a05e198fd34b43bd0d3a14f63e8e2b/artifacts/model",
+  "trainable_params": 78755,
+  "baseline_step0_rank_ic": 0.07235470624047197,
+  "best_valid_rank_ic": 0.07235470624047197,
+  "best_epoch": 0,
+  "bonus_vs_step0": 0.0,
+  "history": [
+    {
+      "epoch": 0,
+      "valid_rank_ic": 0.07235470624047197
+    },
+    {
+      "epoch": 1,
+      "valid_rank_ic": 0.07155110815514297
+    },
+    {
+      "epoch": 2,
+      "valid_rank_ic": 0.07132617577102981
+    },
+    {
+      "epoch": 3,
+      "valid_rank_ic": 0.07119505352794596
+    },
+    {
+      "epoch": 4,
+      "valid_rank_ic": 0.07099282714674886
+    },
+    {
+      "epoch": 5,
+      "valid_rank_ic": 0.07091348671481672
+    },
+    {
+      "epoch": 6,
+      "valid_rank_ic": 0.07079269587179779
+    },
+    {
+      "epoch": 7,
+      "valid_rank_ic": 0.07081796437398352
+    },
+    {
+      "epoch": 8,
+      "valid_rank_ic": 0.07068693724896896
+    }
+  ]
+}

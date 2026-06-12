@@ -1,0 +1,60 @@
+{
+  "arm": "d3cid",
+  "seed": 44,
+  "base": "tau_scale_05",
+  "loaded_from": "mlruns/867178867749867261/21a05e198fd34b43bd0d3a14f63e8e2b/artifacts/model",
+  "trainable_params": 79267,
+  "baseline_step0_rank_ic": 0.0723547803428304,
+  "best_valid_rank_ic": 0.0723547803428304,
+  "best_epoch": 0,
+  "bonus_vs_step0": 0.0,
+  "history": [
+    {
+      "epoch": 0,
+      "valid_rank_ic": 0.0723547803428304
+    },
+    {
+      "epoch": 1,
+      "valid_rank_ic": 0.0715394220234168
+    },
+    {
+      "epoch": 2,
+      "valid_rank_ic": 0.07130442542656411
+    },
+    {
+      "epoch": 3,
+      "valid_rank_ic": 0.07117143905374314
+    },
+    {
+      "epoch": 4,
+      "valid_rank_ic": 0.07098299654882181
+    },
+    {
+      "epoch": 5,
+      "valid_rank_ic": 0.07085676012897205
+    },
+    {
+      "epoch": 6,
+      "valid_rank_ic": 0.07076060820361214
+    },
+    {
+      "epoch": 7,
+      "valid_rank_ic": 0.07078609126997491
+    },
+    {
+      "epoch": 8,
+      "valid_rank_ic": 0.07067698184150245
+    }
+  ],
+  "W_per_t": [
+    0.012,
+    0.008,
+    0.009,
+    0.006,
+    0.011,
+    0.013,
+    0.009,
+    1.005
+  ],
+  "W_last_frac": 0.936267077922821
+}

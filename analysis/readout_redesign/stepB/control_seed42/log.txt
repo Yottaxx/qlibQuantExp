@@ -1,0 +1,11 @@
+[setup] arm=control seed=42 out=analysis\readout_redesign\stepB\control_seed42
+[wire] arm=control trainable params=78755 (last block + final_norm + factor_pool + head)
+[baseline] step0 valid rank_ic = 0.081062 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.077865 (batches=2979 skip=0) best=0.081062@0 [706s]
+[ep 2] valid_rank_ic=0.077639 (batches=2979 skip=0) best=0.081062@0 [1411s]
+[ep 3] valid_rank_ic=0.077676 (batches=2979 skip=0) best=0.081062@0 [2117s]
+[ep 4] valid_rank_ic=0.077960 (batches=2979 skip=0) best=0.081062@0 [2822s]
+[ep 5] valid_rank_ic=0.077528 (batches=2979 skip=0) best=0.081062@0 [3528s]
+[ep 6] valid_rank_ic=0.077797 (batches=2979 skip=0) best=0.081062@0 [4233s]
+[ep 7] valid_rank_ic=0.077861 (batches=2979 skip=0) best=0.081062@0 [4938s]
+[ep 8] valid_rank_ic=0.077829 (batches=2979 skip=0) best=0.081062@0 [5644s]
