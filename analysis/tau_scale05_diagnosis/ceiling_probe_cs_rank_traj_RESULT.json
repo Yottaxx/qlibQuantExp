@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "smoke": false,
+    "model_ref": 0.0786,
+    "raw_window_ceiling": 0.0592,
+    "dayT_lift_reference": 0.0033,
+    "F": 158,
+    "WIN": 8
+  },
+  "arms": {
+    "RW": {
+      "ceiling": 0.05922,
+      "note": "reused from prior window-probe run (LGBM 0.05817/0.05913/0.06036)"
+    },
+    "RW+CSRt": {
+      "ridge": {
+        "rank_ic": 0.0497386107083464,
+        "n_days": 611,
+        "alpha": 1000.0,
+        "int_eval_rank_ic": 0.06749701444286646
+      },
+      "lgbm": {
+        "seed_rank_ics": [
+          0.059758940258427325,
+          0.06202453535021632,
+          0.060708093215796455
+        ],
+        "rank_ic_mean": 0.06083052294148003,
+        "rank_ic_std": 0.000928967906974478,
+        "best_n": 600,
+        "int_eval_rank_ic": 0.07860698073647905
+      },
+      "ceiling": 0.06083052294148003
+    }
+  },
+  "verdict": {
+    "RW_ceiling": 0.05922,
+    "RWplusCSRt_ceiling": 0.06083052294148003,
+    "traj_lift": 0.001610522941480029,
+    "dayT_lift_reference": 0.0033,
+    "model_ref": 0.0786,
+    "zone": "CS_TRAJ_REDUNDANT_WITH_WINDOW__L4_no_go"
+  }
+}

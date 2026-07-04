@@ -1,0 +1,1414 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[144320:MainThread](2026-06-07 13:23:58,098) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[144320:MainThread](2026-06-07 13:23:58,107) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[144320:MainThread](2026-06-07 13:23:58,107) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+>>> [Config:env] Applied experiment overrides
+>>> [Config:env] run_setting=readout_smoke_d1pma_seed42_scale05
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[110756:MainThread](2026-06-07 13:24:02,809) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[110756:MainThread](2026-06-07 13:24:02,812) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[110756:MainThread](2026-06-07 13:24:02,814) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[139512:MainThread](2026-06-07 13:24:02,863) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[142768:MainThread](2026-06-07 13:24:02,867) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[139512:MainThread](2026-06-07 13:24:02,867) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[139512:MainThread](2026-06-07 13:24:02,869) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[142768:MainThread](2026-06-07 13:24:02,872) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[142768:MainThread](2026-06-07 13:24:02,873) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151232:MainThread](2026-06-07 13:24:02,875) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[116276:MainThread](2026-06-07 13:24:02,876) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[140128:MainThread](2026-06-07 13:24:02,880) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[116276:MainThread](2026-06-07 13:24:02,881) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[116276:MainThread](2026-06-07 13:24:02,882) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151232:MainThread](2026-06-07 13:24:02,882) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[151232:MainThread](2026-06-07 13:24:02,882) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[140128:MainThread](2026-06-07 13:24:02,884) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[140128:MainThread](2026-06-07 13:24:02,885) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[145512:MainThread](2026-06-07 13:24:02,938) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[143812:MainThread](2026-06-07 13:24:02,947) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[145512:MainThread](2026-06-07 13:24:02,949) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[145512:MainThread](2026-06-07 13:24:02,949) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[149604:MainThread](2026-06-07 13:24:02,949) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[147732:MainThread](2026-06-07 13:24:02,953) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[143812:MainThread](2026-06-07 13:24:02,955) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[143812:MainThread](2026-06-07 13:24:02,955) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[130840:MainThread](2026-06-07 13:24:02,958) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[149604:MainThread](2026-06-07 13:24:02,958) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[149604:MainThread](2026-06-07 13:24:02,958) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[153100:MainThread](2026-06-07 13:24:02,960) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[147732:MainThread](2026-06-07 13:24:02,962) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[147732:MainThread](2026-06-07 13:24:02,962) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[153100:MainThread](2026-06-07 13:24:02,964) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[153100:MainThread](2026-06-07 13:24:02,964) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[130840:MainThread](2026-06-07 13:24:02,966) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[130840:MainThread](2026-06-07 13:24:02,966) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[107700:MainThread](2026-06-07 13:24:02,971) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[146224:MainThread](2026-06-07 13:24:02,977) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[107700:MainThread](2026-06-07 13:24:02,977) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[107700:MainThread](2026-06-07 13:24:02,979) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[146224:MainThread](2026-06-07 13:24:02,985) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[146224:MainThread](2026-06-07 13:24:02,985) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[149176:MainThread](2026-06-07 13:24:03,014) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[149176:MainThread](2026-06-07 13:24:03,022) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[149176:MainThread](2026-06-07 13:24:03,024) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[143972:MainThread](2026-06-07 13:24:03,035) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[143972:MainThread](2026-06-07 13:24:03,040) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[143972:MainThread](2026-06-07 13:24:03,041) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[51188:MainThread](2026-06-07 13:24:03,150) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[51188:MainThread](2026-06-07 13:24:03,160) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[51188:MainThread](2026-06-07 13:24:03,160) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[444396:MainThread](2026-06-07 13:24:03,164) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[444396:MainThread](2026-06-07 13:24:03,174) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[444396:MainThread](2026-06-07 13:24:03,175) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[143908:MainThread](2026-06-07 13:24:21,630) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[143908:MainThread](2026-06-07 13:24:21,634) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[143908:MainThread](2026-06-07 13:24:21,636) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[138464:MainThread](2026-06-07 13:24:21,640) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[138464:MainThread](2026-06-07 13:24:21,645) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[138464:MainThread](2026-06-07 13:24:21,645) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[150192:MainThread](2026-06-07 13:24:21,648) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[150192:MainThread](2026-06-07 13:24:21,655) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[150192:MainThread](2026-06-07 13:24:21,655) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[63832:MainThread](2026-06-07 13:24:21,662) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[63832:MainThread](2026-06-07 13:24:21,666) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[63832:MainThread](2026-06-07 13:24:21,666) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[112712:MainThread](2026-06-07 13:24:21,685) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[151364:MainThread](2026-06-07 13:24:21,689) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[112712:MainThread](2026-06-07 13:24:21,690) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[112712:MainThread](2026-06-07 13:24:21,690) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151364:MainThread](2026-06-07 13:24:21,694) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[151364:MainThread](2026-06-07 13:24:21,694) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[51928:MainThread](2026-06-07 13:24:21,706) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[153304:MainThread](2026-06-07 13:24:21,711) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[51928:MainThread](2026-06-07 13:24:21,713) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[51928:MainThread](2026-06-07 13:24:21,715) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[153304:MainThread](2026-06-07 13:24:21,717) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[153304:MainThread](2026-06-07 13:24:21,718) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[87656:MainThread](2026-06-07 13:24:21,729) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[87656:MainThread](2026-06-07 13:24:21,740) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[87656:MainThread](2026-06-07 13:24:21,742) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[48468:MainThread](2026-06-07 13:24:21,744) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[129188:MainThread](2026-06-07 13:24:21,744) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[48468:MainThread](2026-06-07 13:24:21,749) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[48468:MainThread](2026-06-07 13:24:21,749) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[129188:MainThread](2026-06-07 13:24:21,751) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[129188:MainThread](2026-06-07 13:24:21,751) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[63468:MainThread](2026-06-07 13:24:21,751) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[139152:MainThread](2026-06-07 13:24:21,755) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[148864:MainThread](2026-06-07 13:24:21,759) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[63468:MainThread](2026-06-07 13:24:21,763) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[63468:MainThread](2026-06-07 13:24:21,763) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[148864:MainThread](2026-06-07 13:24:21,765) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[148864:MainThread](2026-06-07 13:24:21,767) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151060:MainThread](2026-06-07 13:24:21,770) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[139152:MainThread](2026-06-07 13:24:21,770) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[139152:MainThread](2026-06-07 13:24:21,772) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151060:MainThread](2026-06-07 13:24:21,779) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[151060:MainThread](2026-06-07 13:24:21,779) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[446300:MainThread](2026-06-07 13:24:21,785) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[446300:MainThread](2026-06-07 13:24:21,791) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[446300:MainThread](2026-06-07 13:24:21,791) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151964:MainThread](2026-06-07 13:24:21,827) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[50832:MainThread](2026-06-07 13:24:21,842) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[151964:MainThread](2026-06-07 13:24:21,852) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[151964:MainThread](2026-06-07 13:24:21,852) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[50832:MainThread](2026-06-07 13:24:21,863) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[50832:MainThread](2026-06-07 13:24:21,865) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[144320:MainThread](2026-06-07 13:24:22,661) INFO - qlib.timer - [log.py:127] - Time cost: 24.552s | Loading data Done
+[144320:MainThread](2026-06-07 13:24:26,980) INFO - qlib.timer - [log.py:127] - Time cost: 3.999s | RobustZScoreNorm Done
+[144320:MainThread](2026-06-07 13:24:27,774) INFO - qlib.timer - [log.py:127] - Time cost: 0.794s | Fillna Done
+[144320:MainThread](2026-06-07 13:24:28,257) INFO - qlib.timer - [log.py:127] - Time cost: 0.161s | DropnaLabel Done
+[144320:MainThread](2026-06-07 13:24:33,256) INFO - qlib.timer - [log.py:127] - Time cost: 5.000s | CSZScoreNorm Done
+[144320:MainThread](2026-06-07 13:24:33,272) INFO - qlib.timer - [log.py:127] - Time cost: 10.611s | fit & process data Done
+[144320:MainThread](2026-06-07 13:24:33,274) INFO - qlib.timer - [log.py:127] - Time cost: 35.167s | Init data Done
+C:\Users\60585\PycharmProjects\qibMacV2\module\model_adapter.py:206: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\mlflow\tracking\_tracking_service\utils.py:140: FutureWarning: Filesystem tracking backend (e.g., './mlruns') is deprecated. Please switch to a database backend (e.g., 'sqlite:///mlflow.db'). For feedback, see: https://github.com/mlflow/mlflow/issues/18534
+  return FileStore(store_uri, store_uri)
+[144320:MainThread](2026-06-07 13:24:37,469) WARNING - qlib.workflow - [expm.py:231] - No valid experiment found. Create a new experiment with name Official_Alignment_RST_MoE_loss-mse_d64_l2_ff128_ctx8_embft_time1_decay1_film1_fgs1.0_fsh0.2_rSum1_rModelearned_featSel0_mseNorm0_macro1_mDrop0.1_pool0.7_msmarket_state_csi300_settingreadout_smoke_d1pma_seed42_scale05.
+[144320:MainThread](2026-06-07 13:24:37,507) INFO - qlib.workflow - [exp.py:258] - Experiment 496819891713806523 starts running ...
+[144320:MainThread](2026-06-07 13:24:38,035) INFO - qlib.workflow - [recorder.py:345] - Recorder 3eedadf557b2482bad18ea411cca2134 starts running under Experiment 496819891713806523 ...
+warning: in the working copy of 'module/architecture/moe_block.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'module/dataloader/sampler.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'module/model_adapter.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'work_flow.py', LF will be replaced by CRLF the next time Git touches it
+>>> [Config:planned] model: loss=mse, d_model=64, layers=2, heads=4, context_len=8, num_alphas=158, val_emb=feature_tokenizer, time_emb=on, factor_gate=on, router=learned, feat_sel=off, alibi=off, macro=external(market_state_csi300.pkl, dim=auto, shift=0, strict=True), macro_drop=0.1
+>>> [Config:planned] trainer: lr=5e-05, epochs=1, batch=300, accum=1, early_stop=0, warmup=on(ratio=0.05), precision=amp_fp16, seed=42, checkpoint=valid_rank_ic:max, train_stop=off, min_epochs=1, k=999999
+>>> [Phase 1] Training Model...
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+>>> [Schema] Packed-label detected on train segment: total_dim=159, feature_dim=158, label_dim=1. Adapter will treat the last 1 channel(s) at the final time step as label.
+
+================================================================================
+MODEL ARCHITECTURE SUMMARY
+================================================================================
+QuantMoEModel(
+  (feature_tokenizer): FeatureTokenizer()
+  (factor_id_emb): Embedding(158, 64)
+  (emb_dropout): Dropout(p=0.1, inplace=False)
+  (time_embedding): RegimeAdaptiveTimeEmbedding(
+    (tau_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (tau_fc1): Linear(in_features=64, out_features=32, bias=True)
+    (tau_fc2): Linear(in_features=32, out_features=1, bias=True)
+  )
+  (factor_gate): RegimeAdaptiveFactorGate(
+    (regime_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (factor_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (proj_gamma): Linear(in_features=64, out_features=64, bias=False)
+    (proj_beta): Linear(in_features=64, out_features=64, bias=False)
+  )
+  (regime_encoder): RegimeContextEncoder(
+    (encoder): Sequential(
+      (0): Linear(in_features=102, out_features=128, bias=True)
+      (1): Tanh()
+      (2): Dropout(p=0.1, inplace=False)
+      (3): Linear(in_features=128, out_features=64, bias=True)
+      (4): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (layers): ModuleList(
+    (0-1): 2 x RegimeAdaptiveMoEBlock(
+      (layer_summary_proj): Linear(in_features=128, out_features=64, bias=False)
+      (router): Sequential(
+        (0): Linear(in_features=128, out_features=32, bias=True)
+        (1): GELU(approximate='none')
+        (2): Linear(in_features=32, out_features=2, bias=True)
+      )
+      (time_expert): ParallelAttention(
+        (mha): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+        )
+      )
+      (factor_expert): ParallelAttention(
+        (mha): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+        )
+      )
+      (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+      (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+      (ffn): Sequential(
+        (0): Linear(in_features=64, out_features=128, bias=True)
+        (1): GELU(approximate='none')
+        (2): Dropout(p=0.1, inplace=False)
+        (3): Linear(in_features=128, out_features=64, bias=True)
+        (4): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (final_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+  (factor_pooling): AdaptivePooling(
+    (attention_pool): AttentionPooling(
+      (mha): MultiheadAttention(
+        (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+      )
+      (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (head): Linear(in_features=64, out_features=1, bias=True)
+)
+
+--------------------------------------------------------------------------------
+PARAMETER STATISTICS BY MODULE
+--------------------------------------------------------------------------------
+Module                    Params          Trainable       %Total    
+-----------------------------------------------------------------
+layers                    123,972         123,972         60.8      %
+regime_encoder            21,568          21,568          10.6      %
+feature_tokenizer         20,224          20,224          9.9       %
+factor_pooling            16,576          16,576          8.1       %
+factor_id_emb             10,112          10,112          5.0       %
+factor_gate               8,448           8,448           4.1       %
+time_embedding            2,754           2,754           1.4       %
+final_norm                128             128             0.1       %
+head                      65              65              0.0       %
+tr_q                      64              64              0.0       %
+tr_b_t                    8               8               0.0       %
+tr_gate                   1               1               0.0       %
+-----------------------------------------------------------------
+TOTAL                     203,920         203,920         100.0     %
+
+--------------------------------------------------------------------------------
+DETAILED LAYER BREAKDOWN
+--------------------------------------------------------------------------------
+Layer Name                                         Shape                     Params      
+---------------------------------------------------------------------------------------
+tr_q                                               [64]                      64          
+tr_b_t                                             [8]                       8           
+tr_gate                                            [1]                       1           
+feature_tokenizer.weight                           [158, 64]                 10,112      
+feature_tokenizer.bias                             [158, 64]                 10,112      
+factor_id_emb.weight                               [158, 64]                 10,112      
+time_embedding.pos                                 [8, 64]                   512         
+time_embedding.tau_base                            []                        1           
+time_embedding.tau_norm.weight                     [64]                      64          
+time_embedding.tau_norm.bias                       [64]                      64          
+time_embedding.tau_fc1.weight                      [32, 64]                  2,048       
+time_embedding.tau_fc1.bias                        [32]                      32          
+time_embedding.tau_fc2.weight                      [1, 32]                   32          
+time_embedding.tau_fc2.bias                        [1]                       1           
+factor_gate.regime_norm.weight                     [64]                      64          
+factor_gate.regime_norm.bias                       [64]                      64          
+factor_gate.factor_norm.weight                     [64]                      64          
+factor_gate.factor_norm.bias                       [64]                      64          
+factor_gate.proj_gamma.weight                      [64, 64]                  4,096       
+factor_gate.proj_beta.weight                       [64, 64]                  4,096       
+regime_encoder.encoder.0.weight                    [128, 102]                13,056      
+regime_encoder.encoder.0.bias                      [128]                     128         
+regime_encoder.encoder.3.weight                    [64, 128]                 8,192       
+regime_encoder.encoder.3.bias                      [64]                      64          
+regime_encoder.encoder.4.weight                    [64]                      64          
+regime_encoder.encoder.4.bias                      [64]                      64          
+layers.0.layer_summary_proj.weight                 [64, 128]                 8,192       
+layers.0.router.0.weight                           [32, 128]                 4,096       
+layers.0.router.0.bias                             [32]                      32          
+layers.0.router.2.weight                           [2, 32]                   64          
+layers.0.router.2.bias                             [2]                       2           
+layers.0.time_expert.mha.in_proj_weight            [192, 64]                 12,288      
+layers.0.time_expert.mha.out_proj.weight           [64, 64]                  4,096       
+layers.0.factor_expert.mha.in_proj_weight          [192, 64]                 12,288      
+layers.0.factor_expert.mha.out_proj.weight         [64, 64]                  4,096       
+layers.0.norm1.weight                              [64]                      64          
+layers.0.norm1.bias                                [64]                      64          
+layers.0.norm2.weight                              [64]                      64          
+layers.0.norm2.bias                                [64]                      64          
+layers.0.ffn.0.weight                              [128, 64]                 8,192       
+layers.0.ffn.0.bias                                [128]                     128         
+layers.0.ffn.3.weight                              [64, 128]                 8,192       
+layers.0.ffn.3.bias                                [64]                      64          
+layers.1.layer_summary_proj.weight                 [64, 128]                 8,192       
+layers.1.router.0.weight                           [32, 128]                 4,096       
+layers.1.router.0.bias                             [32]                      32          
+layers.1.router.2.weight                           [2, 32]                   64          
+layers.1.router.2.bias                             [2]                       2           
+layers.1.time_expert.mha.in_proj_weight            [192, 64]                 12,288      
+layers.1.time_expert.mha.out_proj.weight           [64, 64]                  4,096       
+layers.1.factor_expert.mha.in_proj_weight          [192, 64]                 12,288      
+layers.1.factor_expert.mha.out_proj.weight         [64, 64]                  4,096       
+layers.1.norm1.weight                              [64]                      64          
+layers.1.norm1.bias                                [64]                      64          
+layers.1.norm2.weight                              [64]                      64          
+layers.1.norm2.bias                                [64]                      64          
+layers.1.ffn.0.weight                              [128, 64]                 8,192       
+layers.1.ffn.0.bias                                [128]                     128         
+layers.1.ffn.3.weight                              [64, 128]                 8,192       
+layers.1.ffn.3.bias                                [64]                      64          
+final_norm.weight                                  [64]                      64          
+final_norm.bias                                    [64]                      64          
+factor_pooling.attention_pool.query                [1, 1, 64]                64          
+factor_pooling.attention_pool.mha.in_proj_weight   [192, 64]                 12,288      
+factor_pooling.attention_pool.mha.out_proj.weight  [64, 64]                  4,096       
+factor_pooling.attention_pool.norm.weight          [64]                      64          
+factor_pooling.attention_pool.norm.bias            [64]                      64          
+head.weight                                        [1, 64]                   64          
+head.bias                                          [1]                       1           
+================================================================================
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\torch\autograd\graph.py:825: UserWarning: Memory Efficient attention defaults to a non-deterministic algorithm. To explicitly enable determinism call torch.use_deterministic_algorithms(True, warn_only=False). (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\builder\windows\pytorch\aten\src\ATen\native\transformers\cuda\attention_backward.cu:657.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+>>> [Sanity] loss=1.444528 grad_norm=3.774e+01 score_std=7.197e-02 label_std=1.163e+00 x_last_std=9.061e-01
+
+================================================================================
+COMPLETE MODEL CONFIGURATION (Resolved)
+================================================================================
+
+--- Architecture ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+d_model                             64                             Hidden dimension         
+n_heads                             4                              Attention heads          
+n_layers                            2                              Number of layers         
+d_ff                                128                            FFN dimension            
+num_alphas                          158                            Number of factors (N)    
+context_len                         8                              Sequence length (T)      
+dropout                             0.1                            Dropout rate             
+initializer_range                   0.02                           Weight init std          
+
+--- Value Embedding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+value_embedding_type                feature_tokenizer              Value embedding type     
+feature_tokenizer_bias              [+] ON                         FT bias                  
+feature_tokenizer_add_factor_id     [-] OFF                        FT add factor ID         
+feature_tokenizer_init_std          0.02                           FT init std              
+
+--- Loss & Training ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+main_loss                           mse                            Primary loss function    
+loss_weights                        {'listmle': 1.0, 'mse': 1.0, 'ic': 1.0} Loss weight dict         
+listmle_tau                         0.8                            ListMLE temperature      
+rank_topk                           5                              RankNet top-k            
+huber_delta                         1                              Huber delta              
+mse_normalize                       [-] OFF                        MSE normalize flag       
+
+--- Regime-Adaptive Time Embedding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_regime_time_embedding           [+] ON                         Enable time embedding    
+time_tau_min                        0.5                            Min tau (short memory)   
+time_tau_max                        50                             Max tau (long memory)    
+time_tau_init                       5                              Initial tau              
+time_emb_init_std                   0.02                           Time emb init std        
+time_decay_normalize                [+] ON                         Normalize decay weights  
+
+--- Regime-Adaptive Factor Gate ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_regime_factor_gate              [+] ON                         Enable factor gate (FiLM)
+factor_gate_scale                   1                              Gate scale (gamma range) 
+factor_gate_shift_scale             0.2                            Gate shift scale (beta)  
+
+--- MoE Router ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+router_mode                         learned                        Router mode              
+router_noise                        0.01                           Logit noise std          
+router_temperature                  1                              Softmax temperature      
+router_z_loss_coef                  0.01                           Z-loss coefficient       
+router_use_layer_summary            [+] ON                         Use layer summary token  
+
+--- Feature Selection ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_feature_selection               [-] OFF                        Enable feature selection 
+selection_reg_lambda                1e-05                          Sparsity regularization  
+selection_temperature               0.1                            Gumbel temperature       
+selection_noise_std                 0.5                            Selection noise std      
+
+--- Positional Encoding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_alibi                           [-] OFF                        Use ALiBi bias           
+
+--- Regime Context Encoder ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_external_macro                  [+] ON                         Use external macro features
+d_macro_input                       102                            Macro input dimension    
+regime_macro_dropout                0.1                            Macro dropout            
+regime_internal_mode                long                           Internal mode (short/long)
+regime_internal_lag                 5                              Internal lag steps       
+regime_internal_use_batch_stats     [-] OFF                        Use batch statistics     
+regime_internal_tail_threshold      2                              Tail threshold           
+
+--- Pooling ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+pooling_alpha                       0.7                            Attention vs mean weight 
+
+--- Trainer Configuration ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+lr                                  5e-05                          Learning rate            
+epochs                              1                              Number of epochs         
+batch_size                          300                            Batch size (stocks/day)  
+grad_accum_steps                    1                              Accumulate K days/step   
+early_stop                          0                              Early stop patience      
+train_stop_key                      loss_main                      Train stop metric key    
+train_stop_threshold                None                           Train stop threshold     
+min_epochs                          1                              Min epochs before stop   
+consecutive_k                       999999                         Consecutive epochs to stop
+use_warmup                          [+] ON                         Enable LR warmup         
+warmup_config                       12/244 steps                   Warmup steps/ratio       
+total_steps                         244                            Total training steps     
+random_seed                         42                             Random seed              
+num_workers                         0                              DataLoader workers       
+label_dim                           1                              Label dimension          
+market_state_path                   market_state_csi300.pkl        Market state file        
+market_state_shift                  0                              Market state shift       
+market_state_strict                 [+] ON                         Strict market state      
+================================================================================
+
+>>> [Train] epochs=1, stop=train_threshold(off, min_epochs=1, k=999999)
+>>> [Warn] non-finite gradients detected (tensors=4, values=119); optimizer step skipped and excluded from grad_norm metrics.
+| Train 01 | time_embedding_norm:0.160855 | time_embedding_to_value_norm_ratio:1.341856 | time_tau:5.000062 | time_half_life:3.465779 | time_tau_std:0.002251 | time_tau_p10:4.997695 | time_tau_p90:5.002517 | time_tau_range_util:0.000097 | film_gamma_strength:0.000489 | film_beta_strength:0.000081 | factor_gate_mean:0.999998 | factor_gate_std:0.000094 | factor_gate_entropy:0.946065 | factor_gate_topk_mass_5:0.095866 | factor_gate_topk_mass_10:0.173257 | router_layer_0_time_ratio:0.501524 | router_layer_0_factor_ratio:0.498476 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.999937 | router_layer_0_logit_margin:0.009554 | expert_layer_0_time_expert_norm:3.736572 | expert_layer_0_factor_expert_norm:5.820177 | expert_layer_0_time_contrib_norm:1.873942 | expert_layer_0_factor_contrib_norm:2.901174 | expert_layer_0_contrib_norm_ratio:0.651744 | expert_layer_0_expert_cosine:-0.014955 | expert_layer_0_time_winner_ratio:0.009426 | router_layer_1_time_ratio:0.500857 | router_layer_1_factor_ratio:0.499143 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.999930 | router_layer_1_logit_margin:0.010842 | expert_layer_1_time_expert_norm:3.973095 | expert_layer_1_factor_expert_norm:4.738076 | expert_layer_1_time_contrib_norm:1.989853 | expert_layer_1_factor_contrib_norm:2.364887 | expert_layer_1_contrib_norm_ratio:0.848871 | expert_layer_1_expert_cosine:0.055676 | expert_layer_1_time_winner_ratio:0.116216 | tr_gate_g:0.499900 | tr_attn_last_frac:0.124338 | tr_attn_entropy:2.079395 | loss_total:1.528261 | loss_main:1.523665 | loss_listmle:4.716197 | loss_mse:1.523665 | loss_ic:-0.016121 | loss_aux:0.004596 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.034448 | label_std:1.219205 | score_label_std_ratio:0.028444 | ic_pearson_batch:0.016121 | ic_raw:0.016121 | rank_ic_batch:0.011942 | rank_ic:0.011942 | gate_entropy:0.693101 | time_ratio:0.501190 | grad_nonfinite_tensors:2.250000 | grad_nonfinite_values:38.000000 | grad_norm:13.862991 | grad_norm_other:8.106695 | grad_norm_time_embedding:4.978549 | grad_norm_factor_film:0.005947 | grad_norm_regime_encoder:0.018968 | grad_norm_router:0.035326 | grad_norm_time_expert:1.516901 | grad_norm_factor_expert:2.707504 | grad_norm_pooling_head:9.471332 | optimizer_steps:240.000000 | grad_attempt_steps:244.000000 | grad_skipped_steps:4.000000 | grad_nonfinite_steps:4.000000 | grad_skipped_rate:0.016393 | grad_nonfinite_rate:0.016393 | lr:0.000000 | sampler_epoch:0.000000 | sampler_num_days:244.000000 | sampler_num_batches:244.000000 | sampler_batch_size:300.000000 | sampler_total_source_samples:72942.000000 | sampler_total_draws:73200.000000 | sampler_unique_samples:55467.000000 | sampler_coverage_ratio:0.760426 | sampler_coverage_gap_vs_full:0.239574 | sampler_duplicate_draws:17733.000000 | sampler_duplicate_rate:0.242254 | sampler_downsample_days:0.000000 | sampler_upsample_days:160.000000 | sampler_exact_days:84.000000 | sampler_downsample_day_ratio:0.000000 | sampler_upsample_day_ratio:0.655738
+| Valid 01 | time_embedding_norm:0.160951 | time_embedding_to_value_norm_ratio:1.269410 | time_tau:4.999060 | time_half_life:3.465084 | time_tau_std:0.000000 | time_tau_p10:4.999060 | time_tau_p90:4.999060 | time_tau_range_util:0.000000 | film_gamma_strength:0.000688 | film_beta_strength:0.000116 | factor_gate_mean:0.999996 | factor_gate_std:0.000133 | factor_gate_entropy:0.947511 | factor_gate_topk_mass_5:0.094439 | factor_gate_topk_mass_10:0.170976 | router_layer_0_time_ratio:0.500770 | router_layer_0_factor_ratio:0.499230 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.999974 | router_layer_0_logit_margin:0.009989 | expert_layer_0_time_expert_norm:3.820285 | expert_layer_0_factor_expert_norm:6.046937 | expert_layer_0_time_contrib_norm:1.913027 | expert_layer_0_factor_contrib_norm:3.018757 | expert_layer_0_contrib_norm_ratio:0.641735 | expert_layer_0_expert_cosine:-0.014676 | expert_layer_0_time_winner_ratio:0.019726 | router_layer_1_time_ratio:0.501902 | router_layer_1_factor_ratio:0.498098 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.999967 | router_layer_1_logit_margin:0.010689 | expert_layer_1_time_expert_norm:4.133564 | expert_layer_1_factor_expert_norm:5.104565 | expert_layer_1_time_contrib_norm:2.074541 | expert_layer_1_factor_contrib_norm:2.542385 | expert_layer_1_contrib_norm_ratio:0.825941 | expert_layer_1_expert_cosine:0.069189 | expert_layer_1_time_winner_ratio:0.112281 | tr_gate_g:0.499889 | tr_attn_last_frac:0.124387 | tr_attn_entropy:2.079389 | loss_total:0.015664 | loss_main:0.011256 | loss_listmle:4.715179 | loss_mse:0.011256 | loss_ic:-0.056364 | loss_aux:0.004408 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.028305 | label_std:0.045406 | score_label_std_ratio:0.647854 | gate_entropy:0.693127 | time_ratio:0.501336 | ic_pearson_daily:0.056404 | rank_ic_daily:0.035713 | ic_raw:0.056404 | rank_ic:0.035713
+>>> [Train] restored best checkpoint (valid_rank_ic=0.035713, epoch=1)
+>>> [Phase 1.1] Export Spatio-Temporal Visuals...
+>>> [Phase 2] Signal Analysis...
+[144320:MainThread](2026-06-07 13:26:26,195) INFO - qlib.workflow - [record_temp.py:198] - Signal record 'pred.pkl' has been saved as the artifact of the Experiment 496819891713806523
+'The following are prediction results of the QlibQuantMoE model.'
+                          score
+datetime   instrument          
+2020-07-01 SH600000    0.106750
+           SH600004    0.117676
+           SH600009    0.096069
+           SH600010    0.069458
+           SH600011    0.073425
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 164.26it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 164.26it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 163.99it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 163.99it/s]
+{'IC': np.float64(0.05639074572988803),
+ 'ICIR': np.float64(0.2935177245314456),
+ 'Rank IC': np.float64(0.03571138502628855),
+ 'Rank ICIR': np.float64(0.1713457494597663)}
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+>>> [Phase 3] Backtesting...
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 499.20it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 499.20it/s]
+[144320:MainThread](2026-06-07 13:26:27,204) INFO - qlib.backtest caller - [__init__.py:93] - Create new exchange
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[120732:MainThread](2026-06-07 13:26:33,866) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[120732:MainThread](2026-06-07 13:26:33,870) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[120732:MainThread](2026-06-07 13:26:33,870) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[120708:MainThread](2026-06-07 13:26:34,305) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[120708:MainThread](2026-06-07 13:26:34,311) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[120708:MainThread](2026-06-07 13:26:34,311) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[159068:MainThread](2026-06-07 13:26:34,676) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[159068:MainThread](2026-06-07 13:26:34,690) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[159068:MainThread](2026-06-07 13:26:34,691) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[89244:MainThread](2026-06-07 13:26:34,845) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[159104:MainThread](2026-06-07 13:26:34,850) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[89244:MainThread](2026-06-07 13:26:34,855) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[89244:MainThread](2026-06-07 13:26:34,856) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[159104:MainThread](2026-06-07 13:26:34,859) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[159104:MainThread](2026-06-07 13:26:34,860) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[157692:MainThread](2026-06-07 13:26:34,926) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[157692:MainThread](2026-06-07 13:26:34,938) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[157692:MainThread](2026-06-07 13:26:34,938) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[147608:MainThread](2026-06-07 13:26:34,968) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[150480:MainThread](2026-06-07 13:26:34,974) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[101720:MainThread](2026-06-07 13:26:34,974) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[150480:MainThread](2026-06-07 13:26:34,986) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[150480:MainThread](2026-06-07 13:26:34,986) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[101720:MainThread](2026-06-07 13:26:34,990) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[101720:MainThread](2026-06-07 13:26:34,991) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[147608:MainThread](2026-06-07 13:26:34,993) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[147608:MainThread](2026-06-07 13:26:34,993) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[154976:MainThread](2026-06-07 13:26:35,032) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[154976:MainThread](2026-06-07 13:26:35,048) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[154976:MainThread](2026-06-07 13:26:35,048) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[152352:MainThread](2026-06-07 13:26:35,112) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[152352:MainThread](2026-06-07 13:26:35,123) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[152352:MainThread](2026-06-07 13:26:35,123) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[159080:MainThread](2026-06-07 13:26:35,127) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[159080:MainThread](2026-06-07 13:26:35,132) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[159080:MainThread](2026-06-07 13:26:35,132) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[141576:MainThread](2026-06-07 13:26:35,134) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[141576:MainThread](2026-06-07 13:26:35,142) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[141576:MainThread](2026-06-07 13:26:35,142) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[139280:MainThread](2026-06-07 13:26:35,158) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[139280:MainThread](2026-06-07 13:26:35,162) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[139280:MainThread](2026-06-07 13:26:35,164) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[159244:MainThread](2026-06-07 13:26:35,199) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[159432:MainThread](2026-06-07 13:26:35,203) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[159432:MainThread](2026-06-07 13:26:35,208) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[159244:MainThread](2026-06-07 13:26:35,208) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[159432:MainThread](2026-06-07 13:26:35,208) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[159244:MainThread](2026-06-07 13:26:35,208) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[155272:MainThread](2026-06-07 13:26:35,212) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[155272:MainThread](2026-06-07 13:26:35,217) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[155272:MainThread](2026-06-07 13:26:35,217) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[151972:MainThread](2026-06-07 13:26:35,370) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[151972:MainThread](2026-06-07 13:26:35,374) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[151972:MainThread](2026-06-07 13:26:35,374) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[144320:MainThread](2026-06-07 13:26:47,974) WARNING - qlib.online operator - [exchange.py:219] - $close field data contains nan.
+[144320:MainThread](2026-06-07 13:26:47,974) WARNING - qlib.online operator - [exchange.py:219] - $close field data contains nan.
+[144320:MainThread](2026-06-07 13:26:50,743) WARNING - qlib.BaseExecutor - [executor.py:121] - `common_infra` is not set for <qlib.backtest.executor.SimulatorExecutor object at 0x00000252F934FD30>
+backtest loop:   0%|          | 0/126 [00:00<?, ?it/s]C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\utils\index_data.py:492: RuntimeWarning: Mean of empty slice
+  return np.nanmean(self.data)
+backtest loop:  14%|█▍        | 18/126 [00:00<00:00, 172.05it/s]backtest loop:  29%|██▊       | 36/126 [00:00<00:00, 169.92it/s]backtest loop:  42%|████▏     | 53/126 [00:00<00:00, 159.85it/s]backtest loop:  56%|█████▋    | 71/126 [00:00<00:00, 165.46it/s]backtest loop:  70%|██████▉   | 88/126 [00:00<00:00, 163.15it/s]backtest loop:  83%|████████▎ | 105/126 [00:00<00:00, 162.57it/s]backtest loop:  98%|█████████▊| 123/126 [00:00<00:00, 166.18it/s]backtest loop: 100%|██████████| 126/126 [00:00<00:00, 165.42it/s]
+[144320:MainThread](2026-06-07 13:26:51,518) INFO - qlib.workflow - [record_temp.py:515] - Portfolio analysis record 'port_analysis_1day.pkl' has been saved as the artifact of the Experiment 496819891713806523
+'The following are analysis results of benchmark return(1day).'
+                       risk
+mean               0.001872
+std                0.013497
+annualized_return  0.445649
+information_ratio  2.140217
+max_drawdown      -0.071481
+'The following are analysis results of the excess return without cost(1day).'
+                       risk
+mean              -0.000052
+std                0.009224
+annualized_return -0.012403
+information_ratio -0.087160
+max_drawdown      -0.067263
+'The following are analysis results of the excess return with cost(1day).'
+                       risk
+mean              -0.000679
+std                0.009228
+annualized_return -0.161703
+information_ratio -1.135802
+max_drawdown      -0.115009
+[144320:MainThread](2026-06-07 13:26:51,526) INFO - qlib.workflow - [record_temp.py:540] - Indicator analysis record 'indicator_analysis_1day.pkl' has been saved as the artifact of the Experiment 496819891713806523
+'The following are analysis results of indicators(1day).'
+     value
+ffr    1.0
+pa     0.0
+pos    0.0
+>>> [Phase 3.1] Export Qlib Official Graphs...
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 289.34it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 289.34it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 484.72it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 484.72it/s]
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_position\parse_position.py:36: FutureWarning:
+
+DataFrame.fillna with 'method' is deprecated and will raise in a future version. Use obj.ffill() or obj.bfill() instead.
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_position\risk_analysis.py:104: FutureWarning:
+
+When grouping with a length-1 list-like, you will need to pass a length-1 tuple to get_group in a future version of pandas. Pass `(name,)` instead of `name` to silence this warning.
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_position\risk_analysis.py:104: FutureWarning:
+
+When grouping with a length-1 list-like, you will need to pass a length-1 tuple to get_group in a future version of pandas. Pass `(name,)` instead of `name` to silence this warning.
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_position\risk_analysis.py:104: FutureWarning:
+
+When grouping with a length-1 list-like, you will need to pass a length-1 tuple to get_group in a future version of pandas. Pass `(name,)` instead of `name` to silence this warning.
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_position\risk_analysis.py:104: FutureWarning:
+
+When grouping with a length-1 list-like, you will need to pass a length-1 tuple to get_group in a future version of pandas. Pass `(name,)` instead of `name` to silence this warning.
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_position\parse_position.py:36: FutureWarning:
+
+DataFrame.fillna with 'method' is deprecated and will raise in a future version. Use obj.ffill() or obj.bfill() instead.
+
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\qlib\contrib\report\analysis_model\analysis_model_performance.py:157: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 256.08it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 256.08it/s]
+
+================================================================================
+>>> [Metrics Summary] SignalRecord + PortAnaRecord
+================================================================================
+
+[Signal Analysis Metrics]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+  IC mean=0.056391, std=0.192120, IR=0.293518
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 498.02it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 498.02it/s]
+  RankIC mean=0.035711, std=0.208417, IR=0.171346
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 495.72it/s]
+
+[Portfolio Analysis Metrics]
+                                                  risk
+excess_return_without_cost mean              -0.000052
+                           std                0.009224
+                           annualized_return -0.012403
+                           information_ratio -0.087160
+                           max_drawdown      -0.067263
+excess_return_with_cost    mean              -0.000679
+                           std                0.009228
+                           annualized_return -0.161703
+                           information_ratio -1.135802
+                           max_drawdown      -0.115009
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+
+[Indicator Analysis Metrics]
+     value
+ffr    1.0
+pa     0.0
+pos    0.0
+
+[Generated Graphs]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 113.40it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 113.40it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 280.99it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 280.99it/s]
+  - analysis_position.report_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_report_graph.html
+  - analysis_position.score_ic_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_score_ic_graph.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_cumulative_return_graph_1.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_cumulative_return_graph_2.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_cumulative_return_graph_3.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_cumulative_return_graph_4.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_risk_analysis_graph_1.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_risk_analysis_graph_2.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_risk_analysis_graph_3.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_risk_analysis_graph_4.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_risk_analysis_graph_5.html
+  - analysis_position.rank_label_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_rank_label_graph_1.html
+  - analysis_position.rank_label_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_rank_label_graph_2.html
+  - analysis_position.rank_label_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_position_rank_label_graph_3.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_model_model_performance_graph_1.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_model_model_performance_graph_2.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_model_model_performance_graph_3.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_model_model_performance_graph_4.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_model_model_performance_graph_5.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134/qlib_analysis_model_model_performance_graph_6.html
+
+[Recorder Objects]
+================================================================================
+
+>>> [Diagnostics] Generate minimum required diagnostic matrix...
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 53.04it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 53.04it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 498.37it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 496.25it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 248.64it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 764.97it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 764.97it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 81.19it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 81.19it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 239.87it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 239.87it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 637.24it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 637.24it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 390.28it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 390.28it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 939.16it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 939.16it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 343.46it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 343.46it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 664.92it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 664.92it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 416.06it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 416.06it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 499.08it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 499.08it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 991.09it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 991.09it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 187.90it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 486.58it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 486.58it/s]
+>>> [Diagnostics] Saved diagnostic_matrix.csv and diagnostic_summary.md
+>>> [Phase 4] Generate Paper-level Report...
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 643.50it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 643.50it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 664.18it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 664.18it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 1930.19it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 965.76it/s] 
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 97.41it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 97.41it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 1000.31it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 1000.31it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 59.93it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 59.93it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 87.72it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 87.72it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 106.35it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 106.35it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 124.92it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 124.92it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 68.25it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 68.25it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 68.67it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 68.67it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 262.00it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 105.38it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 105.38it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 123.23it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 123.23it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 999.12it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 999.12it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 79.72it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 79.72it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 88.00it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 88.00it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 186.08it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 186.08it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 69.24it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 69.24it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 1000.07it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 1000.07it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 58.31it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 58.31it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]Downloading artifacts: 100%|██████████| 1/1 [00:00<?, ?it/s]
+
+================================================================================
+EXPERIMENT REPORT SUMMARY (3eedadf557b2482bad18ea411cca2134)
+================================================================================
+| Model   | Dataset                                   |   IC (mean) |   ICIR |   IC HAC t-stat |   RankIC (mean) |   RankIC IR |   RankIC HAC t-stat | Ann. Return   |   Info Ratio | Max Drawdown   | Turnover   | Gate time_ratio stats                       |
+|:--------|:------------------------------------------|------------:|-------:|----------------:|----------------:|------------:|--------------------:|:--------------|-------------:|:---------------|:-----------|:--------------------------------------------|
+| RST-MoE | Alpha158 / csi300 / 2008-01-01~2022-12-31 |      0.0564 |   0.29 |             1.9 |          0.0357 |        0.17 |                 1.1 | -16.17%       |        -1.14 | -11.50%        | 31.55%     | mean=0.501, std=0.002, p10=0.498, p90=0.504 |
+--------------------------------------------------------------------------------
+Full Markdown report written to: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\496819891713806523\3eedadf557b2482bad18ea411cca2134\kdd_report.md
+--------------------------------------------------------------------------------
+# RST-MoE on Alpha158 / CSI300
+
+## 1. Experimental Setup
+
+- **Data**:
+  - Handler: Alpha158
+  - Instruments: csi300
+  - Train: 2019-04-01 ~ 2020-03-31
+  - Valid: 2020-07-01 ~ 2020-12-31
+  - Test: 2020-07-01 ~ 2020-12-31
+- **Label**: ['Ref($close, -5) / Ref($close, -1) - 1']
+  - **Model**:
+    - class: QlibQuantMoE
+    - d_model=64, n_layers=2, n_heads=4
+    - main_loss=mse
+    - value_embedding_type=feature_tokenizer
+    - feature_tokenizer_add_factor_id=False
+    - feature_tokenizer_bias=True
+    - feature_tokenizer_init_std=0.02
+    - use_feature_selection=False
+    - use_alibi=False
+- **Training**:
+  - lr=5e-05, epochs=1, batch_size=300
+  - seed=42
+- **Backtest**:
+  - strategy: TopkDropoutStrategy, topk=30, n_drop=5
+  - benchmark=SH000300, deal_price=close, cost(open/close)=None/None
+
+### 1.1 Full Config (Resolved)
+
+```python
+data_conf = {'class': 'TSDatasetH',
+ 'module_path': 'qlib.data.dataset',
+ 'kwargs': {'step_len': 8,
+            'handler': {'class': 'Alpha158',
+                        'module_path': 'qlib.contrib.data.handler',
+                        'kwargs': {'start_time': '2008-01-01',
+                                   'end_time': '2022-12-31',
+                                   'fit_start_time': '2008-01-01',
+                                   'fit_end_time': '2020-03-31',
+                                   'instruments': 'csi300',
+                                   'infer_processors': [{'class': 'RobustZScoreNorm',
+                                                         'kwargs': {'fields_group': 'feature',
+                                                                    'clip_outlier': True,
+                                                                    'fit_start_time': '2008-01-01',
+                                                                    'fit_end_time': '2020-03-31'}},
+                                                        {'class': 'Fillna', 'kwargs': {'fields_group': 'feature'}}],
+                                   'learn_processors': [{'class': 'DropnaLabel'},
+                                                        {'class': 'CSZScoreNorm',
+                                                         'kwargs': {'fields_group': 'label', 'method': 'robust'}}],
+                                   'label': ['Ref($close, -5) / Ref($close, -1) - 1']}},
+            'segments': {'train': ['2019-04-01', '2020-03-31'],
+                         'valid': ['2020-07-01', '2020-12-31'],
+                         'test': ['2020-07-01', '2020-12-31']}}}
+
+model_config = {'d_model': 64,
+ 'n_heads': 4,
+ 'n_layers': 2,
+ 'd_ff': 128,
+ 'dropout': 0.1,
+ 'initializer_range': 0.02,
+ 'num_alphas': 158,
+ 'context_len': 8,
+ 'value_embedding_type': 'feature_tokenizer',
+ 'feature_tokenizer_bias': True,
+ 'feature_tokenizer_add_factor_id': False,
+ 'feature_tokenizer_init_std': 0.02,
+ 'use_regime_time_embedding': True,
+ 'time_tau_min': 0.5,
+ 'time_tau_max': 50.0,
+ 'time_tau_init': 5.0,
+ 'time_emb_init_std': 0.02,
+ 'time_decay_normalize': True,
+ 'use_regime_factor_gate': True,
+ 'factor_gate_scale': 1.0,
+ 'factor_gate_shift_scale': 0.2,
+ 'router_noise': 0.01,
+ 'router_temperature': 1.0,
+ 'router_z_loss_coef': 0.01,
+ 'router_use_layer_summary': True,
+ 'router_mode': 'learned',
+ 'use_alibi': False,
+ 'use_feature_selection': False,
+ 'selection_reg_lambda': 1e-05,
+ 'selection_temperature': 0.1,
+ 'selection_noise_std': 0.5,
+ 'main_loss': 'mse',
+ 'loss_weights': {'listmle': 1.0, 'mse': 1.0, 'ic': 1.0, 'rank': 0.0, 'huber': 0.0},
+ 'mse_normalize': False,
+ 'rank_topk': 5,
+ 'huber_delta': 1.0,
+ 'listmle_tau': 0.8,
+ 'use_external_macro': True,
+ 'd_macro_input': 102,
+ 'regime_macro_dropout': 0.1,
+ 'regime_internal_mode': 'long',
+ 'regime_internal_lag': 5,
+ 'regime_internal_use_batch_stats': False,
+ 'regime_internal_tail_threshold': 2.0,
+ 'pooling_alpha': 0.7}
+
+trainer_config = {'lr': 5e-05,
+ 'n_epochs': 1,
+ 'batch_size': 300,
+ 'precision': 'amp_fp16',
+ 'grad_accum_steps': 1,
+ 'seed': 42,
+ 'device': 'auto',
+ 'deterministic_mode': 'warn',
+ 'seed_workers': True,
+ 'train_sampler_mode': 'sampled_daily',
+ 'sampler_diag': True,
+ 'train_stop_key': 'loss_main',
+ 'train_stop_threshold': None,
+ 'min_epochs': 1,
+ 'consecutive_k': 999999,
+ 'num_workers': 0,
+ 'market_state_path': 'data/market_state_csi300.pkl',
+ 'market_state_shift': 0,
+ 'market_state_strict': True,
+ 'use_warmup': True,
+ 'warmup_ratio': 0.05,
+ 'warmup_steps': 0,
+ 'debug_sanity_check': True,
+ 'strict_valid_data_key': True,
+ 'checkpoint_metric': 'valid_rank_ic',
+ 'checkpoint_mode': 'max',
+ 'use_tqdm': False,
+ 'run_setting': 'readout_smoke_d1pma_seed42_scale05'}
+
+port_conf = {'strategy': {'class': 'TopkDropoutStrategy',
+              'module_path': 'qlib.contrib.strategy.signal_strategy',
+              'kwargs': {'signal': '<PRED>', 'topk': 30, 'n_drop': 5}},
+ 'backtest': {'start_time': '2020-07-01',
+              'end_time': '2020-12-31',
+              'account': 100000000,
+              'benchmark': 'SH000300',
+              'exchange_kwargs': {'freq': 'day', 'deal_price': 'close'}}}
+```
+
+## 2. Cross-sectional Forecasting Performance
+
+- **IC (test)**:
+  - mean = 0.0564, std = 0.1921, ICIR = 0.29, HAC t-stat = 1.9 (lags=4)
+- **RankIC (test)**:
+  - mean = 0.0357, std = 0.2084, IR = 0.17, HAC t-stat = 1.1 (lags=4)
+- 注：采用 Newey–West(HAC) t-stat 以处理日度序列的自相关/异方差。
+
+### 2.X Regime Bucket Evaluation (test segment)
+
+基于 `market_state`（与训练时相同的宏观状态文件）对 test 交易日做分桶，观察不同市场状态下的预测质量与路由行为差异。
+
+- market_state: `market_state_csi300.pkl`, shift=0, fit_segments=['train'] (fit_days=244, test_days=126)
+
+- 2×2 分桶（median@fit）：`market_state_corr_pc1_ratio`=0.1887, `market_state_tail_2sigma`=-0.1587
+
+| Regime               |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------------------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| High-PC1 / High-Tail |     34 |     0.0618333 |   0.289403  | 0.0802639 | 0.384238 |          0.500706 |         0.497515 |         0.501064 |         0.503156 |            0.693131 |           0.69311  |           0.693133 |           0.693145 |         4.99866 |        4.99173 |        4.99946 |        5.00332 |               3.46481 |              3.46001 |              3.46536 |              3.46804 |                0.999998 |               0.99999  |               0.999999 |                1.00001 |            0.000127298 |           9.53352e-05 |           0.000127693 |           0.000159015 |                   0.946578 |                  0.939842 |                  0.946698 |                  0.952393 |                      0.0937873 |                     0.0855542 |                     0.0933675 |                      0.101407 |                        0.171681 |                       0.16196  |                       0.173229 |                       0.181677 |
+| High-PC1 / Low-Tail  |     61 |     0.0115205 |   0.0512613 | 0.0317435 | 0.156971 |          0.50186  |         0.498356 |         0.501983 |         0.504931 |            0.693122 |           0.693088 |           0.693128 |           0.693143 |         4.99794 |        4.98787 |        4.99946 |        5.00332 |               3.46431 |              3.45733 |              3.46536 |              3.46804 |                0.999995 |               0.999986 |               0.999995 |                1.00001 |            0.000134184 |           0.00010306  |           0.00012924  |           0.000172166 |                   0.948077 |                  0.941896 |                  0.947907 |                  0.954176 |                      0.0932946 |                     0.0835152 |                     0.0929583 |                      0.101604 |                        0.168856 |                       0.154011 |                       0.171545 |                       0.179698 |
+| Low-PC1 / High-Tail  |     14 |     0.103115  |   0.741171  | 0.119526  | 0.86359  |          0.500948 |         0.498942 |         0.500586 |         0.503833 |            0.693134 |           0.693117 |           0.693141 |           0.693146 |         5.00194 |        4.9956  |        5.00139 |        5.00718 |               3.46708 |              3.46268 |              3.4667  |              3.47072 |                0.999995 |               0.999987 |               0.999994 |                1       |            0.00012877  |           8.49478e-05 |           0.000122187 |           0.000166207 |                   0.947187 |                  0.942168 |                  0.947013 |                  0.951311 |                      0.0945355 |                     0.0869422 |                     0.0939757 |                      0.101114 |                        0.170304 |                       0.160539 |                       0.171283 |                       0.180312 |
+| Low-PC1 / Low-Tail   |     17 |     0.0147614 |   0.0825849 | 0.0450907 | 0.302008 |          0.501038 |         0.497987 |         0.501528 |         0.503141 |            0.693129 |           0.693108 |           0.693136 |           0.693144 |         5.0015  |        4.99791 |        5.00332 |        5.00487 |               3.46678 |              3.46429 |              3.46804 |              3.46911 |                0.999993 |               0.999983 |               0.99999  |                1.00001 |            0.00014335  |           0.000104827 |           0.00012994  |           0.000205526 |                   0.94761  |                  0.942919 |                  0.94742  |                  0.952675 |                      0.0997723 |                     0.0931345 |                     0.10063   |                      0.108053 |                        0.177731 |                       0.16867  |                       0.178143 |                       0.187429 |
+
+- Terciles by `market_state_corr_pc1_ratio` (Market-mode strength (PC1 ratio)), edges@fit=[-0.1241, 0.6825]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |     21 |     0.0751324 |   0.501748  | 0.0991778 | 0.722587 |          0.501514 |         0.499001 |         0.501266 |         0.503967 |            0.693131 |           0.693112 |           0.693136 |           0.693146 |         5.00203 |        4.9956  |        5.00332 |        5.00718 |               3.46715 |              3.46268 |              3.46804 |              3.47072 |                0.999993 |               0.999982 |               0.999993 |                1       |            0.000138347 |           8.65129e-05 |           0.000125976 |           0.000211379 |                   0.947298 |                  0.942317 |                  0.946826 |                  0.951679 |                      0.0975768 |                     0.0934211 |                     0.0975981 |                      0.102313 |                        0.174682 |                       0.166657 |                       0.174563 |                       0.181283 |
+| Mid      |     33 |     0.0646543 |   0.283556  | 0.0838788 | 0.408371 |          0.500605 |         0.496853 |         0.501059 |         0.503109 |            0.693128 |           0.693106 |           0.693134 |           0.693143 |         5.00004 |        4.9956  |        4.99946 |        5.00641 |               3.46577 |              3.46268 |              3.46536 |              3.47018 |                0.999996 |               0.99999  |               0.999994 |                1.00001 |            0.000127666 |           0.000101521 |           0.000123626 |           0.000161212 |                   0.94734  |                  0.940714 |                  0.948397 |                  0.953703 |                      0.0960388 |                     0.0869068 |                     0.0965325 |                      0.104344 |                        0.17307  |                       0.160404 |                       0.174842 |                       0.183194 |
+| High     |     72 |     0.0109481 |   0.0514637 | 0.0313125 | 0.158291 |          0.501619 |         0.497814 |         0.502002 |         0.504844 |            0.693125 |           0.693098 |           0.693129 |           0.693144 |         4.99774 |        4.98826 |        4.99946 |        5.00332 |               3.46417 |              3.4576  |              3.46536 |              3.46804 |                0.999996 |               0.999987 |               0.999996 |                1.00001 |            0.000133817 |           0.000103081 |           0.000129157 |           0.000168697 |                   0.947651 |                  0.941393 |                  0.947545 |                  0.954164 |                      0.0927913 |                     0.0851266 |                     0.0923407 |                      0.100297 |                        0.168936 |                       0.158618 |                       0.169481 |                       0.179691 |
+
+- Terciles by `market_state_tail_2sigma` (Tail intensity (|x|>2)), edges@fit=[-0.4249, 0.1344]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |     55 |     0.0165986 |   0.0749121 | 0.0391232 | 0.200752 |          0.501873 |         0.498763 |         0.501891 |         0.505187 |            0.693124 |           0.693087 |           0.693134 |           0.693144 |         4.99862 |        4.99173 |        4.99946 |        5.00332 |               3.46478 |              3.46001 |              3.46536 |              3.46804 |                0.999994 |               0.999986 |               0.999992 |                1.00001 |            0.00013857  |           9.8726e-05  |           0.000132791 |           0.000178857 |                   0.947871 |                  0.941685 |                  0.947754 |                  0.954056 |                      0.0946031 |                     0.0835429 |                     0.095078  |                      0.102462 |                        0.170504 |                       0.155543 |                       0.172365 |                       0.181965 |
+| Mid      |     40 |     0.0219316 |   0.100908  | 0.0484888 | 0.228787 |          0.501214 |         0.497336 |         0.501916 |         0.503816 |            0.693127 |           0.693108 |           0.693128 |           0.693144 |         4.99859 |        4.99135 |        4.99946 |        5.00718 |               3.46476 |              3.45974 |              3.46536 |              3.47072 |                0.999997 |               0.999988 |               0.999997 |                1.00001 |            0.000129441 |           0.000102988 |           0.00012084  |           0.000160616 |                   0.947389 |                  0.941843 |                  0.947425 |                  0.952151 |                      0.0942065 |                     0.0852997 |                     0.0955738 |                      0.100507 |                        0.171011 |                       0.159519 |                       0.172875 |                       0.179828 |
+| High     |     31 |     0.0874016 |   0.526796  | 0.0972228 | 0.618818 |          0.50054  |         0.497768 |         0.500729 |         0.5032   |            0.693132 |           0.693114 |           0.693137 |           0.693145 |         5.00046 |        4.9956  |        4.99946 |        5.00718 |               3.46605 |              3.46268 |              3.46536 |              3.47072 |                0.999997 |               0.999988 |               0.999997 |                1.00001 |            0.000127551 |           8.7294e-05  |           0.000126848 |           0.000160068 |                   0.947028 |                  0.941765 |                  0.947348 |                  0.953311 |                      0.0944493 |                     0.0865828 |                     0.0939211 |                      0.102734 |                        0.17177  |                       0.161702 |                       0.17326  |                       0.182248 |
+
+- Terciles by `market_state_corr_mean_abs` (Crowding (mean abs corr)), edges@fit=[0.009182, 0.7417]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |     17 |     0.0959757 |   0.630174  | 0.126944  | 0.994639 |          0.500794 |         0.498974 |         0.500652 |         0.502437 |            0.693138 |           0.693126 |           0.69314  |           0.693146 |         5.00196 |        4.9956  |        4.99946 |        5.00718 |               3.46709 |              3.46268 |              3.46536 |              3.47072 |                0.99999  |               0.999982 |               0.999988 |               0.999999 |            0.000150346 |           9.26817e-05 |           0.000155977 |           0.000211587 |                   0.94814  |                  0.942682 |                  0.947788 |                  0.952495 |                      0.0973289 |                     0.091165  |                     0.0975981 |                      0.102041 |                        0.173631 |                       0.162651 |                       0.174405 |                       0.180935 |
+| Mid      |     22 |     0.0718303 |   0.295956  | 0.0902613 | 0.402348 |          0.500905 |         0.498025 |         0.501131 |         0.503913 |            0.693127 |           0.693106 |           0.693133 |           0.693144 |         5.00157 |        4.9956  |        5.00332 |        5.00718 |               3.46682 |              3.46268 |              3.46804 |              3.47072 |                0.999997 |               0.99999  |               0.999994 |               1.00001  |            0.000126094 |           0.000103216 |           0.000125447 |           0.000154094 |                   0.945381 |                  0.940525 |                  0.944592 |                  0.95024  |                      0.0988227 |                     0.0899408 |                     0.0998777 |                      0.107179 |                        0.176805 |                       0.165881 |                       0.177856 |                       0.186335 |
+| High     |     87 |     0.0148021 |   0.0714295 | 0.0340395 | 0.178058 |          0.501551 |         0.497697 |         0.501983 |         0.504676 |            0.693125 |           0.693099 |           0.693129 |           0.693144 |         4.99786 |        4.99173 |        4.99946 |        5.00332 |               3.46425 |              3.46001 |              3.46536 |              3.46804 |                0.999997 |               0.999987 |               0.999998 |               1.00001  |            0.0001313   |           0.000100283 |           0.000127367 |           0.000168002 |                   0.947926 |                  0.941774 |                  0.947897 |                  0.954249 |                      0.0927664 |                     0.0850639 |                     0.0924275 |                      0.10052  |                        0.168984 |                       0.15837  |                       0.169345 |                       0.17997  |
+
+- Terciles by `market_vol_20` (Benchmark vol (20d)), edges@fit=[-0.824, 0.2423]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |       IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|------------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |      1 |    0.293051   |  nan        | 0.296464  | nan         |          0.498234 |         0.498234 |         0.498234 |         0.498234 |            0.693139 |           0.693139 |           0.693139 |           0.693139 |         5.00332 |        5.00332 |        5.00332 |        5.00332 |               3.46804 |              3.46804 |              3.46804 |              3.46804 |                0.999989 |               0.999989 |               0.999989 |               0.999989 |            0.00014081  |           0.00014081  |           0.00014081  |           0.00014081  |                   0.941321 |                  0.941321 |                  0.941321 |                  0.941321 |                      0.0992849 |                     0.0992849 |                     0.0992849 |                     0.0992849 |                        0.17896  |                       0.17896  |                       0.17896  |                       0.17896  |
+| Mid      |     93 |    0.0464709  |    0.233764 | 0.068074  |   0.361843  |          0.501952 |         0.499294 |         0.502022 |         0.504727 |            0.693125 |           0.693093 |           0.693132 |           0.693144 |         4.99846 |        4.99173 |        4.99946 |        5.00641 |               3.46467 |              3.46001 |              3.46536 |              3.47018 |                0.999995 |               0.999987 |               0.999994 |               1        |            0.000134329 |           0.000102038 |           0.000129074 |           0.000169587 |                   0.947708 |                  0.94184  |                  0.947897 |                  0.954057 |                      0.0941616 |                     0.0853001 |                     0.0938763 |                     0.102223  |                        0.17028  |                       0.159131 |                       0.171722 |                       0.181184 |
+| High     |     32 |   -0.00360044 |   -0.015524 | 0.0149339 |   0.0749034 |          0.499644 |         0.496579 |         0.499455 |         0.502737 |            0.693131 |           0.693117 |           0.693133 |           0.693144 |         5.00067 |        4.9956  |        4.99946 |        5.00718 |               3.4662  |              3.46268 |              3.46536 |              3.47072 |                0.999998 |               0.999988 |               0.999997 |               1.00001  |            0.000128739 |           8.66277e-05 |           0.000124503 |           0.000168374 |                   0.94713  |                  0.94182  |                  0.946986 |                  0.953619 |                      0.0950953 |                     0.0854295 |                     0.095724  |                     0.10148   |                        0.172751 |                       0.164226 |                       0.173563 |                       0.181766 |
+
+- Spearman correlations (market_state vs metrics), top 12 by |ρ|:
+
+| Feature                     | Metric                   |   N |   SpearmanR |   t_stat |     p_value |
+|:----------------------------|:-------------------------|----:|------------:|---------:|------------:|
+| market_vol_20               | time_ratio               | 126 |   -0.451    | -5.62688 | 1.15994e-07 |
+| market_state_corr_pc1_ratio | time_tau                 | 126 |   -0.400299 | -4.86426 | 3.41283e-06 |
+| market_state_corr_pc1_ratio | time_half_life           | 126 |   -0.400299 | -4.86426 | 3.41283e-06 |
+| market_state_corr_mean_abs  | time_tau                 | 126 |   -0.377541 | -4.54011 | 1.31226e-05 |
+| market_state_corr_mean_abs  | time_half_life           | 126 |   -0.377541 | -4.54011 | 1.31226e-05 |
+| market_state_corr_pc1_ratio | factor_gate_topk_mass_10 | 126 |   -0.269993 | -3.12248 | 0.00223227  |
+| market_state_tail_2sigma    | time_ratio               | 126 |   -0.225815 | -2.58124 | 0.0110083   |
+| market_state_corr_mean_abs  | gate_entropy             | 126 |   -0.219219 | -2.50198 | 0.0136525   |
+| market_vol_20               | time_tau                 | 126 |    0.210713 |  2.4003  | 0.0178683   |
+| market_vol_20               | time_half_life           | 126 |    0.210713 |  2.4003  | 0.0178683   |
+| market_state_corr_mean_abs  | factor_gate_topk_mass_10 | 126 |   -0.207469 | -2.36166 | 0.0197508   |
+| market_state_tail_2sigma    | gate_entropy             | 126 |    0.166038 |  1.87494 | 0.0631529   |
+
+- Full table: `regime_corr_spearman.csv`
+
+![Regime scatter (performance)](regime_scatter_perf.png)
+
+![Regime scatter (routing)](regime_scatter_router.png)
+
+#### 2.X.1 指标释义（读表指南）
+
+- `market_state_corr_pc1_ratio`：市场“单一主导因子/同涨同跌”强度（越高越像单一市场因子驱动）。
+- `market_state_tail_2sigma`：尾部/冲击强度（越高表示极端波动占比越高）。
+- `market_state_corr_mean_abs`：拥挤度/相关性水平（越高越拥挤，alpha 更难独立发挥）。
+- `market_vol_20`：基准 20 日波动（通常已标准化，解读为相对高/低波动）。
+- `RankIC/IC`：预测排序/线性相关质量；`IR` 为日度均值/标准差（样本少时不稳定）。
+- `time_ratio`：路由对 time-expert 的权重（高→更偏时序专家，低→更偏截面因子专家）。
+- `gate_entropy`：路由不确定性（接近 0.693，约等于两专家均匀；越低越“果断”）。
+- `time_tau/time_half_life`：时间记忆尺度（越大→更长记忆/更慢衰减）。
+- `factor_gate_entropy/topk_mass`：因子重加权是否集中（topk_mass 高/entropy 低→更集中）。
+
+
+
+#### 2.X.2 观测到的差异（test）
+
+- RankIC daily range: -0.5193~0.4545
+
+- IC daily range: -0.4435~0.4816
+
+- time_ratio daily range: 0.4963~0.5063
+
+- gate_entropy daily range: 0.6931~0.6931
+
+- time_tau daily range: 4.9840~5.0110
+
+- 2×2 regimes: RankIC_mean: best=Low-PC1 / High-Tail(0.1031), worst=High-PC1 / Low-Tail(0.0115), spread=0.0916
+
+- 2×2 routing: time_ratio_mean: best=High-PC1 / Low-Tail(0.5019), worst=High-PC1 / High-Tail(0.5007), spread=0.0012
+
+- `market_state_corr_pc1_ratio` terciles: RankIC_mean Δ(High-Low)=-0.0642, time_ratio_mean Δ(High-Low)=0.0001
+
+- `market_state_tail_2sigma` terciles: RankIC_mean Δ(High-Low)=0.0708, time_ratio_mean Δ(High-Low)=-0.0013
+
+- `market_state_corr_mean_abs` terciles: RankIC_mean Δ(High-Low)=-0.0812, time_ratio_mean Δ(High-Low)=0.0008
+
+- `market_vol_20` terciles: RankIC_mean Δ(High-Low)=-0.2967, time_ratio_mean Δ(High-Low)=0.0014
+
+- Routing ↔ quality coupling (Spearman, test): time_ratio↔rank_ic: ρ=-0.04 (n=126); gate_entropy↔rank_ic: ρ=0.05 (n=126); time_tau↔rank_ic: ρ=0.02 (n=126); factor_gate_entropy↔rank_ic: ρ=-0.12 (n=126)
+
+- Strongest state↔performance: `market_vol_20` vs `ic` ρ=-0.15 (n=126).
+
+- Strongest state↔routing: `market_vol_20` vs `time_ratio` ρ=-0.45 (n=126).
+
+
+- 解释建议：若“预测质量差异”显著但 `time_ratio/gate_entropy/time_tau` 基本不变，说明路由/时间尺度未随宏观状态自适应；反之若路由显著变化但 RankIC 不变，可能是“在动但没带来收益”。
+- 注意：test 天数通常较少，分桶后的 `IR` 与相关性更偏诊断用途；建议在更长窗口/多次 run 上复核。 
+
+
+## 3. Training Dynamics & Portfolio Backtest
+
+### 3.1 Training Dynamics (MSE vs. RankIC)
+
+训练阶段采用 **MSE 主 loss**（基于 rank-label），这里展示 train/mse 与 valid/rank_ic 随 epoch 的演化，并粗略量化二者的相关性：
+
+- Peak valid RankIC approx 0.0357 at epoch 1
+
+![Training dynamics (MSE vs RankIC)](train_curves_mse_rankic.png)
+
+### 3.2 Portfolio Backtest (2020-07-01~2020-12-31, csi300 universe)
+
+- 年化收益 (excess return with cost): -16.17% (如果为 nan 请检查 portfolio_analysis/port_analysis_1day.pkl)
+- 信息比 (Information Ratio): -1.14
+- 最大回撤: -11.50%
+- 成交换手率 (Turnover): 31.55%
+
+## 3.3 Qlib Official Graphs
+
+使用 Qlib 官方 report 模块生成的图表：
+
+### analysis_position.report_graph
+
+- [analysis_position.report_graph](qlib_analysis_position_report_graph.html)
+
+### analysis_position.risk_analysis_graph
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_1.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_2.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_3.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_4.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_5.html)
+
+### analysis_position.score_ic_graph
+
+- [analysis_position.score_ic_graph](qlib_analysis_position_score_ic_graph.html)
+
+### analysis_model.model_performance_graph
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_1.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_2.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_3.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_4.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_5.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_6.html)
+
+### analysis_position.cumulative_return_graph
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_1.html)
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_2.html)
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_3.html)
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_4.html)
+
+### analysis_position.rank_label_graph
+
+- [analysis_position.rank_label_graph](qlib_analysis_position_rank_label_graph_1.html)
+
+- [analysis_position.rank_label_graph](qlib_analysis_position_rank_label_graph_2.html)
+
+- [analysis_position.rank_label_graph](qlib_analysis_position_rank_label_graph_3.html)
+
+## 4. Spatio-Temporal Disentanglement Diagnostics
+
+### 4.1 Router Gate over Time (time vs. cross-sectional experts)
+
+- Gate time_ratio (time-expert weight) stats on test set: mean=0.501, std=0.002, p10=0.498, p90=0.504
+
+- Gate entropy stats on test set: mean=0.693, std=0.000, p10=0.693, p90=0.693
+
+- time_ratio 接近 1 表示更信任「时间 expert」，接近 0 表示更信任「截面 expert」。
+- 若 mean 在 (0.3, 0.7) 且 std > 0，说明路由器确实在不同阶段做非平凡决策；
+  若长期贴近 0 或 1，则 MoE 退化为单专家模型。
+
+![Gate time_ratio series](st_disentangle_gate_series_test.png)
+
+![Gate entropy series](st_disentangle_gate_entropy_series_test.png)
+
+### 4.1.1 Regime-Adaptive Time Scale (tau / half-life)
+
+- time_tau stats on test set: mean=4.999, std=0.005, p10=4.992, p90=5.007
+
+- time_half_life stats on test set: mean=3.465, std=0.004, p10=3.460, p90=3.471
+
+![time_tau series](st_disentangle_time_tau_series_test.png)
+
+![time_half_life series](st_disentangle_time_half_life_series_test.png)
+
+- `time_tau` 来自 regime-adaptive time embedding 的时间尺度参数（越大越偏长记忆，越小越偏短记忆）。
+- `time_half_life = time_tau * ln(2)`（单位为窗口时间步，若 1 步=1 天则可视作“天数半衰期”）。
+
+### 4.1.1.1 tau vs time_ratio (same-day overlay)
+
+![tau vs time_ratio](st_disentangle_tau_vs_time_ratio_test.png)
+
+### 4.1.2 Regime-Adaptive Factor Gate (concentration)
+
+- factor_gate_mean stats on test set: mean=1.000, std=0.000, p10=1.000, p90=1.000
+
+- factor_gate_std stats on test set: mean=0.000, std=0.000, p10=0.000, p90=0.000
+
+- factor_gate_entropy stats on test set: mean=0.948, std=0.004, p10=0.942, p90=0.954
+
+- factor_gate_topk_mass_5 stats on test set: mean=0.094, std=0.007, p10=0.085, p90=0.102
+
+- factor_gate_topk_mass_10 stats on test set: mean=0.171, std=0.009, p10=0.159, p90=0.181
+
+![factor_gate_mean series](st_disentangle_factor_gate_mean_series_test.png)
+
+![factor_gate_std series](st_disentangle_factor_gate_std_series_test.png)
+
+![factor_gate_entropy series](st_disentangle_factor_gate_entropy_series_test.png)
+
+![factor_gate_topk_mass_5 series](st_disentangle_factor_gate_topk_mass_5_series_test.png)
+
+![factor_gate_topk_mass_10 series](st_disentangle_factor_gate_topk_mass_10_series_test.png)
+
+- `factor_gate_mean` / `factor_gate_std`：regime-adaptive factor gate 权重的日均值/标准差，反映因子重加权的整体幅度和波动。
+- `factor_gate_entropy` 是把 per-sample 的 factor gate 归一化后得到的分布熵（再除以 log(N) 做归一化到 0~1）。
+  越低表示 gate 越“集中”，即 regime 对因子组合的重加权更强、更具结构性。
+- `factor_gate_topk_mass_5` / `factor_gate_topk_mass_10` 表示前 5 / 10 个因子（按 gate 权重排序）的累计质量占比；越高说明越稀疏/越集中。
+
+### 4.2 Temporal Attention (Heatmap + Locality)
+
+基于若干代表性交易日的 **time-attention heatmap**，统计对角/邻近对角的注意力质量：
+
+- 2020-07-01: diag_mass=0.125, local_band_mass=0.344
+- 2020-08-13: diag_mass=0.125, local_band_mass=0.344
+- 2020-09-25: diag_mass=0.125, local_band_mass=0.344
+- 2020-12-31: diag_mass=0.125, local_band_mass=0.344
+
+![Time attention (2020-07-01)](st_disentangle_attn_time_2020-07-01.png)
+
+![Time attention (2020-08-13)](st_disentangle_attn_time_2020-08-13.png)
+
+![Time attention (2020-09-25)](st_disentangle_attn_time_2020-09-25.png)
+
+![Time attention (2020-12-31)](st_disentangle_attn_time_2020-12-31.png)
+
+- diag_mass 衡量注意力在完全对齐的时间步 (i=j) 上的质量；
+- local_band_mass 衡量注意力在 |i-j| ≤ 1 的近邻时间步上的质量。
+- 越高说明模型更偏向「局部时序模式」（类似 AR / 局部卷积），
+  越低说明模型依赖更长程的时序依赖。
+
+### 4.3 Factor Attention (Heatmap + Concentration)
+
+基于同一批交易日的 **factor-attention heatmap**（默认取窗口最后一个时间步），统计注意力的集中度：
+
+- 2020-07-01: diag_mass=0.006, top5_mass=0.032, entropy=1.000
+- 2020-08-13: diag_mass=0.006, top5_mass=0.032, entropy=1.000
+- 2020-09-25: diag_mass=0.006, top5_mass=0.032, entropy=1.000
+- 2020-12-31: diag_mass=0.006, top5_mass=0.032, entropy=1.000
+
+#### 4.3.1 Factor Attention Top-K (ids)
+
+- 2020-07-01: top10 ids=[64, 122, 21, 15, 11, 121, 30, 156, 51, 127]
+- 2020-08-13: top10 ids=[128, 122, 127, 121, 54, 32, 29, 8, 116, 152]
+- 2020-09-25: top10 ids=[128, 54, 69, 110, 83, 50, 111, 143, 80, 48]
+- 2020-12-31: top10 ids=[153, 123, 41, 64, 11, 95, 156, 40, 148, 157]
+
+![Factor attention (2020-07-01)](st_disentangle_attn_factor_2020-07-01.png)
+
+![Factor attention (2020-08-13)](st_disentangle_attn_factor_2020-08-13.png)
+
+![Factor attention (2020-09-25)](st_disentangle_attn_factor_2020-09-25.png)
+
+![Factor attention (2020-12-31)](st_disentangle_attn_factor_2020-12-31.png)
+
+- diag_mass：因子对自身的注意力质量（越高说明更“自回归/自保留”）；
+- top5_mass：每个因子行向量中 Top-5 权重质量的均值（越高说明更稀疏、更“专家化”）；
+- entropy：归一化熵 (0~1)，越低越尖锐，越高越均匀。
+- 注意：因子维度没有天然顺序，因此不像时间维那样用“邻近对角带”解释；我们更关心“是否稀疏/是否可解释地集中在少数因子交互上”。
+
+### 4.4 Factor Pooling Attention (Heatmap + Top-K)
+
+来自 attention pooling 的 `factor_attention_weights`（模型输出 `factor_pool_weights`），按日对 batch 做均值后导出 heatmap 与 Top-K：
+
+#### 4.4.1 Factor Pooling Top-K (ids)
+
+- 2020-07-01: top10 ids=[57, 55, 14, 7, 129, 77, 32, 71, 47, 19]
+- 2020-08-13: top10 ids=[32, 77, 57, 131, 130, 45, 82, 81, 142, 157]
+- 2020-09-25: top10 ids=[137, 130, 45, 110, 131, 60, 51, 79, 83, 73]
+- 2020-12-31: top10 ids=[129, 157, 7, 11, 95, 88, 45, 32, 79, 110]
+
+![Factor pooling attention (2020-07-01)](st_disentangle_attn_pool_factor_2020-07-01.png)
+
+![Factor pooling attention (2020-08-13)](st_disentangle_attn_pool_factor_2020-08-13.png)
+
+![Factor pooling attention (2020-09-25)](st_disentangle_attn_pool_factor_2020-09-25.png)
+
+![Factor pooling attention (2020-12-31)](st_disentangle_attn_pool_factor_2020-12-31.png)
+
+## 5. Summary
+
+RST-MoE 在官方 Alpha158 / CSI300 框架下，兼顾了稳健的日频预测性能 （IC / RankIC / 信息比）和可解释的时空解耦结构（gate 曲线 + attention 局部性），同时通过 MSE 训练曲线与 RankIC 的联动，展示了从 rank-label → MSE 优化 → 截面预测 → 组合收益的一条清晰传导链。
+
+================================================================================
+[144320:MainThread](2026-06-07 13:27:47,264) INFO - qlib.timer - [log.py:127] - Time cost: 0.000s | waiting `async_log` Done

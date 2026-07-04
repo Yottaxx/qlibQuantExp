@@ -1,0 +1,943 @@
+{
+  "forensics": [
+    {
+      "dimension": "Data & Input Forensics — the exact input the network sees (tau_scale_05 backbone)",
+      "verified_facts": [
+        {
+          "claim": "The tensor reaching net.forward is x = [B, T=8, N=158], float32. forward unpacks B,T,N=x.shape and feeds the feature_tokenizer; collate builds it by torch.stack of per-sample torch.from_numpy(x_np).float() where each x_np is [T,F].",
+          "evidence": "module/quant_moe_model.py:311 (B,T,N=x.shape); module/model_adapter.py:1154,1170 (.float() stack); run_conf_resolved: num_alphas=158, context_len=8, value_embedding_type=feature_tokenizer"
+        },
+        {
+          "claim": "B is exactly ONE trading day's cross-section, forced to batch_size=300 in training. FixedDailyBatchSampler groups by datetime and yields one day per batch; days with >300 names are downsampled (no replacement), days with <300 are UPSAMPLED WITH REPLACEMENT to 300.",
+          "evidence": "module/dataloader/sampler.py:39,68-78 (rng.choice replace=False / replace=True); module/model_adapter.py:1279; trainer batch_size=300"
+        },
+        {
+          "claim": "Live training gradient = F.mse_loss(p,y) on finite-label rows (mse_normalize=False) + router z-loss(coef 0.01) + selection_reg(=0, feature_selection off). l_listmle and l_ic ARE computed but are MONITOR-ONLY (not added to total_loss because main_loss='mse').",
+          "evidence": "module/quant_moe_model.py:679-695 (loss_map['mse']=l_mse; total=w*l_main+l_aux+l_reg); module/utils/losses.py:81 (return F.mse_loss(p,y)); config main_loss=mse, loss_weights mse=1.0"
+        },
+        {
+          "claim": "Feature pipeline (DK_I, applied to feature group only): RobustZScoreNorm(clip_outlier=True) -> features in [-3,3] in median/MAD robust-z units; then Fillna(feature) fills residual NaN with 0 (default fill_value). Adapter applies a second redundant nan_to_num(bx,0.0).",
+          "evidence": "work_flow.py:93-99 (infer_processors); module/model_adapter.py:1701; clip/Fillna=standard Qlib semantics (see open_questions: qlib not importable to runtime-confirm)"
+        },
+        {
+          "claim": "TRAIN label (DK_L) = CSZScoreNorm(robust) per-day cross-sectional robust z-score; empirically mean~=0, std~=1.17 (robust MAD scaling, NOT exactly 1; clipped ~+/-3).",
+          "evidence": "work_flow.py:105-108; recorded train_curve train_label_std=1.16539 (mlruns/.../ad76fe4c.../artifacts/train_curve)"
+        },
+        {
+          "claim": "VALID/TEST label (DK_I) is the RAW 5-day-forward return, NOT z-scored (CSZScoreNorm is in learn_processors only). Empirically mean 0.00009, std 0.0523, min -0.372, max +0.465, p0.1%=-0.193, p99.9%=+0.262.",
+          "evidence": "label.pkl stats (mlruns/558746487197288915/ad76fe4c4fd746fcb25de3bbd4b7419f/artifacts/label.pkl, 183300x1); work_flow.py:105-108 (infer_processors do not touch label group)"
+        },
+        {
+          "claim": "DropExtremeLabel is NOT in the pipeline — the code comment claiming top/bottom 2.5% trim is STALE. learn_processors = [DropnaLabel, CSZScoreNorm(robust)] only. Raw valid labels remain fat-tailed/untrimmed (max +46.5%).",
+          "evidence": "work_flow.py:100-103 (comment) vs work_flow.py:105-108 (actual list); label.pkl max=0.46534"
+        },
+        {
+          "claim": "Label horizon vs feature window is disjoint: features span [T-7..T] (step_len=8, sample datetime=last step), label=Ref($close,-5)/Ref($close,-1)-1 uses close[T+1..T+5]. No within-sample look-ahead at window edges; label is a point-in-time Qlib expression.",
+          "evidence": "work_flow.py:80 (step_len=8), work_flow.py:110 (label expr); module/quant_moe_model.py:302 comment"
+        },
+        {
+          "claim": "Train/valid boundary has a ~3-month embargo (train ends 2020-03-31, valid starts 2020-07-01) which exceeds the 5-day label horizon -> no train->valid label-horizon leakage.",
+          "evidence": "work_flow.py:113-117 segments; run_conf_resolved segments"
+        },
+        {
+          "claim": "valid and test segments are IDENTICAL (2020-07-01..2022-12-31) and the checkpoint is selected on valid_rank_ic — so reported 'test' metrics are selection-biased (no true held-out test set).",
+          "evidence": "run_conf_resolved segments valid==test=('2020-07-01','2022-12-31'); scripts/baseline_g012_scale05.env.sh checkpoint_metric=valid_rank_ic,checkpoint_mode=max"
+        },
+        {
+          "claim": "csi300 universe is point-in-time DYNAMIC membership (instrument, start, end intervals), not a static current list: 934 unique instruments across 15598 membership intervals (SZ000001 re-enters 52 times). Survivorship-bias-free at the membership level; delisted/removed names included for their membership span.",
+          "evidence": "~/.qlib/qlib_data/cn_data/instruments/csi300.txt (15598 rows, 934 unique, grep SZ000001=52); rows like 'SZ000001  2005-04-08  2005-06-30'"
+        },
+        {
+          "claim": "market_state macro (shift=0, strict=True) is past-only/point-in-time: PCA fit on TRAIN ONLY (2007-09-28..2020-03-31, input_dim=474=158x3 stats), delta features are lag-shifted by construction. Pickle = 3710 days 102 cols, range 2007-09-28..2022-12-30; valid/test window (2020-07-01..2022-12-31) = 611 days with ZERO NaN rows, so strict shift=0 lookup cannot raise.",
+          "evidence": "data/market_state_csi300.pkl.pca.meta.json (fit_on=train, train_range 2007-09-28..2020-03-31); pickle load (shape 3710x102, valid/test NaN rows=0); scripts/precompute_market_state.py:843-851,856-865; trainer market_state_shift=0,strict=True"
+        },
+        {
+          "claim": "Score (prediction) std empirically ~=0.23, confirming MSE dispersion-anchoring std(p)* ~= IC*std(y). pred.pkl mean 0.076 (small residual common-mode), std 0.213, range [-1.40,1.02]; train_score_std=0.239, valid_score_std=0.230.",
+          "evidence": "pred.pkl stats + train_curve (mlruns/.../ad76fe4c.../artifacts)"
+        },
+        {
+          "claim": "In training, NaN-label rows are dropped at batch level (valid=isfinite(by); bx_t=bx_t[valid]) in addition to DK_L DropnaLabel; forward re-masks. So effective B = finite-label rows of the 300-row daily batch.",
+          "evidence": "module/model_adapter.py:1711-1719; module/quant_moe_model.py:634-639"
+        }
+      ],
+      "problems": [
+        {
+          "issue": "valid segment == test segment (identical 2020-07-01..2022-12-31) and checkpoint is selected by valid_rank_ic. The reported 'test' RankIC is therefore computed on the same data used for early-stopping/checkpoint selection — there is NO independent held-out test set.",
+          "severity": "high",
+          "why_it_matters": "Any production/promotion claim built on the 'test' RankIC (~0.0786) is optimistically biased by model selection. Multi-seed std (~0.003) does not correct selection bias. A true forward holdout (or walk-forward) is required before betting capital; this also weakens n=3 promotion checks that read 'test'."
+        },
+        {
+          "issue": "FixedDailyBatchSampler upsamples WITH REPLACEMENT to fill 300 on days with fewer tradeable names (sampler.py:72-75). The network then sees duplicated stocks within the daily cross-section, which over-weights those names in the per-day MSE and IC and distorts the cross-section on thin days (early history, suspension-heavy days).",
+          "severity": "med",
+          "why_it_matters": "MSE/IC are cross-sectional; duplicate rows bias the gradient and the batch IC monitor on affected days. Since the live lever is cross-stock placement, a distorted cross-section is a direct confound. The sampler_diag upsample_day_ratio should be checked; consider dedup (a frontier item already noted)."
+        },
+        {
+          "issue": "Stale DropExtremeLabel comment (work_flow.py:100-103) claims top/bottom 2.5% label trimming that does NOT exist in code. The only outlier handling on the TRAIN label is CSZScoreNorm(robust)'s ~+/-3 MAD clip; the VALID/TEST label is fully raw with fat tails (max +46.5%, p99.9% +26%).",
+          "severity": "med",
+          "why_it_matters": "Misleads anyone reasoning about limit-up/limit-down (涨跌停) handling and about the MASTER-alignment claim. Untrimmed valid labels with single-name +46% moves can dominate daily IC/top-bottom-spread on event days, inflating variance of the very metric used for checkpointing."
+        },
+        {
+          "issue": "Feature value range after RobustZScoreNorm(clip_outlier=True)+Fillna could NOT be runtime-verified because qlib is not importable on this host. The [-3,3] clip and Fillna->0 are asserted from config + standard Qlib semantics only.",
+          "severity": "low",
+          "why_it_matters": "If a non-standard qlib build changes the clip bound or fit window, the input distribution the tokenizer sees shifts. Also, features with high NaN rates get many Fillna->0 substitutions, giving sub-unit variance and residual scale heterogeneity across the 158 alphas (feature_tokenizer has per-feature scale, so partially absorbed, but not measured here)."
+        },
+        {
+          "issue": "Train label std~=1.17 while valid/test label is raw (std~=0.05): the MSE 'valid' monitor is computed on a ~23x different label scale than train, and pred.pkl carries a residual common-mode (mean 0.076) despite MSE's shift-sensitivity.",
+          "severity": "low",
+          "why_it_matters": "IC/RankIC are scale-invariant so ranking is unaffected, but any cross-segment comparison of raw MSE/loss numbers is meaningless, and the non-zero score mean indicates the common-mode penalty is not fully binding at the head — relevant if a future common-mode-free (CMF) readout is evaluated."
+        },
+        {
+          "issue": "market_state shift=0 is point-in-time ONLY because the underlying day-T Alpha158 features are backward-looking; the macro vector for date T is an aggregate of day-T cross-sectional features. The pca.meta sidecar records the PCA fit split but NOT the delta/zscore/market_ts flags actually used to build the live pickle.",
+          "severity": "low",
+          "why_it_matters": "The past-only property hinges on the day-T-features-are-causal invariant (true for Alpha158, holds here). But pickle provenance vs current data_conf is unverified — if the pickle were regenerated with --market_ts_past_only mis-set or a future-leaking custom column, shift=0 would leak. Construction code defaults are safe; the live artifact's exact flags should be confirmed from build logs."
+        }
+      ],
+      "open_questions": [
+        "Could not import qlib in any interpreter on this host (C:\\Python314 has pandas 3.0.3 but no qlib). Therefore the RobustZScoreNorm [-3,3] clip bound, the Fillna fill_value=0, and that check_transform_proc injects fit_start=2008-01-01/fit_end=2020-03-31 into RobustZScoreNorm (no explicit fit window in work_flow.py:93-98) are asserted from standard Qlib Alpha158 semantics, NOT runtime-verified. Need one live run or a cached feature tensor to empirically confirm the post-norm feature range and per-alpha residual scale/NaN-fill heterogeneity.",
+        "Quantify the upsample-with-replacement impact: what fraction of TRAIN days have <300 names (sampler last_epoch_stats upsample_day_ratio), and how much duplicate-row weighting distorts daily IC. Not measurable statically without running the sampler over the real index.",
+        "Provenance/staleness of data/market_state_csi300.pkl (mtime 2026-12-26): confirm it was regenerated against the current Alpha158 feature set and which precompute flags (delta_lags, zscore_windows, market_ts) produced the 102 columns; the .pca.meta.json only documents the PCA fit, not the full feature recipe.",
+        "Effect of the untrimmed +46% / -37% valid labels and identical valid==test on the reported RankIC magnitude — worth an ablation with explicit DropExtremeLabel (the comment's intended behavior) and a true forward holdout to size the selection bias."
+      ]
+    },
+    {
+      "dimension": "Architecture & dataflow forensics — RST-MoE \"tau_scale_05\" backbone (end-to-end tensor trace, capacity, and cross-sectional expressivity)",
+      "verified_facts": [
+        {
+          "claim": "End-to-end dataflow & shapes: x[B,T,N]=[300,8,158] -> FeatureTokenizer per-feature affine -> tokens h[B,T,N,D=64]; + regime time-emb broadcast over N; FiLM(gamma,beta)[B,N,D] applied post-LN inside each block; 2x RegimeAdaptiveMoEBlock (each = pre-LN, 2-way soft-MoE attention {time over T, factor over N}, then shared FFN); final_norm; temporal readout d1pma collapses T -> z_T[B,N,D]; factor_pooling over N -> h_pooled[B,D]; head Linear(64,1) -> stock_score[B]. Verified by instantiation: logits shape = (300,).",
+          "evidence": "quant_moe_model.py:311 (B,T,N), :340 tokenizer, :362 h+=time_emb.unsqueeze(2), moe_block.py:211 FiLM, :234/:243 expert rearrange, :328 ffn, quant_moe_model.py:561-576 d1pma, :569 factor_pooling, :611 head; instantiation logits=(300,)"
+        },
+        {
+          "claim": "tau scale=0.5 location & effect: tau_raw = tau_base + tau_fc2(h)*tau_mlp_out_scale; tau=softplus(tau_raw)+tau_min, clamp_max(tau_max). scale multiplies ONLY the per-regime delta, so 0.5 (vs default 0.01) makes the regime MLP's modulation of tau 50x stronger. At init tau_base=inv_softplus(5-0.5)=4.489 => verified tau_init=4.999, half_life=tau*ln2=3.465 days. tau range [0.5,50] => half-life range [0.35, 34.7] days.",
+          "evidence": "regime_adaptive_embedding.py:88-91, :65 tau_base; config default time_tau_mlp_out_scale=0.01 (model_configuration.py:37); override=0.5 (scripts/baseline_g012_scale05.env.sh); probe: tau_init=4.9989 half_life=3.4649"
+        },
+        {
+          "claim": "tau is a SOFT positional-emphasis knob, NOT a receptive-field limiter. tau only scales the additive learned position table pos[8,64] (init std 0.02) via normalized decay w=exp(-lag/tau)/mean(w), lag=0 at last step. It does NOT gate feature tokens or attention. The time expert is FULL bidirectional self-attention over T=8 (no causal mask; use_alibi=False) and can already see all 8 steps regardless of tau.",
+          "evidence": "regime_adaptive_embedding.py:94-100 (w*pos only); quant_moe_model.py:362 (time_emb added, not gating); parallel_attention.py:137-142 (plain MHA, no mask passed for time expert since bias_time=None when use_alibi=False, quant_moe_model.py:427-431)"
+        },
+        {
+          "claim": "MoE = exactly 2 experts (time/factor; use_stock_expert=False, stock_backbone=False). Router = Linear(2D=128 -> 32) GELU Linear(32 -> 2), softmax temp=1.0; router_use_layer_summary=True so router_in=128. Each expert is ONE MultiheadAttention op (4 heads, d_head=16, bias=False, no per-expert FFN); FFN is shared after fusion. Fusion: x = residual + (w_time*out_time + w_factor*out_factor); x += ffn(norm2(x)).",
+          "evidence": "moe_block.py:42-49 (n_experts=2, router), :51-52 experts, :69-75 shared ffn, :324-328 fusion; parallel_attention.py:29-35"
+        },
+        {
+          "claim": "Routing is strictly PER-DAY, never per-stock. router_input=[regime, layer_summary]; regime comes from macro (use_external_macro=True, dim=102 from data/market_state_csi300.pkl) which is identical for all stocks on a date, and layer_summary=proj([mean_B, std_B]) is a reduction over the stock axis (identical across B). Empirically, with day-shared macro the layer-0/1 gate time_ratio is identical across all 300 stocks (std ~6e-8). The 'MoE' is a per-day time-vs-factor macro switch; it has zero per-stock discriminative power.",
+          "evidence": "moe_block.py:118-130 (router_input, summary over dim=0); regime_encoder.py:181-188 (macro path); model_adapter.py:755 (d_macro_input=market_state.dim=102); probe: layer0/1 gate std=5.97e-08/1.19e-07, min==max==0.5041/0.5026"
+        },
+        {
+          "claim": "CROSS-SECTIONAL BOTTLENECK (the cap on expressivity): every stock is scored in near-total isolation. Time expert batches over (b n), factor expert over (b t) — the stock axis B is ALWAYS a pure batch dim, never an attention/sequence axis; pooling and head are per-stock. The ONLY x-driven cross-stock path is the layer_summary mean/std token feeding the router. Perturbation probe: a +5sigma perturbation of stock0's features moved stock0's score by 2.2e-1 but moved every OTHER stock's score by at most 2.0e-6 (mean 6.2e-7), ratio ~1e-5. The model cannot see the cross-section it is ranked on.",
+          "evidence": "moe_block.py:234 (b n) t d, :243 (b t) n d (B never a token axis); probe: |dscore| self=2.20e-1, others max=2.03e-6 mean=6.23e-7, ratio=9.2e-6; determinism floor=0"
+        },
+        {
+          "claim": "pooling_alpha=0.7 is the 'dead factor pool': AdaptivePooling pools over the FACTOR axis N (158), per stock, at the readout. pooled = 0.7*attn_pool + 0.3*mean_pool, where attn_pool is a single learnable-query MultiheadAttention over N (+LayerNorm) and mean_pool=mean over N. Input is z_T[B,N,D] (d1pma) or h_last[B,N,D]; output h_pooled[B,D]. It does NOT pool over time (temporal_readout handles T) and NOT over stocks.",
+          "evidence": "attention_pooling.py:116-131 (alpha blend), :52-97 (query over N, LayerNorm), :126 mean over dim=1; quant_moe_model.py:569/:595 input [B,N,D]"
+        },
+        {
+          "claim": "LOSS BACKPROP: despite loss_weights={listmle:1,ic:1,mse:1}, only MSE backprops. total_loss = w['mse']*l_mse + l_aux(z-loss*0.01) + l_reg(=0, feature-selection off). l_listmle and l_ic are computed but ONLY written to the metrics dict (monitor-only); their weights of 1.0 are DEAD CONFIG never read. main_loss='mse', mse_normalize=False => plain F.mse_loss(p,y) on the CSZScoreNorm(robust) label.",
+          "evidence": "quant_moe_model.py:679-695 (loss_map[main_loss], only +l_aux+l_reg), :644-651 l_listmle/l_ic computed, :701-707 placed in metrics only; losses.py:81 F.mse_loss; config main_loss='mse' (work_flow.py:167)"
+        },
+        {
+          "claim": "Capacity accounting (exact, from instantiation): 203,920 trainable params (~0.20M), all trainable. Breakdown: 2 MoE layers 123,972 (60.8%); regime_encoder 21,568; feature_tokenizer 20,224; factor_pooling 16,576; factor_id_emb 10,112; factor_gate 8,448; time_embedding 2,754; head 65; d1pma readout 73 (tr_q 64 + tr_b_t 8 + tr_gate 1). d_model=64, n_heads=4, n_layers=2, d_ff=128, context_len=8, num_alphas=158.",
+          "evidence": "probe TOTAL params: 203920; per-group printout; work_flow.py:130-138 architecture block"
+        },
+        {
+          "claim": "d1pma temporal readout (baseline anchor) is ~88% last-step: z_T=(1-g)*h[:,-1] + g*attn over T, with tr_gate init=-2.0 => g=sigmoid(-2)=0.119 (verified tr_gate_g=0.1192). attn weights a=softmax over T of (mean_N(h)@tr_q/sqrt(D)+b_t). Scalar sigmoid gate => freezes near init (digest: settled-dead). factor_id_emb feeds ONLY the FiLM gate (feature_tokenizer_add_factor_id=False), since FeatureTokenizer already encodes factor identity via per-feature affine.",
+          "evidence": "quant_moe_model.py:567-568 (g, z_T), :185-187 tr_gate init=_gi; probe tr_gate_g=0.1192; quant_moe_model.py:341-342 add_factor_id branch (False) vs factor_gate use :381"
+        }
+      ],
+      "problems": [
+        {
+          "issue": "Cross-sectional blindness is structural: the backbone never lets stocks attend to each other (B is always a batch dim in both experts; pooling+head are per-stock; routing is per-day-constant). A +5sigma perturbation of one stock leaks <1e-5 into other stocks' scores. The model produces a ranking over a cross-section it literally cannot observe pairwise.",
+          "severity": "high",
+          "why_it_matters": "This is the single architectural cap on cross-sectional expressivity and exactly matches the established 'portfolio-blind' theory (MSE has diagonal Hessian => zero gradient on breadth/turnover). It pinpoints why every readout/pool/tau lever was null: those operate per-stock and cannot add cross-sectional structure. The only structurally-available lever is an explicit cross-stock operator (CrossStockBlock / stock_backbone / stock_expert), which is precisely the open frontier. Any new lever that stays per-stock is predicted dead a priori."
+        },
+        {
+          "issue": "loss_weights {listmle:1.0, ic:1.0} are dead config — never read. Only w['mse']*l_mse + z-loss backprop. The config strongly implies a 3-way listmle+ic+mse objective, but listmle/ic are monitor-only.",
+          "severity": "med",
+          "why_it_matters": "A researcher reading work_flow.py would reasonably believe ranking (ListMLE) and IC are in the training objective and design experiments around them. They are not. This is a live trap for hypothesis design and explains why RankIC-shaped interventions underperform: the gradient is pure pointwise MSE. If a ranking signal is actually wanted, it must be added to total_loss (HARD CONSTRAINT permits aux regularizers), not just given a weight."
+        },
+        {
+          "issue": "The 'MoE' router is per-day, not per-token: with day-shared macro, gate weights are byte-identical across all 300 stocks (std 6e-8). The router's only degree of freedom is which day/regime, time-vs-factor mixing — never which stock.",
+          "severity": "med",
+          "why_it_matters": "The MoE provides regime-conditional temporal/cross-factor mixing but contributes ZERO per-stock specialization. Diagnostics like router_layer_*_time_ratio are per-day scalars; 'expert collapse' analyses on the stock axis are meaningless. Capacity spent on the router/experts buys day-level adaptivity, not stock-level discrimination — relevant when accounting for why added capacity (gen-gap capacity-invariant) doesn't move RankIC."
+        },
+        {
+          "issue": "tau (and its scale=0.5) only reweights an additive position embedding; it does not constrain the time expert's receptive field, which is full bidirectional self-attention over all T=8 steps.",
+          "severity": "low",
+          "why_it_matters": "Explains the durable 'tau mechanism real but benefit null' finding mechanistically: changing tau reshapes the positional-emphasis envelope, but the attention can already integrate all 8 steps, so the portfolio/ranking impact is structurally bounded to near-zero. Future tau work should not expect receptive-field gains; if a true horizon limiter is wanted it must gate the attention/tokens, not the pos table."
+        },
+        {
+          "issue": "Model is ~0.20M params on ~870K daily-stock training samples of weak-SNR 5-day returns (RankIC~0.08 => R²~0.6%). 60.8% of params sit in the 2 MoE blocks that only buy per-day adaptivity.",
+          "severity": "low",
+          "why_it_matters": "Confirms the gen-gap wall is signal-limited, not parameter-limited: the model already has capacity >= extractable signal (finetune hurts valid = overfitting). Adding width/depth is predicted null (consistent with 'gen-gap capacity-invariant'). ROI is in changing the structure (cross-sectional coupling), not the size."
+        }
+      ],
+      "open_questions": [
+        "Does the layer_summary market token (the only x-driven cross-stock path) carry any usable signal, or is it numerically inert? A leave-one-out ablation (router_use_layer_summary on/off, n>=3 seeds) would quantify whether even this weak coupling matters before investing in heavier cross-stock operators.",
+        "When use_readout_stock_attn / stock_backbone are enabled, the VALIDITY INVARIANT 'batch = exactly one trading day' must hold at train AND eval. Worth confirming FixedDailyBatchSampler + model_adapter._daily_chunk_max_bs never split or mix days, since a violated invariant would silently corrupt any cross-stock lever (the live frontier).",
+        "The regime path is fed by a 102-dim precomputed macro pickle (market_state_csi300.pkl), making internal batch-stat regime code dead in this config. Is the 102-dim macro strictly past-only / point-in-time (no look-ahead in the PCA/d1 columns)? A leakage check on the pickle construction is warranted given regime modulates both routing and FiLM.",
+        "Given the loss is pure pointwise MSE on a CS-z label, would adding the cross-stock operator AS an aux ListMLE/IR regularizer (allowed by HARD CONSTRAINT 1) outperform adding it as a representational block under pure-MSE gradient? The architecture forensics says the structural lever exists, but the objective that trains it may be the binding constraint."
+      ]
+    },
+    {
+      "dimension": "Loss & Objective Forensics — re-verification of row-83 against module/quant_moe_model.py and module/utils/losses.py",
+      "verified_facts": [
+        {
+          "claim": "The live backprop objective is MSE-only as the label-coupled term: l_main = loss_map[main_loss] with main_loss='mse', and total_loss = w.get('mse',1.0)*l_mse + l_aux + l_reg. l_listmle and l_ic are computed but NEVER summed into total_loss.",
+          "evidence": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\module\\quant_moe_model.py:679-695 (loss_map={'listmle','mse','ic'}, l_main=loss_map[main_loss]; total_loss=w.get(main_loss,1.0)*l_main + l_aux + l_reg)"
+        },
+        {
+          "claim": "l_listmle and l_ic are MONITOR-ONLY: they appear only in the metrics dict via detached .item(), not in the autograd graph of total_loss.",
+          "evidence": "module/quant_moe_model.py:704-706 (loss_listmle/loss_mse/loss_ic all float(...).item())"
+        },
+        {
+          "claim": "loss_weights listmle:1.0 and ic:1.0 are DEAD config — the multi-task appearance is illusory. The backward pass only ever consults w.get(main_loss); since main_loss='mse', only the 'mse' weight is read. listmle/ic weights are never indexed for the backward loss.",
+          "evidence": "module/quant_moe_model.py:692 (w.get(main_loss,1.0)) + work_flow.py:167-174 (main_loss='mse', loss_weights listmle/ic=1.0)"
+        },
+        {
+          "claim": "l_rank and l_huber do not backprop: l_rank/l_huber are only constructed when their weight != 0, but rank=0.0 and huber=0.0, so both stay None and the conditional add-ons are skipped.",
+          "evidence": "module/quant_moe_model.py:659-665, 696-699 + work_flow.py:172-173 (rank:0.0, huber:0.0)"
+        },
+        {
+          "claim": "cs_mse_loss with normalize=False is literally plain F.mse_loss(p,y) — no centering, no std-scaling of p or y; p and y are the raw masked prediction/label.",
+          "evidence": "module/utils/losses.py:76-81 (if normalize: ... else falls through to return F.mse_loss(p,y)) + work_flow.py:175 (mse_normalize: False)"
+        },
+        {
+          "claim": "l_reg contributes exactly 0: reg_loss is initialized to 0.0 and only overwritten inside `if config.use_feature_selection`, which is False, so l_reg = 0.0 * 1e-5 = 0.",
+          "evidence": "module/quant_moe_model.py:412,416,674 + work_flow.py:162 (use_feature_selection: False)"
+        },
+        {
+          "claim": "l_aux is the MoE router z-loss (load-balancing on router logits, coef 0.01), not a label-coupled supervision term and not a function of the prediction head output stock_score; it shapes routing, not p.",
+          "evidence": "module/quant_moe_model.py:453 (z_losses.append(diag['z_loss'])), 669-673 (l_aux = stack(z_losses).mean()*router_z_loss_coef) + work_flow.py:158 (router_z_loss_coef 0.01)"
+        },
+        {
+          "claim": "The prediction p = stock_score = head(h_pooled); the only term in total_loss whose gradient reaches this head is l_mse. Hence the supervisory gradient on the per-name score is purely the MSE residual (2/N)(p_i - y_i).",
+          "evidence": "module/quant_moe_model.py:611 (stock_score=self.head(h_pooled)), 639 (p=stock_score[valid]), 652 (l_mse=cs_mse_loss(p,y))"
+        },
+        {
+          "claim": "The label is CSZScoreNorm(method='robust') on the 5-day forward return; DropExtremeLabel (top/bottom 2.5% trim) is mentioned in the comment but is NOT in learn_processors — only DropnaLabel + CSZScoreNorm are applied. So the label fed to MSE retains fat tails.",
+          "evidence": "work_flow.py:102-110 (comment lists DropExtremeLabel; learn_processors list = DropnaLabel, CSZScoreNorm robust only; label = Ref($close,-5)/Ref($close,-1)-1)"
+        },
+        {
+          "claim": "MSE Hessian w.r.t. the prediction vector is diagonal: L=(1/N)Σ(p_i-y_i)^2 ⇒ ∂L/∂p_i=(2/N)(p_i-y_i), ∂²L/∂p_i∂p_j=(2/N)δ_ij. With normalize=False there is NO cross-name coupling (no p.mean()/p.std() term). The loss is additively separable across names.",
+          "evidence": "module/utils/losses.py:81 (F.mse_loss = mean of (p-y)^2, no cross-term); normalize branch at :76-80 is NOT taken"
+        },
+        {
+          "claim": "Dispersion-anchoring / IC-maximization derivation is correct in form. Writing p=μ_p+s·z (z unit-variance, corr(z,y)=ρ=IC, y zero-mean std σ_y): L=μ_p^2+(s-ρσ_y)^2+σ_y^2(1-ρ^2). Optimum μ_p*=0 (common-mode killed), s*=std(p)*=IC·σ_y, L*=σ_y^2(1-IC^2). So optimally-scaled MSE is monotone-decreasing in IC^2 ⇒ MSE maximizes |Pearson IC|, and the optimal output std is IC·σ_y (≈0.23 only if σ_y≈1 and IC≈0.23), NOT 1.",
+          "evidence": "Analytic, consistent with losses.py:81 + mse_normalize=False (work_flow.py:175); shift term ∂L/∂c=2(mean(p)-mean(y))≈2·mean(p) since CS label mean≈0"
+        }
+      ],
+      "problems": [
+        {
+          "issue": "Row-83 wording 'the LIVE training gradient is plain F.mse_loss(p,y)' is literally imprecise: total_loss = l_mse + l_aux + l_reg. l_reg=0 here, but l_aux (router z-loss, coef 0.01) is non-zero and DOES backprop — into the MoE router/shared params, not the prediction head.",
+          "severity": "low",
+          "why_it_matters": "Substance is correct (the only label-coupled supervision on p is MSE), but anyone auditing should know there is a second active gradient (z-loss load-balancing) on shared weights. It does not contaminate the IC-maximization argument for the head, but it is not 'pure MSE' end-to-end."
+        },
+        {
+          "issue": "The std(p)*≈0.23 sanity number is contingent and partly circular. The derivation gives std(p)*=IC·σ_y exactly; '0.23' only holds if (a) the relevant IC≈0.23 and (b) σ_y≈1. 0.23 is far above the reported validation rank_ic 0.0786, so it would have to be the in-sample TRAINING Pearson IC — which is not verified from code. Neither the measured training IC nor std(p) is checked here.",
+          "severity": "med",
+          "why_it_matters": "The functional law std(p)*=IC·σ_y and L*=σ_y^2(1-IC^2) are robustly correct, but the headline numeric should be tagged as a prediction requiring an empirical check (log std(p) and train Pearson IC), not an established fact. Confusing rank_ic with the Pearson IC that MSE actually optimizes is an easy error."
+        },
+        {
+          "issue": "The 'label std≈1' assumption is only approximately true. CSZScoreNorm(method='robust') normalizes by MAD (×1.4826), pinning the MAD-scale to 1, NOT the standard deviation. With DropExtremeLabel absent (confirmed: not in learn_processors), the 5-day-return label keeps fat tails, so true σ_y > 1 (likely ~1.2-1.6).",
+          "severity": "med",
+          "why_it_matters": "σ_y>1 raises both std(p)*=IC·σ_y and the loss floor L*=σ_y^2(1-IC^2) above the '0.23' / '1-IC^2' figures. More importantly, untrimmed tails mean MSE's squared-residual weighting is dominated by a few extreme-label names per day — exactly the names where the robust-z transform did NOT clip — which biases the per-name gradient toward tail-fitting and is itself a portfolio-relevant distortion."
+        },
+        {
+          "issue": "The portfolio-blindness claim is airtight for turnover/cost but overstated for breadth. Turnover and transaction cost are TEMPORAL functionals (p_t vs p_{t-1}); with one batch = one trading day (FixedDailyBatchSampler), no loss term ever sees two days jointly ⇒ literally zero cross-day gradient. Breadth (within-day concentration) is a functional of the joint daily score vector that separable MSE shapes INDIRECTLY through per-name ranks — it is not literally 'exactly zero gradient', it is 'no explicit breadth term; indifferent among equal-MSE configurations'.",
+          "severity": "med",
+          "why_it_matters": "The lever map should distinguish: turnover/cost = strictly orthogonal new gradient directions (MSE provably contributes nothing); breadth = a direction MSE touches weakly via IC, so a breadth/IR auxiliary partially overlaps the existing IC gradient and must be designed to add the dispersion-shaping component MSE lacks, not re-add IC."
+        },
+        {
+          "issue": "Shift-sensitivity (∂L/∂c=2·mean(p)) and the diagonal Hessian can read as contradictory but are consistent and should be stated precisely: the common-mode penalty is a FIRST-ORDER effect arising because Σ∂L/∂p_i=2(mean(p)-mean(y)) with mean(y)≈0 (centered label), i.e. the sum of independent per-name residuals — NOT a Hessian off-diagonal. There is no second-order cross-name coupling.",
+          "severity": "low",
+          "why_it_matters": "Prevents the false inference that MSE's common-mode penalty implies it already does some cross-name/portfolio shaping. It does not: every coupling that looks portfolio-like reduces to independent per-name pulls toward a pre-centered label."
+        },
+        {
+          "issue": "cs_ic_loss as an auxiliary is the canonical DOUBLE-COUNT and confirms the 'ic monitor-only loses nothing' design. Optimally-scaled MSE already equals σ_y^2(1-IC^2), so −IC (losses.py:7-26) pushes the same Pearson direction; adding it on top of MSE mostly removes scale/shift sensitivity that MSE handles for free.",
+          "severity": "low",
+          "why_it_matters": "Validates keeping ic at weight 1 in config harmless-but-inert, and warns against proposing a Pearson-IC auxiliary as a 'new' lever — it is redundant with the existing MSE gradient."
+        }
+      ],
+      "open_questions": [
+        "Empirical check needed to close the std(p)*=IC·σ_y prediction: log the per-day std(p) of the trained head and the in-sample training Pearson IC. If train Pearson IC≈0.23 and std(p)≈0.23·σ_y, row-83's number is confirmed; if std(p) is much smaller, the head is under-dispersed (a real, separate failure mode MSE should have prevented).",
+        "Measure σ_y (true std of the robust-z label per cross-section). If σ_y≫1 due to untrimmed tails, re-evaluate whether enabling DropExtremeLabel (currently only in the comment, not in learn_processors) changes the MSE gradient's tail-domination — this is a cheap data-pipeline probe, not an architecture change.",
+        "Orthogonal objective-space levers that carry NON-zero gradient on portfolio quantities and do NOT double-count MSE's IC gradient: (1) turnover/transaction-cost auxiliary — strictly orthogonal because MSE is per-day-separable, but requires a cross-day state of yesterday's per-name scores (incompatible with the current single-day FixedDailyBatchSampler; needs an EMA/cache of prev-day p). (2) batch-IR / Sharpe auxiliary (plan C3) — functional of the joint daily vector, shapes dispersion/breadth; must be built to add the part IC does not (concentration), or it collapses into the IC gradient. (3) top/bottom-decile or tail-asymmetric auxiliary — targets the names actually traded (topk=30, n_drop=5); MSE weights by squared residual, not portfolio membership, so a membership-weighted term is orthogonal. Note ranknet_topbottom_loss already exists (losses.py:29-49) and is merely switched off (rank=0.0) — it is the cheapest available probe of this lever.",
+        "What is partial (not pure) double-count: listmle (Spearman-flavored ordinal) vs MSE (Pearson/linear) overlap on monotonicity but listmle adds mid-rank ordinal information MSE underweights; cs_ic_loss is the pure double-count. Decide whether the rank-aware frontier is worth re-opening given the readout-layer rank levers were already KILLED — but those kills were ARCHITECTURAL (readout placement), not LOSS-term ablations, so a loss-term rank/tail auxiliary on top of frozen MSE is not covered by the existing kill-log and remains untested.",
+        "Architectural complement to the loss analysis: because the loss is provably name-separable, the only way to express portfolio structure is to make p_i depend on p_j inside the network (CrossStockBlock C1, common-mode-free repeller). The objective stays MSE; the coupling must come from the architecture. This is consistent with row-83's conclusion and is the already-filed but unrun frontier (analysis/stock_expert/PORTFOLIO_ALIGNED_PLAN.md)."
+      ]
+    },
+    {
+      "dimension": "Validation & Monitoring Forensics (tau_scale_05 RST-MoE eval/selection pipeline)",
+      "verified_facts": [
+        {
+          "claim": "valid and test segments are byte-identical date ranges 2020-07-01..2022-12-31; there is no third disjoint holdout",
+          "evidence": "work_flow.py:114-116 (train 2008-01-01..2020-03-31, valid and test both ('2020-07-01','2022-12-31'))"
+        },
+        {
+          "claim": "The training checkpoint restores the argmax-over-epochs of valid_rank_ic (checkpoint_metric=valid_rank_ic, mode=max)",
+          "evidence": "module/model_adapter.py:2267-2272 (ckpt_value improvement -> checkpoint_state=deepcopy) and 2320-2326 (restore best checkpoint)"
+        },
+        {
+          "claim": "checkpoint_metric=valid_rank_ic resolves to the valid daily rank-IC key rank_ic_daily/rank_ic",
+          "evidence": "module/model_adapter.py:1467-1469 (metric in {valid_rank_ic,...} -> source=valid_metrics, keys=[rank_ic_daily, rank_ic])"
+        },
+        {
+          "claim": "valid rank_ic is the mean of per-day cross-sectional Spearman rank IC, computed on DK_I (un-normalized raw 5-day-return) labels of the valid segment",
+          "evidence": "module/model_adapter.py:1936-1958 (daily_buffer -> rics.append(corrcoef(rank(p),rank(y))); avg['rank_ic']=ric_daily) and valid prepared with DK_I only because strict_valid_data_key=True (model_adapter.py:1974-1983; work_flow.py:226)"
+        },
+        {
+          "claim": "The reported test Rank IC is computed the same way (mean daily Spearman) on the same dates, so it equals the very quantity used for epoch selection",
+          "evidence": "predict() uses DK_I test segment (model_adapter.py:2365); SigAnaRecord.calc_ic on DK_R raw label (qlib record_temp.py:175 DK_R, 324-330 Rank IC=ric.mean()); test dates == valid dates (work_flow.py:115-116)"
+        },
+        {
+          "claim": "Only MSE actually backpropagates; loss_weights {listmle:1.0, ic:1.0} are computed monitor-only and never added to total_loss",
+          "evidence": "module/quant_moe_model.py:688-697 (total_loss = w.get(main_loss,1.0)*l_main + l_aux + l_reg; l_listmle/l_ic only appear in monitor metrics dict 704-706)"
+        },
+        {
+          "claim": "Rank IC ordering across seeds does NOT match information-ratio ordering, so selecting on Rank IC does not select the best portfolio",
+          "evidence": "analysis/tau_0p5_vs_baseline_n6_20260606.csv: baseline seed44 rank_ic 0.0735/IR 1.10 vs seed47 rank_ic 0.0767/IR 1.97; scale0.5 seed42 rank_ic 0.0811/IR 2.25 vs seed46 0.0798/IR 1.50"
+        },
+        {
+          "claim": "Post-peak decay of valid_rank_ic averages ~0.0035-0.0037, i.e. the cherry-picked peak epoch sits ~4-5% of the headline 0.078 above the final epoch",
+          "evidence": "analysis/tau_0p5_vs_baseline_n6_20260606.csv post_peak_decay column (baseline mean ~0.0035, scale0.5 mean ~0.0037); diagnostic def work_flow.py:1096-1099 (post_peak_decay = best - final valid_rank_ic)"
+        },
+        {
+          "claim": "Turnover IS computed and saved (digest 'turnover missing' is incorrect)",
+          "evidence": "work_flow.py:1284-1285 (portfolio turnover from report_normal_1day.pkl) and 1750-1751 / run_summary 1772"
+        },
+        {
+          "claim": "Regime-conditional rank IC IS computed (digest 'regime-conditional IC missing' is incorrect)",
+          "evidence": "work_flow.py:1340-1375 (per-bucket rank_ic means, pc1_tail_2x2 regime spread)"
+        },
+        {
+          "claim": "Only a top30-minus-bottom30 spread proxy exists; no full decile/quantile monotonicity or calibration because SigAnaRecord runs with ana_long_short=False",
+          "evidence": "work_flow.py:1073-1080 (top/bottom 30 spread); qlib record_temp.py:305 default ana_long_short=False; work_flow.py:2776 SigAnaRecord(rec).generate() uses defaults"
+        },
+        {
+          "claim": "loss_gap_last compares train MSE (DK_L CSZScoreNorm-robust label, std~1) against valid MSE (DK_I raw 5-day return, std~0.03) — different target scales",
+          "evidence": "train prepared DK_L (model_adapter.py:1063); valid prepared DK_I (1983); diagnostic loss_gap_last = valid_main - train_main (work_flow.py:1089)"
+        },
+        {
+          "claim": "Backtest transaction costs and price-limit threshold are commented out, so the with_cost IR/returns use Qlib defaults and trades are allowed even at limit-up/down",
+          "evidence": "work_flow.py:251-255 (limit_threshold, open_cost, close_cost, min_cost all commented)"
+        },
+        {
+          "claim": "There is a ~3-month gap between train end (2020-03-31) and valid/test start (2020-07-01), exceeding the 5-day label horizon, so no train->valid label leakage",
+          "evidence": "work_flow.py:114-116; label = Ref($close,-5)/Ref($close,-1)-1 (work_flow.py:110)"
+        }
+      ],
+      "problems": [
+        {
+          "issue": "NO TRUE OUT-OF-SAMPLE TEST. valid and test are the identical 2020-07..2022-12 window, and the checkpoint restores argmax-epoch of valid_rank_ic, which (same dates, same raw-return label, same mean-daily-Spearman formula) is byte-equivalent to the reported test Rank IC. The 'test' number is thus computed on the exact dates and epoch chosen to maximize it. Honest holdout WITHOUT touching the MSE loss: split segments into disjoint valid (e.g. 2020-07..2021-12, used for checkpoint + lever decisions) and a write-once test (2022-01..2022-12, scored once), with a >=5-day embargo at the boundary; or run the existing quant-walk-forward roll. Both are pure data_conf/segments edits (QIB_DATA_OVERRIDES_JSON) and change nothing about training.",
+          "severity": "high",
+          "why_it_matters": "Every reported headline (best rank_ic 0.0786, IR 1.1-2.25) and every n=6 paired lever promotion (tau0.5, d1pma g0.12) is an in-sample estimate over a single 2.5-year window. Epoch cherry-pick alone adds ~0.0035 (post_peak_decay); seed cherry-pick (best-of-6 vs mean) adds ~1 std ~0.003; and the program-level multiple-comparison over dozens of levers inflates further. Forward (truly unseen) Rank IC is unmeasured and the kill-discipline ('n>=3 paired effects count') is being applied on the reporting set itself, so promotions can be selection artifacts."
+        },
+        {
+          "issue": "PRIMARY TARGET MISALIGNMENT. The model trains plain MSE (level/calibration-sensitive, ~Pearson IC), selects checkpoints on Rank IC (ordinal, monotone-invariant), and is traded by a top-30-of-~300 long-only TopkDropout strategy (top-decile + turnover + tail). These are three different objectives. Rank IC weights the middle of the cross-section equally with the tails and is empirically NOT rank-consistent with IR across seeds.",
+          "severity": "high",
+          "why_it_matters": "Selecting on full-cross-section Rank IC neither matches the loss being minimized nor the portfolio that earns the money. A checkpoint with higher Rank IC can have lower IR (verified in the n=6 CSV). A selection target aligned to the strategy (top-k precision / NDCG@30 / rank-weighted IC, or directly IR) would change which epoch/seed/lever wins. This likely explains the durable finding 'RankIC != IR at promotion.'"
+        },
+        {
+          "issue": "loss_gap_last and valid_mse/valid_main are uninterpretable. Train MSE is on the CSZScoreNorm-robust label (std~1); valid MSE is on the raw 5-day return (std~0.03) because valid is forced to DK_I. The 'generalization loss gap' therefore reflects a ~30x label-scale mismatch, not over/under-fitting.",
+          "severity": "med",
+          "why_it_matters": "A reader (or an automated bottleneck note) using loss_gap_last to judge over-fitting or the gen-gap wall is reading noise dominated by label scaling. Any conclusion drawn about train/valid loss divergence from this diagnostic is invalid; only valid_rank_ic (rank-invariant) is trustworthy across the DK_L/DK_I boundary."
+        },
+        {
+          "issue": "loss_weights {listmle:1.0, ic:1.0} are silently dead — only MSE enters total_loss. The config and the printed config table present a multi-task loss that does not exist.",
+          "severity": "med",
+          "why_it_matters": "Anyone reasoning about the objective (including the row-83 theory and any future lever that assumes ListMLE/IC are co-training) is misled by the config. The monitor-only l_ic/l_listmle curves can drift independently of what is optimized. This should be made explicit (e.g. assert unused weights are 0 or actually wire them) to avoid phantom multi-objective reasoning."
+        },
+        {
+          "issue": "Missing metrics that a tradeable top-k signal needs: Grinold breadth / BR_eff (only in offline _f1_breadth.py, not in the eval), decile monotonicity + calibration curve (ana_long_short=False), top-k precision / NDCG@30 aligned to topk=30, IC horizon/decay (single 5-day label only), and test-period score_std-over-time stability (score_std is logged per-epoch on train/valid batches only, never as a test daily series).",
+          "severity": "med",
+          "why_it_matters": "The theory says the remaining edge is portfolio-blindness (breadth/turnover/tail). Yet the standard matrix cannot see breadth, decile monotonicity, or top-k precision — exactly the quantities a cross-stock placement lever (C1/C3 in PORTFOLIO_ALIGNED_PLAN) is meant to move. Without these, a real portfolio improvement could be invisible to (or misjudged by) the current monitoring, and a Rank-IC-flat / IR-positive change would be wrongly killed."
+        },
+        {
+          "issue": "HAC (Newey-West) t-stat and PortAnaRecord IR are computed on the selection window and presented as evidence of skill/significance. ric_hac_t treats the IC series as a random sample, but that sample is the one the model+epoch were tuned to.",
+          "severity": "low",
+          "why_it_matters": "Significance and IR are overstated because the window is in-sample to selection. These numbers are fine as descriptive in-period statistics but should not be cited as OOS skill or used to gate production claims (quant-stress/quant-paper-trade) until measured on a held-out window."
+        },
+        {
+          "issue": "Backtest costs (open/close/min) and limit_threshold are commented out; with_cost results use Qlib defaults and allow trading at price limits.",
+          "severity": "low",
+          "why_it_matters": "The 'with_cost' IR/return are not stress-tested and ignore limit-up/down non-tradability, a mild upward bias on the already in-sample backtest. Costs should be set explicitly and run through the cost-stress grid before any IR is reported as tradeable."
+        }
+      ],
+      "open_questions": [
+        "Has any lever promotion (tau0.5, d1pma g0.12) ever been re-scored on a window disjoint from 2020-07..2022-12? If not, the entire promotion ledger is in-sample and the n=6 kill-discipline is being run on the reporting set.",
+        "What is the walk-forward forward-decay slope of Rank IC (and IR)? That is the only way to size the true OOS gap implied by the valid==test collapse; the quant-walk-forward skill exists but its output is not in the standard matrix.",
+        "If a disjoint valid/test split is introduced, is a >=5-trading-day embargo enforced at the boundary so the 5-day forward label cannot straddle the split (boundary label leakage)?",
+        "Should the checkpoint/selection metric be changed to a strategy-aligned target (top-k precision / NDCG@30 / IR) given Rank IC is provably not IR-consistent? This is a selection change, not a loss change, so it respects the MSE hard-constraint.",
+        "Are the monitor-only listmle:1/ic:1 weights intended to train (a wiring bug) or intended as pure monitors (a config-clarity bug)? The two fixes are opposite."
+      ]
+    },
+    {
+      "dimension": "Training-Dynamics & Gen-Gap Forensics (tau_scale_05 RST-MoE)",
+      "verified_facts": [
+        {
+          "claim": "The only term that backprops is MSE (+ a small router z-loss aux). listmle and ic carry weight 1.0 in loss_weights but are MONITOR-ONLY: the aggregation adds only w.get(main_loss)*l_main + l_aux + l_reg, and main_loss='mse'. Confirms the 'live gradient = MSE' theory.",
+          "evidence": "module/quant_moe_model.py:688-695 (l_main=loss_map['mse']; total_loss = w.get('mse')*l_main + l_aux + l_reg); loss_weights at work_flow.py:168-174; main_loss='mse' work_flow.py:167"
+        },
+        {
+          "claim": "cs_mse_loss with normalize=False is literally F.mse_loss(p,y) on the CSZScoreNorm(robust) train label (no extra de-mean), so the gradient is plain MSE on a z-scored target.",
+          "evidence": "module/utils/losses.py:76-81"
+        },
+        {
+          "claim": "valid and test segments are byte-identical (2020-07-01..2022-12-31); there is NO held-out test distinct from the checkpoint-selection window, and the train period (2008-01..2020-03) is entirely pre-COVID.",
+          "evidence": "work_flow.py:114-116"
+        },
+        {
+          "claim": "Model is NOT under-trained and NOT in runaway overfit: valid rank_ic climbs 0.040(e1) to 0.0816(e16) then PLATEAUS at 0.079-0.081 through e25 (final 0.0795). It never crashes. Best checkpoint epochs across seeds are 16/18/13 of 25 — the 25-epoch budget is well-matched.",
+          "evidence": "seed42 per-epoch extraction (Valid 01..25 rank_ic); g012_d1pma_seed42.log:616 'epoch=16', seed43 log 'epoch=18', seed44 log 'epoch=13'"
+        },
+        {
+          "claim": "There IS a ~2.1x train/valid generalization gap that widens late: train rank_ic keeps rising 0.156(e16)->0.168(e25) while valid stays flat at ~0.080. grad_norm is U-shaped 14.1(e1)->4.34(e10)->7.36(e25), rising while train-IC rises and valid is flat = overfit onset ~e15.",
+          "evidence": "seed42 log Train/Valid 16-25 rank_ic and grad_norm values"
+        },
+        {
+          "claim": "Train MSE barely moves (1.391 e1 -> 1.341 e25, 3.6%) because it is near its theoretical floor: train score_std rises 0.045->0.200, matching the MSE-optimum std(p)*=IC*std(y)=0.17*1.165=0.198. The model has converged to MSE-optimal dispersion on train.",
+          "evidence": "seed42 log loss_main and score_std per epoch; theory std(p)*=IC*std(y)"
+        },
+        {
+          "claim": "Train label_std~1.165 (CSZScoreNorm via DK_L) but valid label_std=0.0458 (RAW return, not z-scored). Valid MSE (~0.05) is therefore on a different scale and is dominated by prediction over-dispersion (valid score_std~0.21 vs label 0.046); valid-MSE is useless as an overfit monitor. Checkpoint correctly uses valid_rank_ic (rank = scale-free), and the TopkDropout portfolio is also rank-based, so the scale mismatch is operationally harmless.",
+          "evidence": "seed42 log label_std (Train ~1.165 / Valid 0.045755) and score_std; checkpoint_metric=valid_rank_ic work_flow.py / env"
+        },
+        {
+          "claim": "Optimizer = AdamW lr=5e-5, weight_decay=0.01 (default, all params unless excluded), cosine-decay-to-zero schedule with 5% warmup. There is NO weight-EMA, NO SWA, NO Polyak averaging in the training loop.",
+          "evidence": "module/model_adapter.py:2037-2059 (AdamW, _adamw_wd=0.01), 2082-2086 (get_cosine_schedule_with_warmup)"
+        },
+        {
+          "claim": "AMP fp16 is stable, not a dynamics problem: grad_nonfinite/skipped steps <=5 per ~2960-step epoch, rate <=0.0017.",
+          "evidence": "seed42 log grad_nonfinite_rate max 0.001678, grad_skipped_steps max 5"
+        },
+        {
+          "claim": "FixedDailyBatchSampler stats: coverage_ratio~0.661 (34% of daily names dropped per epoch via without-replacement downsampling, re-rolled each epoch by seed+epoch) AND duplicate_rate~0.366 (heavy WITH-replacement upsampling padding thin days to 300). So thin days inject duplicate-name gradient noise; big days get random 66% cross-sectional subsampling (a built-in augmentation).",
+          "evidence": "module/dataloader/sampler.py:68-78; seed42 log sampler_coverage_ratio 0.6609, sampler_duplicate_rate 0.3658"
+        },
+        {
+          "claim": "Seed noise: anchor n=3 across-seed rank_ic std=0.0033 (old control 0.0044); paired Delta-RankIC std (g012 vs control)=0.00503 at n=3.",
+          "evidence": "analysis/.../BASELINE_ANCHOR.md:51; master_g012_n3.log:35 (+0.00099 +/- 0.00503)"
+        }
+      ],
+      "problems": [
+        {
+          "issue": "valid == test (work_flow.py:114-116) and the checkpoint is selected on valid_rank_ic over that SAME window, so (a) the headline ~0.078 has best-epoch selection bias of ~+0.002 (seed42 best e16=0.0816 vs last e25=0.0795), and (b) there is NO in-distribution holdout, so the 2.1x train/valid gap CANNOT be attributed to overfitting vs 2020-2022 regime shift. The entire 'gen-gap wall' diagnosis is currently unfalsifiable.",
+          "severity": "high",
+          "why_it_matters": "Overfitting and distribution-shift imply OPPOSITE fixes (more regularization/early-stop vs train-period reweighting/domain adaptation). Every gen-gap lever tried so far (capacity, sampler, finetune) implicitly assumed overfit; if the real cause is regime shift those tests were aimed at the wrong target. One same-regime holdout run resolves the ambiguity for ~0.1 GPU-day."
+        },
+        {
+          "issue": "The observed valid plateau oscillation is only ~0.002 wide (rank_ic 0.079-0.0816 over e15-25), so weight-EMA/SWA/Polyak can recover AT MOST ~+0.002. The n=6 minimum detectable effect is ~0.004-0.006 (paired sigma_d=0.005). EMA/SWA gains are therefore below the detection floor.",
+          "severity": "med",
+          "why_it_matters": "Spending GPU on EMA/SWA as a RankIC play is likely wasted: even a perfect result lands inside seed noise and cannot be promoted under the n>=3 kill-discipline. Cheap to try, but should be framed as variance-reduction insurance, not a RankIC lever."
+        },
+        {
+          "issue": "Detectability math: with paired diff std ~0.005, detecting +0.002 needs ~49 paired seeds (best case ~21 if common-seed variance cancels). At the project's n=3-6 budget the MDE is ~+0.004 to +0.006.",
+          "severity": "med",
+          "why_it_matters": "Sets the honest promotion bar: ANY proposed gen-gap lever must target >=+0.005 rank_ic to be detectable at feasible cost. Levers with sub-0.005 expected effect (EMA, dropout tuning, sampler-dedup) are noise-floor-limited regardless of mechanism validity."
+        },
+        {
+          "issue": "Sampler upsamples thin days to 300 WITH replacement (duplicate_rate~0.366), distorting the cross-sectional MSE gradient (duplicated names over-weighted, cross-sectional mean perturbed) on those days. Most thin days are in the older 2008-2014 sub-period, far from the 2020-2022 valid regime.",
+          "severity": "low",
+          "why_it_matters": "A real, untested, MSE-preserving cleanup (mask padded duplicates from the loss / use natural day size), but because the affected days are the regime-distant tail, expected valid-rank_ic impact is small. Worth a cheap test only after the regime-shift question is settled."
+        },
+        {
+          "issue": "Cosine-LR-to-zero anneals the optimizer to ~0 LR by the final epoch, so weights SETTLE rather than oscillate at the tail.",
+          "severity": "low",
+          "why_it_matters": "Classic SWA needs a high constant/cyclic LR to generate diverse weights to average; under cosine-to-zero, tail-window SWA ~= the final weights, further capping SWA upside. If EMA/SWA are tried, the LR schedule must be changed too, which itself perturbs the result."
+        }
+      ],
+      "open_questions": [
+        "DECISIVE UNTESTED DIAGNOSTIC (run this before any gen-gap lever): hold out random days from a same-regime train sub-window (e.g. 2017-2019) and compare held-out-train rank_ic vs the 2020-2022 valid rank_ic. If they are comparable (~0.08) -> the gap is a SIGNAL/REGIME CEILING, not overfit, and EMA/dropout/sampler levers will not help (kill the whole gen-gap track). If held-out-train >> valid -> the gap is DISTRIBUTION SHIFT and train-period reweighting becomes the live lever. ~0.1 GPU-day, QIB_DATA_OVERRIDES_JSON segment override, no code change.",
+        "RANKED MSE-preserving gen-gap levers by expected impact: (1) train-period sample reweighting toward recent/valid-like regime — the ONLY lever targeting the likely-dominant cause and the only one that could exceed the +0.005 noise floor, but high uncertainty pending the holdout diagnostic; (2) weight-EMA/Polyak — reliable but ~+0.002, below n=6 detection floor (variance insurance, not a RankIC win); (3) dropout/weight_decay sweep — cheap, targets the 2.1x gap if overfit-driven, small expected gain on an already-tiny wd=0.01 model; (4) SWA — ~EMA but needs an LR-schedule change; (5) sampler-dedup (mask the 0.366 duplicate draws) — concrete distortion but on regime-distant old days, low valid impact; (6) feature augmentation — riskiest; the sampler's 34% per-epoch subsampling already provides cross-sectional augmentation, so adding more is likely neutral/harmful.",
+        "Should the checkpoint metric stop peeking at the reported window? Since valid==test, current best-epoch selection on valid_rank_ic is a (mild) leak inflating the headline ~+0.002. A clean fix is a proper held-out checkpoint window; worth doing so future lever comparisons are measured against an honest, non-leaky baseline.",
+        "Does the rising-grad_norm/rising-train-IC/flat-valid signature past e15 mean the 25-epoch (and 40-epoch default) budgets slightly overtrain the backbone? The checkpoint saves it, but a shorter schedule or LR floor might reach the same valid plateau with less compute — low priority, pure efficiency, not a RankIC lever."
+      ]
+    },
+    {
+      "dimension": "Prior-experiment meta-analysis (institutional memory / don't-repeat-history guard) for the tau_scale_05 RST-MoE backbone",
+      "verified_facts": [
+        {
+          "claim": "LIVE training gradient is plain cross-sectional MSE on a CSZScoreNorm(robust) label; l_ic and l_listmle are computed but MONITOR-ONLY (not in backprop). Confirms ledger row 83's correction of rows 81-82.",
+          "evidence": "work_flow.py:167 main_loss='mse', :175 mse_normalize=False, :168-174 loss_weights{listmle:1,mse:1,ic:1,rank:0,huber:0}, :107 CSZScoreNorm robust label; quant_moe_model.py:688-695 total_loss = w[main_loss]*l_main + l_aux + l_reg, l_main=loss_map['mse']=l_mse only; l_ic/l_listmle appear only in monitor metrics :704-706; losses.py:76-82 cs_mse_loss with normalize=False does NOT de-mean. (Aux that DOES backprop = router z-loss l_aux = z*0.01, quant_moe_model.py:669-670; l_reg=0 since use_feature_selection=False, work_flow.py:162.)"
+        },
+        {
+          "claim": "KILLED LEVER #1 — tau-unclamp as a portfolio/alpha lever. Mechanism real (tau_range_util 50-357x) but IR edge NULL at n=6.",
+          "evidence": "ledger rows 27-31 (n=1 corroborate-strong), 53-55 (n=3 promote scale=0.5 conditional, paired ΔIR +0.479 t=6.90), 60-62 KILL at n=6: paired ΔIR collapsed to +0.148 t=0.92 NS, wins 4/6, 3 fresh seeds net -0.183; baseline seed44 was low-outlier regression-to-mean. Row 65: tau track CLOSED as alpha lever. Durable finding: 'mechanism-real != portfolio-benefit'."
+        },
+        {
+          "claim": "KILLED LEVER #2 — factor-pool reweighting/sharpening is a DEAD RankIC lever at n=6x2 (settled-P2-fires).",
+          "evidence": "ledger rows 67-71. KEY-SVD: collapse is operator-state (cold q_proj ||q||~0.01, logit-std~0.02) not input-forced (key_s1_over_common 2.17/2.90 >> 0.05 world-B threshold). PROBE-CEILING: ALL operators parity-or-worse vs LN-mean pool — static -0.0009/0.0000, conditional ArmA'(=R1/R3 class) -0.0007/-0.0031, PMA-k4 -0.0024/-0.0009, all 0/6 beat +0.003 gate. World C: equal-weight LN-mean pool ~IC-optimal; 158 factors equally-weak & redundant. Row 71: do NOT re-dispatch pool-forensics R1/R2/R3."
+        },
+        {
+          "claim": "KILLED LEVER #3 — time/temporal readout closed across 5-6 regimes (settled-CLOSED-KILLED, zero residuals).",
+          "evidence": "ledger rows 72-78. Step-A frozen n=6: no design beats last-step (d3cid best -0.0006, 1/6). Step-B finetune n=3: continue-finetune HURTS valid every epoch. From-scratch x6 (row 76): all 6 portfolio-worse, ΔRankIC~0. Init A/B x3 (row 77): uniform-init basin IS the trap, one-hot-last is the attractor. Gate-sweep + g0.12 fresh-seed n=3 (row 78): paired ΔRankIC +0.00099±0.00503 sign-flips = KILL; scalar sigmoid gate frozen at init (0.119->0.124)."
+        },
+        {
+          "claim": "KILLED LEVER #4 — full_daily sampler underperforms sampled_daily despite fixing sampler mechanics.",
+          "evidence": "ledger rows 26-31 (Track-4). full_daily seed42: coverage_gap 0, dup_rate 0 (mechanics fixed) BUT RankIC 0.0646 vs 0.0732, IR 1.271 vs 1.441, MaxDD -0.098 vs -0.071, and gen-gap WORSE 0.133 vs 0.116. The one direct sampler intervention made every metric worse."
+        },
+        {
+          "claim": "KILLED LEVER #5 — continue-finetune of readout/top-block HURTS valid every epoch (best=step0) = the gen-gap wall.",
+          "evidence": "ledger rows 74, 76; row 76 retired the 'finetune overfits-not-explores' caveat by showing from-scratch x6 is ALSO null."
+        },
+        {
+          "claim": "KILLED LEVER #6 — scalar sigmoid gates init at a fixed value freeze at init (~no gradient); never expect training to choose.",
+          "evidence": "ledger rows 77-78 (g0.12/0.5/0.88 all stay at init across n=3), row 80 (owner correction: zero-start expert = init-artifact null). Engineering rule logged."
+        },
+        {
+          "claim": "KILLED FRAMING #7 — router_oracle_gap is hindsight selection bias, NOT recoverable headroom; do not target it.",
+          "evidence": "ledger row 44: default soft-mixture beats per-day hindsight best-of-2 on 34-49% of 611 days (impossible for a true ceiling); supersedes optimistic reading in row 20."
+        },
+        {
+          "claim": "KILLED LEVER #8 — forcing time-only OR factor-only expert both HURT at every tau-scale; factor solo RankIC~0. Keep both for decorrelation, do not prune.",
+          "evidence": "ledger row 45 (n=9 scales): router_time_advantage -0.015..-0.040, router_factor_advantage -0.062..-0.098, factor solo RankIC -0.020..+0.019. Row 4: B2 antisymmetric expert init rejected pre-registration (would INCREASE expert correlation)."
+        },
+        {
+          "claim": "OPEN LEVER A — CMF+IR-cost ladder R0..R5 is FILED but NOT RUN; it KEEPS MSE as main loss (augment-only) — satisfies HARD CONSTRAINT 1.",
+          "evidence": "ledger rows 82-83; PORTFOLIO_ALIGNED_PLAN.md:109 'Augment-only (w[\"mse\"]=1.0 fixed, λ_ir ramp 0->~0.1)', :110 former C4 (l_ic + dispersion floor) REMOVED because it fights MSE's std(p)*~0.23 optimum. Novel load-bearing lever = C3 IR/Sharpe+turnover aux, the ONLY positive gradient on BR_eff/turnover/TC. First action = /quant-leakage-audit on R5 (:235)."
+        },
+        {
+          "claim": "OPEN/TESTED-NEGATIVE LEVER B — the 3rd cross-stock 'stock expert' (h-20260610-002) was IMPLEMENTED and RUN at n=3 ('h2_stockexp'); result is RankIC-flat-to-down + portfolio WORSE — it is one of the two 'wounds' that motivated the plan, not an untested idea.",
+          "evidence": "experiments_ledger.jsonl 2026-06-12 implement row (VRAM 8.47GB measured); ledger row 81 forensics: h2_stockexp RankIC 0.0778 (vs anchor 0.0784, fails its own +0.003 kill line), IC_mean wound 0.0669->0.0613 (72% of ICIR loss), with-cost IR collapse 1.75->1.03 / MDD 2.4x. PORTFOLIO_ALIGNED_PLAN.md:43-46 treats stockexp + warm-q as the two cross-stock wounds."
+        },
+        {
+          "claim": "OPEN LEVERS C/D/E — DropExtremeLabel (h-20260610-001, leakage-audit PASS, NOT run), multi-horizon aux heads (h-20260610-003, DEFERRED/unimplemented), EMA-of-weights rampup (untested, rated low-EV).",
+          "evidence": "experiments_ledger.jsonl h-20260610-001 (leakage verdict 'pass' 2026-06-12) / -003 (DEFERRED); ledger row 66 EMA-rampup 'only untested... low EV'. experiments.md:145-178 cards."
+        },
+        {
+          "claim": "STRUCTURAL FLAG — valid and test segment ranges are IDENTICAL (2020-07-01..2022-12-31), and checkpoint_metric=valid_rank_ic/max selects on that same window.",
+          "evidence": "work_flow.py:115-116 valid==test=('2020-07-01','2022-12-31'); checkpoint on valid_rank_ic. Every reported test number is in-sample checkpoint-selected; relative cross-arm/seed ranking is fair but absolute 0.0786 is an optimistic ceiling, and gen-gap (train~0.20 vs valid~0.08) is measured against a non-held-out window."
+        }
+      ],
+      "problems": [
+        {
+          "issue": "'Gen-gap is the wall, redirect to sampler/EMA' is PARTLY ASSUMED, and the only direct sampler intervention CONTRADICTS it. Gen-gap (~0.12) is shown invariant to capacity (cap00->cap06), to tau (357x adaptation, row 32), and to finetune; but the one sampler fix actually tried (full_daily, rows 26-31) made gen-gap WORSE (0.133 vs 0.116) and every portfolio metric worse. So 'sampler-dedup/EMA will close gen-gap' is an untested hope contradicted by the single sampler datapoint, and row 66 itself rates EMA-rampup low-EV ('resisted everything').",
+          "severity": "high",
+          "why_it_matters": "The redirect target after the readout closure (rows 74, 169) is the gen-gap/sampler track, but the accumulated evidence is that gen-gap is an irreducible property of this split, not a lever. Spending GPU on sampler-dedup/EMA risks repeating the full_daily negative. The honest reading: gen-gap may not be a movable wall at all — it is the symptom of a 2020-2022 split, not a fixable defect."
+        },
+        {
+          "issue": "The CMF+IR-cost plan stacks its genuinely-novel lever (C3 IR/turnover aux) ON TOP of the readout CrossStockBlock layer that was killed across 6 regimes, and BACK-LOADS C3 behind 3 operator rungs (R1-R3). R1 is explicitly predicted to reproduce the failure; R2/R3 are parameter-free operator changes on a layer with a strong dead-prior (rows 71, 74, 77, 78).",
+          "severity": "high",
+          "why_it_matters": "The one component aligned with the established, code-verified gap (MSE portfolio-blindness, row 83) is C3 — and nothing in the entire history has ever put a portfolio gradient into the objective. Sequencing puts it last, behind ~18 seed-runs of operator rungs on a dead layer. Highest-EV move is to test the IR/turnover aux EARLY and decoupled (even on the bare anchor backbone with readout OFF) to isolate whether a portfolio gradient alone lifts IR_wc, before committing to the at-risk cross-stock operator."
+        },
+        {
+          "issue": "Soft-pivot risk: the 3-expert stock attention (h-20260610-002) FAILED its own pre-registered kill line (RankIC 0.0778 < anchor 0.0784, vs +0.003 bar) and damaged the portfolio vector, but was never logged as KILLED — instead the project pivoted to the CMF+IR-cost plan to rehabilitate the same cross-stock thesis under a new banner (IR not RankIC).",
+          "severity": "med",
+          "why_it_matters": "Keeping a lever that failed its own criterion alive under a re-framed metric is exactly the goalpost-moving the kill-discipline (rows 61-62, 78) was built to prevent. The pivot is defensible IF the new bar (positive IR_wc lift, paired-t p<0.1) is genuinely pre-registered and the readout-OFF control (R0/R1) is run — which the plan does specify (PLAN §6) — but it must be enforced, not assumed."
+        },
+        {
+          "issue": "The deployment-relevant discriminator (IR_wc on the single 2020-2022 split) is precisely the metric that produced the n=6 tau-0.5 reversal (rows 61-62: n=3 IR edge t=6.90 -> n=6 t=0.92 NS). The CMF+IR-cost plan's headline kill/promote gate is again single-split IR_wc with paired-t p<0.1.",
+          "severity": "med",
+          "why_it_matters": "An IR edge that clears p<0.1 at n=6 on one split is NOT robust (tau-0.5 cleared a far stronger n=3 bar and died). Any survivor MUST go through /quant-walk-forward + /quant-stress (the plan requires this, §5/§6) before any production claim; and because valid==test, the single-split IR is itself optimistically checkpoint-selected. Treat a positive R4/R5 as 'candidate', never 'promoted'."
+        },
+        {
+          "issue": "RankIC has been FLAT against every architecture lever ever tried (factor-pool, time-readout, 3-expert, warm-q; all ΔRankIC within ±0.003). The established theory (row 83) predicts this: MSE trains IC, and architecture-reweighting cannot add IC the factors don't carry. So any new lever justified by 'raise RankIC' (e.g. the DropExtremeLabel card h-20260610-001, or a re-run 3-expert) is fighting the same wall.",
+          "severity": "med",
+          "why_it_matters": "Down-weights the open RankIC-targeting cards relative to the portfolio-aware objective lever. The single best-supported direction is C3-style portfolio-aware auxiliary (lift IR/MDD, the deployment metric MSE is blind to), NOT another architecture change chasing flat RankIC. Label de-noising (DropExtremeLabel) is the one input-side card that could in principle move IC, so it is the best of the RankIC-targeting cards — but expectations should be calibrated to the flat-RankIC prior."
+        }
+      ],
+      "open_questions": [
+        "Does a portfolio-aware auxiliary loss (batch IR/Sharpe + turnover, MSE kept) lift IR_wc/MDD on the BARE anchor backbone (readout OFF)? This isolates the single established gap (MSE portfolio-blindness, row 83) from the at-risk cross-stock operator and has NEVER been tested — it is the highest-EV, most theory-aligned experiment, and is currently back-loaded as R4 inside the operator ladder.",
+        "Is gen-gap actually movable, or is it an irreducible property of the 2020-2022 valid==test split? Every lever (capacity, tau, finetune, full_daily sampler) left it ~0.12 or worse. Before spending on sampler-dedup/EMA, a /quant-walk-forward across rolling windows would reveal whether the gap is a fixable training defect or a regime artifact.",
+        "Does the valid==test identity (work_flow.py:115-116) inflate the celebrated 0.0786 ceiling and mask true OOS gen-gap? Checkpoint selection on valid_rank_ic is selection on the test window; no result in the ledger has been validated on a genuinely held-out window.",
+        "Is the cross-stock READOUT placement (post-pool CrossStockBlock) genuinely distinct from the killed factor-pool/3-expert/warm-q attempts, or is the CMF+IR-cost C1/C2 operator just the dead readout lever re-skinned? The novel content is C3 (the objective change); C1/C2 inherit a 6-regime dead-prior and should be ablated against a readout-OFF + C3-only arm.",
+        "The MaxDD/variance-reduction survivor from tau (ΔMaxDD +0.010 t=2.09 at n=6, row 61) and tau-as-risk-lever remain UNDETERMINED (row 65). Is there a pre-registered drawdown criterion across tau scales {0.05,0.1,0.25} worth one budgeted pass, or is it dominated by the C3 IR/turnover aux which targets the same risk channel more directly?",
+        "Has the 3-expert (h-20260610-002) been formally retired? It failed its +0.003 RankIC kill line at n=3 and worsened the portfolio vector, but no KILL decision row exists in the ledger (last row is 83); downstream proposers could mistake it for untested."
+      ]
+    }
+  ],
+  "allLevers": [
+    {
+      "title": "Rank-normal regression target (CSRankNorm) in place of CSZScoreNorm(robust) — match the trained marginal to the selection metric and the DGP's rank-only signal",
+      "mechanism": "Change ONLY the train label transform in work_flow.py:105-108 learn_processors: replace CSZScoreNorm(method='robust') with a per-day cross-sectional rank-to-normal-score map (Qlib CSRankNorm, or a 3-line custom Processor in the existing module/utils/processors.py pattern that does y -> Phi^-1(rank_pct)). Main loss stays F.mse_loss(p, y) (losses.py:81), p unchanged. WHY: row-83 proves MSE maximizes Pearson IC = corr(p, y), so the SHAPE of y's marginal is what the gradient optimizes. The current robust-z target keeps true return SPACING inside the +/-3 MAD band, so per-name gradient ~ (p_i - y_i) is dominated by the largest-magnitude middle/near-tail returns — which for weak-SNR 5-day returns are mostly noise (forensic problem: untrimmed +46%/-37% valid tails, robust-z only clips at +/-3). A rank-normal target equalizes the gradient contribution by ORDER, making MSE optimize a Spearman-flavored objective (van der Waerden scores) — exactly the checkpoint metric (valid_rank_ic) and the rank-based TopkDropout portfolio. The listmle_loss docstring (losses.py:88) literally assumes 'label has already been a monotone rank transform', evidence this was the intended target.",
+      "target_metric": "RankIC up (>= +0.005); ICIR up via lower daily-IC tail-event variance",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Swapping CSZScoreNorm(robust)->CSRankNorm raises mean valid RankIC by >= +0.005 paired across n=6 fresh seeds AND reduces the std of the per-day IC series (tail days no longer dominate). KILL if paired delta-RankIC is within +/-0.003 or sign-flips at n=6 (means the +/-3 robust clip already neutralizes the tails, so the marginal shape is irrelevant).",
+      "est_cost": "~0.4 GPU-day: one-line processor swap + n=6 x 25-epoch anchor runs (reuse baseline_g012_scale05 env).",
+      "why_not_already_killed": "All KILLED rank/IC levers were AUXILIARY loss terms (listmle/ic monitor-only, ranknet rank=0) or ARCHITECTURAL readout reweighting — none ever changed the TARGET of the live MSE. This is orthogonal: same MSE, different y. It is also distinct from the open DropExtremeLabel card (h-20260610-001), which DROPS 2.5%/side of data; CSRankNorm is a full-data monotone transform that keeps every name and changes the gradient weighting, not the sample set.",
+      "lens": "scientist"
+    },
+    {
+      "title": "Inject the cross-sectional coordinate as deterministic INPUT features (per-day CS-rank/CS-z channels) — give the per-stock model the relative position it is graded on, without any cross-stock coupling",
+      "mechanism": "Add a feature-side processor that appends, per day, the cross-sectional rank-percentile (and/or CS-z) of a curated subset of the 158 Alpha factors as NEW input channels (computed on day-T data only -> point-in-time safe). The backbone, pooling and head stay byte-identical and per-stock; B remains a pure batch dim. WHY: the architecture forensic proves a +5sigma perturbation of one stock leaks <1e-5 into other stocks' scores — the model literally cannot observe the cross-section it is ranked on. But the features are time-series-normalized (RobustZScoreNorm fit on the train period, work_flow.py:95-97), i.e. each stock is scaled by its OWN history, never by today's peer distribution. So the relative coordinate that determines cross-sectional rank is absent from the inputs. A deterministic CS-rank channel hands the model 'this momentum is in today's top decile' directly, recovering the information that a cross-stock attention block would have to synthesize — but as a fixed precomputed input, so MSE's diagonal Hessian and the single-day-batch invariant are untouched.",
+      "target_metric": "RankIC up (>= +0.005); IC up",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Adding CS-rank channels for the top-K most-used Alpha factors lifts valid RankIC by >= +0.005 paired at n>=3 (confirm n=6). KILL if flat within +/-0.003 — that would prove the train-period time-series normalization already puts every stock on a common scale dense enough to encode relative order, and the cross-sectional coordinate adds nothing.",
+      "est_cost": "~0.6 GPU-day: a Qlib feature Processor (CSRankNorm on feature group restricted to a subset) + tokenizer num_alphas bump (auto via _init_net) + n=3-6 runs.",
+      "why_not_already_killed": "The KILLED cross-stock lever (h2_stockexp / CrossStockBlock, cross_stock_block.py:36) and warm-q were INTERNAL representational blocks that pass messages between stocks inside the graph and damaged IC_mean/IR. This adds ZERO inter-stock message passing — it is a deterministic, leakage-audited INPUT feature; the model stays exactly as per-stock as the killed-pool baseline. It is also distinct from factor-pool reweighting (which reweights existing tokens) because it adds genuinely new cross-sectional information not present anywhere in the input tensor.",
+      "lens": "scientist"
+    },
+    {
+      "title": "Beta-neutralize the regression TARGET (predict idiosyncratic alpha, not market-loaded return) — stop spending MSE gradient on the unpredictable forward market move",
+      "mechanism": "Train-only custom Processor: for each day, estimate trailing beta_i (e.g. 60-day OLS of stock return on the SH000300 index), regress the forward-return label cross-sectionally on beta_i, and replace the label with the residual (then rank/z-score). Eval (DK_I) labels stay raw. Main loss stays MSE on this residual target. WHY: the 5-day cross-sectional return decomposes as r_i = alpha_i + beta_i * R_mkt[T+1..T+5] + e_i. CSZScoreNorm already removes the LEVEL (the demeaned market average), but it does NOT remove the beta-DISPERSION: after demeaning, high-beta names still carry beta_i * (demeaned R_mkt), and on large-move days this term dominates the cross-sectional spread. R_mkt over the FORWARD window is the single biggest driver of return dispersion and is fundamentally unpredictable from day-T stock features, so MSE (and its IC ceiling = corr(p, y)) is capped by, and its gradient dominated by, this irreducible noise routed through high-beta names. Removing it raises the achievable IC on the predictable alpha and de-biases the gradient away from beta-proxy fitting; a long-only top-30 book that selects on alpha rather than beta should draw down less.",
+      "target_metric": "IR_wc up and MaxDD down (primary); RankIC-on-residual-label up (secondary). Raw-label RankIC may fall — that is expected, not a failure.",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Beta-neutral target lifts with-cost IR by a paired margin clearing p<0.1 at n>=3 AND reduces MaxDD, with held-out-day RankIC-on-residual up. KILL if IR_wc and MaxDD are both within seed noise at n=6, OR if raw-label RankIC drops with no IR/MDD compensation (means beta dispersion was already negligible after CS-demeaning, or the portfolio needs the beta tilt).",
+      "est_cost": "~0.7 GPU-day: precompute trailing beta from cached price/index data + per-day CS-regression Processor + n=3-6 runs. Must be run through quant-leakage-audit first (label-side transform).",
+      "why_not_already_killed": "No lever in the entire ledger has ever altered the label's FACTOR STRUCTURE — every kill was architecture (readout/pool/experts/tau) or a marginal/tail transform. It is distinct from DropExtremeLabel (removes tail OUTLIERS) because it removes a SYSTEMATIC common factor across all names, not extremes. It is distinct from tau-unclamp (a temporal-emphasis knob with null portfolio edge) because it directly attacks the irreducible-noise component that caps IC, which the forensics identify as the forward market move.",
+      "lens": "scientist"
+    },
+    {
+      "title": "Identifiability gate: same-regime held-out-days diagnostic + a disjoint write-once test split — make 'gen-gap is the wall' falsifiable before any gen-gap GPU is spent",
+      "mechanism": "Pure data_conf/segments edit via QIB_DATA_OVERRIDES_JSON (no work_flow.py change). (a) Hold out random days from a same-regime TRAIN sub-window (e.g. 2017-2019) and compute held-out-train RankIC; compare to the 2020-2022 valid RankIC. (b) Split the current valid==test block (work_flow.py:115-116, byte-identical 2020-07-01..2022-12-31) into a disjoint checkpoint-valid (2020-07..2021-12) and a write-once test (2022-01..2022-12) with a >=5-day embargo so the 5-day forward label cannot straddle the boundary. WHY: every headline (0.0786 RankIC, IR 1.1-2.25) is checkpoint-selected by argmax-epoch of valid_rank_ic on the SAME dates reported as 'test' (model_adapter.py:2267-2272, 1467-1469), so the ~2.1x train/valid gap cannot currently be attributed to overfitting vs 2020-2022 regime shift — the two imply OPPOSITE fixes (more regularization vs train-period reweighting). This is the lens's core duty: make the central claim identifiable. It also sizes the selection bias (~+0.002 epoch cherry-pick + ~1 std seed cherry-pick) on the celebrated ceiling.",
+      "target_metric": "gen-gap (decomposed into overfit vs regime-shift); de-biased OOS RankIC",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "If held-out-train RankIC ~= 2020-2022 valid (~0.08), the gap is a SIGNAL/REGIME ceiling -> KILL the entire gen-gap/EMA/SWA/sampler-dedup track (those cannot move a regime ceiling). If held-out-train >> valid, the gap is DISTRIBUTION SHIFT -> train-period reweighting becomes the one live gen-gap lever. Separately, the write-once 2022 test will quantify how much of the 0.0786 is selection bias (expected ~-0.004 to -0.006).",
+      "est_cost": "~0.2 GPU-day: env-var segment overrides, no code change, 2-3 short runs.",
+      "why_not_already_killed": "This is a DIAGNOSTIC/identifiability move, not a model lever, and is the explicit 'DECISIVE UNTESTED DIAGNOSTIC' the forensics flag as never run. The only sampler intervention ever tried (full_daily, KILLED) changed batch composition, not the train/valid/test SPLIT; nothing in the kill list addresses the valid==test collapse. It gates and de-risks every downstream gen-gap proposal, preventing a repeat of the full_daily negative.",
+      "lens": "scientist"
+    },
+    {
+      "title": "De-stacked batch-Sharpe (IR) auxiliary on the BARE g012 backbone — isolate the portfolio gradient from the dead readout",
+      "mechanism": "Add one aux term at the loss-aggregation seam quant_moe_model.py:688 (total_loss = w['mse']*l_mse + l_aux + l_reg + lambda_ir*ramp(step)*l_ir), driven purely by QIB_MODEL_OVERRIDES_JSON (no work_flow.py edit), with use_readout_stock_attn=FALSE (readout OFF). Inside forward, from the live (p,y) on finite rows: build a dollar-neutral, L1-normalized long-short book w_i=(p_i - mean(p))/(sum|p-mean(p)|+eps) (L1 scale-pin chosen because MSE already fixes std(p)~=0.23), per-day book return r_t = sum_i w_i*y_i, and l_ir = -r_t/sqrt(EMA_var + eps) where EMA_var is a detached running buffer over days. MSE weight stays 1.0; lambda_ir ramps 0->0.08. The Sharpe denominator down-weights days whose book return co-moves with the running variance, placing a positive gradient on bet-correlation / effective breadth — the wT-Sigma-w term MSE's diagonal Hessian provably cannot touch (IR=IC*sqrt(BR_eff)*TC). The L1 numerator overlaps the IC numerator, so the genuinely-new content is the risk-adjustment denominator, NOT a re-added IC term.",
+      "target_metric": "IR (with-cost) up; ICIR up via variance reduction",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "n>=6 fresh seeds (42-47) from-scratch, paired-delta vs the g012 anchor on disk (R0): IR_wc rises above 1.750 with paired-t p<0.1 AND the BR_eff proxy rises, while RankIC stays within +/-0.002 of 0.0784 and IC >= 0.0669. KILL if IR_wc is flat (p>=0.1) or RankIC drops >0.002 — that falsifies 'an objective-space portfolio gradient alone lifts IR on this backbone'.",
+      "est_cost": "~6 from-scratch runs (~18 GPU-hr, <1 GPU-day); R0 anchor preds already archived so only the treatment arm is new",
+      "why_not_already_killed": "Every KILLED lever is architecture-space (readout/pool/time/tau/sampler) or a monitor-only loss term; NO portfolio gradient has ever entered the live objective. The IR aux is filed as plan rung R4 but UNRUN, and the plan back-loads it behind 3 operator rungs on the 6-regime-killed cross-stock block. This de-stacks it onto the bare backbone (readout OFF), making it the decisive, confound-free test of the portfolio-blindness theorem rather than a re-run of any dead architecture.",
+      "lens": "quant"
+    },
+    {
+      "title": "Turn ON the existing top/bottom-K RankNet auxiliary, matched to TopkDropout K=30 (membership-aligned tail loss)",
+      "mechanism": "Zero-code probe: set loss_weights.rank=lambda (sweep {0.05,0.1,0.2}) and config.rank_topk=30 via QIB_MODEL_OVERRIDES_JSON. The wiring already exists — l_rank=ranknet_topbottom_loss(p,y,rank_topk) is built whenever w['rank']!=0 (quant_moe_model.py:660-661) and added to total_loss at :696-697. losses.py:29-49 computes softplus(p_bot - p_top).mean() over the K names with the highest and lowest LABELS, i.e. exactly the long/short book the strategy trades. MSE remains main. This puts a pairwise gradient ONLY on the traded tails, where top-k precision lives — orthogonal to uniform MSE, which weights every name by squared residual regardless of portfolio membership. Set rank_topk=30 to match topk=30 (n_drop=5 implies the effective traded set ~30-35).",
+      "target_metric": "top-30 precision / NDCG@30 up -> IR up; ICIR up",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "n>=6 paired vs anchor: top-30 precision (fraction of predicted-top-30 in realized-top-decile) and IR_wc both rise with paired-t p<0.1, RankIC within +/-0.002, IC not below 0.0669. KILL if top-30 precision shows no gain across all three lambda, or if mid-cross-section IC degrades >0.002 (tail focus bought at the expense of the body).",
+      "est_cost": "Cheapest lever: config-flag only, no code. ~6 seeds/lambda; start with lambda=0.1 n=6 (~18 GPU-hr), expand only if it clears the bar.",
+      "why_not_already_killed": "The rank-aware kills (factor-pool, time-readout, 3-expert, warm-q) were ARCHITECTURAL placement ablations; NO loss-term rank/tail auxiliary on top of frozen MSE has ever been ablated (the loss-forensics explicitly note this is outside the kill-log). It is also NOT the pure-IC double-count that cs_ic would be: RankNet is membership-restricted to the top/bottom-30 by label, supplying gradient only where the portfolio actually places bets, not across the full cross-section.",
+      "lens": "quant"
+    },
+    {
+      "title": "Turnover-penalty aux via leakage-clean id-keyed past-score EMA — the only available gradient on TC",
+      "mechanism": "Maintain a detached per-stock-id buffer w_prev[id] (EMA of yesterday's normalized weight), updated AFTER the optimizer step. Add l_to = mean_over_today's_names((w_t[id] - w_prev[id])^2) at quant_moe_model.py:688, total += lambda_to*l_to, lambda_to swept {0.02,0.05,0.1}, MSE main fixed. Because MSE is per-day additively separable and each batch is exactly one trading day (FixedDailyBatchSampler), the live objective has provably ZERO gradient on day-to-day turnover; this term is the sole mechanism that can reduce it. It directly targets the TC factor in IR=IC*sqrt(BR_eff)*TC and the with-cost collapse (IR_wc 1.75->1.03, MDD 2.4x) that is invisible in gross IC. Leakage discipline: the buffer reads only PAST scores (never y or future), and MUST be reset at every train/valid/test segment boundary (gate with /quant-leakage-audit before GPU spend, per the plan's R5 concern). Use unique-names-only weights to avoid the sampler's with-replacement duplicate inflation (sampler.py:72-75).",
+      "target_metric": "realized turnover down, with-cost IR up, MaxDD_wc shallower",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "n>=6 paired vs anchor: realized portfolio turnover drops measurably AND IR_wc rises above 1.750 (paired-t p<0.1) AND MDD_wc not deeper than -0.076, while RankIC/IC within +/-0.002. KILL if turnover is statistically unchanged (the buffer gradient is inert) OR gross RankIC drops >0.002. Clean sub-result: if turnover falls but IR_wc does not lift, the with-cost wound was not turnover-driven.",
+      "est_cost": "~6 from-scratch runs (~18 GPU-hr) + one /quant-leakage-audit (0 GPU) gate; +/quant-stress on any survivor (the honest with-cost read).",
+      "why_not_already_killed": "A turnover gradient has never existed in this codebase — MSE is per-day-separable and the batch is one day, so turnover is structurally in MSE's null space. Filed as plan rung R5 but UNRUN and stacked on the dead readout; here it is de-stacked to the bare backbone and the buffer is made leakage-clean with a mandatory segment-boundary reset (the exact gate the plan flags). It is label-free in its gradient, so zero double-count with MSE's IC.",
+      "lens": "quant"
+    },
+    {
+      "title": "Within-day factor-neutral breadth regularizer ||X^T w||^2 — a single-batch breadth gradient using the 158 alphas as a risk model",
+      "mechanism": "Inside forward, both the score p[B] and the input feature matrix are live (B,T,N=x.shape at quant_moe_model.py:311). Take the last-step feature slice X = x[:,-1,:] -> [B,158] (already RobustZScore-normalized, ~unit scale per alpha) as a per-stock factor-loading proxy. Form the dollar-neutral book w=(p-mean(p)) and add l_neut = sum_f (sum_i w_i * X_{i,f})^2 / (||w||^2 * 158 + eps) = the book's normalized net exposure to the 158 alpha factors. total += lambda_neut*l_neut, lambda swept {0.01,0.03,0.1}. Minimizing it forces the score's implied long-short book toward FACTOR-neutral (low w^T Sigma w with Sigma~=X X^T), which raises BR_eff and cuts systematic drawdown. This is a genuine SINGLE-BATCH gradient on bet-correlation (no cross-day EMA needed, unlike Sharpe), it is LABEL-FREE (zero IC double-count), and it has no buffer so no leakage surface. MSE stays main.",
+      "target_metric": "MaxDD_wc down, IR up via sqrt(BR_eff)",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "n>=6 paired vs anchor: the realized book's factor exposure ||X^T w|| drops, the BR_eff proxy rises, and MDD_wc is shallower than -0.076 with paired-t p<0.1, while IC stays within -0.002 of 0.0669. KILL if BR_eff rises but IC falls >0.002 (breadth bought by destroying signal) or if MDD does not improve at any lambda (the 158 alphas are not the relevant risk axes).",
+      "est_cost": "~6 from-scratch runs (~18 GPU-hr); negligible compute overhead (one B x 158 matmul per batch).",
+      "why_not_already_killed": "No objective term has ever used the input feature matrix as a within-day risk model; all kills were architecture or label-coupled. It differs from the filed C1 contrast operator (a value-space ARCHITECTURE op shrinking 64-dim common mode) by acting directly on the realized long-short BOOK's factor exposure in objective space, and from the Sharpe aux by carrying a true single-batch correlation gradient with no cross-day state. Label-free => not a re-skin of the killed cs_ic/RankIC levers.",
+      "lens": "quant"
+    },
+    {
+      "title": "Strategy-aligned checkpoint/selection metric (with-cost IR or NDCG@30) on a disjoint held-out window — MSE and architecture untouched",
+      "mechanism": "Pure selection change, zero loss/gradient change (HARD CONSTRAINT 1 trivially satisfied). Today checkpoint_metric=valid_rank_ic/max (model_adapter.py:1467-1469, 2267-2272) selects the epoch that maximizes a metric that is provably NOT IR-consistent across seeds (n=6 CSV: seed44 RankIC 0.0735/IR 1.10 vs seed47 0.0767/IR 1.97 — RankIC and IR disagree on ordering). Switch checkpoint_metric to valid with-cost IR (or NDCG@30 aligned to topk=30) via the env/override protocol, so selection picks the epoch the strategy actually earns on. Simultaneously split the currently-IDENTICAL valid==test (2020-07..2022-12) into a disjoint selection window (2020-07..2021-12) and a write-once test (2022-01..2022-12) with a >=5-day embargo (QIB_DATA_OVERRIDES_JSON segments edit), removing the in-sample selection bias that inflates every reported number and that produced the tau-0.5 n=3->n=6 reversal.",
+      "target_metric": "IR (held-out, with-cost) up; selection bias on the reported RankIC removed",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Re-score the SAME 6 archived anchor runs' per-epoch states by IR vs by RankIC: if the IR-selected epochs deliver higher held-out (2022) IR_wc than the RankIC-selected epochs with paired-t p<0.1 and non-worse RankIC, RankIC-selection was actively costing IR. KILL the lever if IR-selected ~= RankIC-selected epochs (selection metric immaterial), which would falsify 'checkpointing on RankIC mis-picks the portfolio'.",
+      "est_cost": "Near-zero GPU if per-epoch states/preds are archived (offline re-selection); else one logging re-run of the 6 anchors (~18 GPU-hr). No new training term.",
+      "why_not_already_killed": "No kill has ever touched the selection metric — all kills are loss-term or architecture ablations. It directly attacks the highest-severity validation confound (valid==test + RankIC-selection) and the durable 'RankIC != IR at promotion' finding by aligning selection AND establishing a true held-out test, without altering the MSE objective or the backbone at all. It is the single cheapest portfolio-lens intervention and de-biases every downstream promotion check the other four levers depend on.",
+      "lens": "quant"
+    },
+    {
+      "title": "Decisive falsifier: is the 'gen-gap wall' overfit, or is it 2008-2020 -> 2020-2022 regime shift? (same-regime held-out-day diagnostic)",
+      "mechanism": "The whole 'gen-gap is the wall' narrative rests on comparing train (2008-2020) vs valid (2020-2022 COVID/post-COVID regime). Train-IC ~0.20 vs valid-IC ~0.08 is currently UN-decomposable because there is no same-regime holdout. Pre-register: via QIB_DATA_OVERRIDES_JSON set train=2014-2018, randomly hold out 15% of TRADING DAYS (embargo +/-5d so the 5-day label can't straddle), checkpoint on a 2018 internal-valid, then evaluate daily rank_ic on (i) the held-out SAME-REGIME days and (ii) the untouched 2020-2022 window. No code/loss change; MSE training is byte-identical. This separates the overfit component (train-vs-held-out-train gap) from the regime-shift component (held-out-train-vs-2020-22 gap). The two diagnoses imply OPPOSITE fixes (more regularization/EMA vs train-period reweighting toward valid-like regime), so every gen-gap lever spent so far was aimed without knowing which.",
+      "target_metric": "gen-gap (decompose into overfit-component vs regime-component; then reduce the dominant one)",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "n=3 seeds. If (held-out-same-regime rank_ic) minus (2020-2022 rank_ic) <= 0.01 (within seed noise ~0.005), the 'gen-gap = overfit' hypothesis is FALSIFIED -> the gap is regime shift, which KILLS the EMA/dropout/SWA/sampler-dedup gen-gap track (all predicted null) and promotes train-period reweighting as the one live MSE-preserving gen-gap lever. If held-out-same-regime >= 2020-22 + 0.03, overfit is real and the regularization track survives.",
+      "est_cost": "~0.3-0.5 GPU-day (n=3 short runs on a 2014-2018 window, no extra epochs)",
+      "why_not_already_killed": "Every killed gen-gap lever (capacity cap00-06, tau 357x, finetune, full_daily sampler) ASSUMED overfit and changed the MODEL; none ever held out same-regime days to TEST whether the gap is overfit vs distribution shift. This is a diagnostic of the load-bearing assumption itself, not another model tweak, so it is outside the kill-log entirely.",
+      "lens": "philosopher"
+    },
+    {
+      "title": "Honest measurement surgery: disjoint write-once test + strategy-aligned selection metric (de-bias the 0.0786 ceiling)",
+      "mechanism": "work_flow.py:115-116 makes valid==test, and baseline env selects the argmax-epoch of valid_rank_ic over that exact window — so the reported 0.0786 is scored on the dates and epoch chosen to maximize it (post_peak_decay ~0.0035 best-vs-final + ~0.003 best-of-6 seed selection + program-level multiple-comparison). Two pure-config changes, MSE untouched: (1) QIB_DATA_OVERRIDES_JSON split into disjoint internal-valid 2020-07..2021-06 (checkpointing + all lever decisions) and a WRITE-ONCE test 2021-07..2022-12 with >=5d embargo, scored exactly once; (2) change checkpoint_metric off valid_rank_ic to a strategy-aligned target (top-k(30) precision / NDCG@30 / IR) since the model trades top-30-long-only and RankIC is provably NOT IR-consistent across seeds (n=6 CSV: seed47 rank_ic 0.0767/IR 1.97 beats seed42-class orderings). This re-targets the WHOLE evaluation to match the loss (Pearson-ish) and the portfolio (top-decile), not the ordinal middle of the cross-section.",
+      "target_metric": "RankIC and IR (validity/de-biasing, direction = honest downward correction; expose true OOS magnitude)",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Pre-register: write-once-test rank_ic will be >= 0.0035 BELOW the current 0.0786 (the documented peeking bias). If it is NOT lower (within 0.002), the valid==test concern is over-stated and the ceiling is robust. SEPARATELY: re-rank the existing 6 baseline seeds by top-k(30) precision vs by rank_ic; pre-register that the argmax-seed under top-k precision differs from the argmax under rank_ic -> proves the selection metric (not the model) silently chose which seed/epoch/lever won.",
+      "est_cost": "~0.5-1 GPU-day (re-train anchor n=6 with split segments; selection re-scoring is offline from per-epoch logs)",
+      "why_not_already_killed": "No killed lever touched the selection metric or the valid==test identity; every kill/promote in the ledger was scored ON this contaminated window. Changing the checkpoint metric and adding a held-out test are SELECTION/measurement changes (explicitly permitted; MSE loss unchanged), categorically distinct from the architecture/loss kills.",
+      "lens": "philosopher"
+    },
+    {
+      "title": "Model-agnostic ceiling probe: is rank_ic ~0.08 the Alpha158 data ceiling, or is RST-MoE leaving signal on the table?",
+      "mechanism": "The team has only ever asked 'what change to RST-MoE moves the metric on this window' and concluded '158 factors equally-weak & redundant' (World C) from RST-MoE's OWN pool probes — a circular yardstick. The unasked question: what is the IRREDUCIBLE rank-signal ceiling of the same inputs? Fit two independent, near-zero-GPU references on the identical DK_I Alpha158 features and the same 5-day label, evaluated by the same daily-Spearman rank_ic on 2020-2022: (a) cross-sectional ridge/OLS (linear ceiling), (b) per-day LightGBM/GBDT (nonlinear ceiling). This is a measurement yardstick; the RST-MoE MSE object is never modified. It decides whether ANY architecture lever can win or whether the entire architecture track is signal-capped.",
+      "target_metric": "RankIC (ceiling estimation, direction = is there headroom above 0.08)",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Pre-register on the same eval window/metric: if GBDT rank_ic >= RST-MoE + 0.02, the backbone is leaving extractable rank signal on the table -> architecture is a LIVE lever again (re-opens the whole track and explains the flat-RankIC kills as RST-MoE-specific, not data-limited). If GBDT and ridge both land within +0.005 of RST-MoE (~0.08 ceiling), the data ceiling is confirmed -> ALL remaining architecture/readout/pool levers are predicted dead a priori, and 100% of budget redirects to the objective (portfolio-aware aux, C3) and to NEW features/labels.",
+      "est_cost": "~0.05 GPU-day equivalent (LightGBM/ridge are CPU-minutes; reuse cached DK_I feature/label pickles)",
+      "why_not_already_killed": "No external, non-RST-MoE reference ceiling has ever been computed — the 'factors are equally weak/redundant' conclusion came from RST-MoE pool-SVD probes (rows 67-71), which cannot distinguish a data ceiling from a backbone limitation. A model-agnostic estimator is the first independent measurement of headroom and is absent from the kill-log.",
+      "lens": "philosopher"
+    },
+    {
+      "title": "Tradeable-universe re-scoring: is the reported IR a phantom-fill / fat-tail artifact?",
+      "mechanism": "work_flow.py:251-255 has open/close/min costs AND limit_threshold all COMMENTED OUT, so the backtest fills at price limits with default frictions; and the EVAL label is RAW 5-day return, untrimmed (max +46.5%, p99.9% +26%) because DropExtremeLabel is only a stale comment (work_flow.py:100-104 vs the actual learn_processors at 105-108). So both the headline IR and the top/bottom-30 spread can be inflated by names that are (a) untradeable at limit-up/down and (b) single-name event outliers. Re-score the anchor's EXISTING predictions with: (1) limit_threshold=0.095 + explicit commission/slippage set, and (2) an EVAL-ONLY tradeability mask that drops limit-locked / top-bottom 0.5% label-tail names from the metric and the portfolio (train label untouched -> MSE gradient unchanged). Tests whether the edge survives when you can only trade what is actually tradeable.",
+      "target_metric": "IR (and MaxDD; validity/stress, direction = honest downward) and top-bottom-30 spread",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Pre-register: with limit_threshold + realistic costs ON and limit-locked/tail names excluded, with-cost IR drops by > 0.3 and/or the top-bottom-30 spread drops > 15% vs the current commented-out backtest -> the reported IR is partly a phantom-fill/tail artifact and any IR-based promotion (incl. the C3 portfolio-aux frontier) must be judged on the tradeable number. If IR and spread both move < 10%, the edge is tradeable-robust and the frictionless headline is trustworthy.",
+      "est_cost": "~0.05 GPU-day (no retrain; offline re-backtest of saved pred.pkl, CPU)",
+      "why_not_already_killed": "The backtest costs and limit_threshold have NEVER been set (verified commented at work_flow.py:251-255) and no eval has ever filtered untradeable/limit-locked names. The filed DropExtremeLabel card (h-20260610-001) is a TRAIN-label processor aimed at RankIC; this is an EVAL/backtest tradeability+cost filter aimed at IR honesty — a different surface, not in the kill-log.",
+      "lens": "philosopher"
+    },
+    {
+      "title": "Pre-registered, multiple-comparison-corrected re-test of the promotion ledger on a write-once window",
+      "mechanism": "Every kill/promote decision (tau0.5 reversal, full_daily, readout/pool kills, 3-expert h2_stockexp) was decided ONCE on the same 2020-2022 valid==test window with best-epoch + best-of-seed peeking and dozens of program-level comparisons, yet the n>=3 kill-discipline treats each in isolation with no multiplicity correction. Using the Lever-B honest split (disjoint internal-valid + write-once 2021-07..2022-12), re-run a small confirmation family under MSE: the anchor (tau0.5+d1pma) vs old-control, plus 2-3 KILLED levers (full_daily sampler; one readout variant; the failed h2_stockexp 3-expert), n=3 paired seeds, scored ONCE on the held-out window, with a Holm-Bonferroni correction over the family. This examines the validity of the kill-discipline itself — the philosopher's contribution is that a kill made on a contaminated metric is not a kill.",
+      "target_metric": "RankIC and IR (validity of historical promote/kill decisions, direction = confirm or reverse)",
+      "keeps_mse": true,
+      "single_gpu_feasible": true,
+      "falsifiable_prediction": "Pre-register: at least one of {the anchor's promotion clears its bar after correction; the >=2 kills stay killed} FLIPS on the honest write-once window -> the existing ledger is partly a single-window/peeking artifact and the flipped lever is resurrected for a real test. If all decisions replicate within the corrected bars, the kill-discipline is validated as window-robust and the ledger can be trusted for the remaining C3 frontier.",
+      "est_cost": "~1-2 GPU-day (n=3 x ~4 arms on split segments)",
+      "why_not_already_killed": "Each kill was decided exactly once on the reporting window with no held-out re-test and no multiple-comparison correction; this is a meta-audit of the decision procedure, not a re-proposal of any killed model lever — it could equally CONFIRM the kills. It is categorically distinct from re-running an architecture change hoping for a different number.",
+      "lens": "philosopher"
+    }
+  ],
+  "shortlist": [
+    {
+      "title": "Honest-measurement spine: disjoint write-once test + embargo + strategy-aligned (IR / top-k) selection re-score + cost/limit-ON tradeable backtest",
+      "mechanism": "Pure data_conf/segments + selection + backtest config (QIB_DATA_OVERRIDES_JSON / env); zero loss or work_flow.py change. (a) Split the byte-identical valid==test (work_flow.py:115-116, 2020-07-01..2022-12-31, VERIFIED) into a disjoint internal-valid (2020-07..2021-12, used for checkpoint + every lever decision) and a WRITE-ONCE test (2022-01..2022-12, scored once) with a >=5-trading-day embargo so the 5-day forward label cannot straddle the boundary. (b) Re-score the 6 archived anchor runs' per-epoch states OFFLINE by with-cost IR and top-30 precision/NDCG@30 instead of valid_rank_ic (model_adapter.py:1467-1469,2267-2272), since RankIC is provably not IR-consistent across seeds (analysis/tau_0p5_vs_baseline_n6_20260606.csv: seed44 RankIC0.0735/IR1.10 vs seed47 0.0767/IR1.97). (c) Re-backtest saved pred.pkl with limit_threshold=0.095 + explicit open/close/min costs (VERIFIED all commented at work_flow.py:251-255) plus an eval-only mask dropping limit-locked / top-bottom-0.5% raw-label-tail names (label.pkl max +46.5%). Optional P5 extension: re-test 2-3 prior decisions under Holm-corrected pre-registered bars on the write-once window.",
+      "target_metric": "De-biased OOS RankIC (expect ~-0.004..-0.006 vs 0.0786) + with-cost tradeable IR; selection-bias magnitude quantified",
+      "rationale": "Merges S4(write-once)+P2+Q5+P4(+P5 optional). Survives dedup as the single highest-severity, cross-lens problem (flagged by 4 of 5 forensic dimensions): valid==test with RankIC-checkpoint selection means every headline (0.0786, IR 1.1-2.25) and every n=6 promotion is in-sample, so the kill-discipline currently runs on the reporting set itself; and costs/limit_threshold are verified-off so IR is a frictionless/phantom-fill number. Near-zero-GPU (mostly offline) and it GATES every downstream promotion, so its expected ROI dominates. Touches no model, keeps MSE. P5's killed-lever re-test is permitted ONLY under pre-registered corrected bars — do NOT blindly resurrect h2_stockexp/full_daily/readout.",
+      "est_cost": "~0.2 GPU-day (offline re-score/backtest is CPU; one short split-segment re-run only if per-epoch states are not archived)"
+    },
+    {
+      "title": "CSRankNorm train target (rank-to-normal marginal) in place of CSZScoreNorm(robust) — match the trained marginal to the selection metric and the rank-based portfolio",
+      "mechanism": "Change ONLY the train-label transform in work_flow.py:105-108 learn_processors: replace CSZScoreNorm(method='robust') with a per-day cross-sectional rank-to-normal-score map (Qlib CSRankNorm, or a 3-line custom Processor doing y -> Phi^-1(rank_pct)). p and the loss stay byte-identical: still F.mse_loss(p,y) (losses.py:81, mse_normalize=False VERIFIED). Eval label (DK_I) untouched.",
+      "target_metric": "valid/OOS RankIC up (>= +0.005); ICIR up via lower daily-IC tail-event variance",
+      "rationale": "S1, kept distinct. Survives because NO kill ever changed the live MSE TARGET — all rank/IC kills were monitor-only aux terms (ic/listmle) or architectural readout reweighting; this is orthogonal (same MSE, different y) and not the DropExtremeLabel card (full-data monotone transform, drops no names). Addresses the verified fat-tail-gradient-domination forensic: robust-z only clips at ~+/-3 MAD, leaving untrimmed +46%/-37% valid tails, so per-name MSE gradient ~ (p_i-y_i) is dominated by large-magnitude weak-SNR names; a rank-normal target equalizes contribution by ORDER, making MSE Spearman-flavored — aligned with both the valid_rank_ic checkpoint metric and the TopkDropout rank portfolio (the listmle docstring at losses.py:88 literally assumes the label is already a monotone rank transform). Cheapest plausible mover of the headline RankIC, keeps MSE.",
+      "est_cost": "~0.4 GPU-day: one-line processor swap + n=6 x 25-epoch anchor runs (reuse baseline_g012_scale05 env)"
+    },
+    {
+      "title": "Model-agnostic ceiling probe: cross-sectional ridge + per-day LightGBM on the same Alpha158 features/label",
+      "mechanism": "Fit two near-zero-GPU references on the identical cached DK_I Alpha158 features and same 5-day label, evaluated by the same daily-Spearman RankIC on 2020-2022: (a) cross-sectional ridge/OLS (linear ceiling), (b) per-day LightGBM/GBDT (nonlinear ceiling). RST-MoE and its MSE objective are never touched — this is a measurement yardstick.",
+      "target_metric": "RankIC ceiling / headroom above ~0.08 (is the architecture track signal-capped?)",
+      "rationale": "P3, kept distinct as a methodologically-independent diagnostic. Survives because the '158 factors equally weak/redundant' conclusion (World C, ledger rows 67-71) came circularly from RST-MoE's OWN pool-SVD probes, which cannot separate a data ceiling from a backbone limitation; no external estimator has ever been run. Near-zero GPU (CPU-minutes, reuse cached pickles) and decisive: if GBDT >= RST-MoE + 0.02 the whole architecture track re-opens (the flat-RankIC kills become RST-MoE-specific, not data-limited); if ridge/GBDT both land within +0.005 of 0.08, all remaining architecture/readout/pool levers are dead a priori and 100% of budget redirects to the objective-space and feature/label levers. Highest information-value-per-GPU on the list.",
+      "est_cost": "~0.05 GPU-day (LightGBM/ridge are CPU-minutes; reuse cached DK_I feature/label pickles)"
+    },
+    {
+      "title": "Within-day factor-neutral breadth regularizer ||X^T w||^2 — a single-batch, label-free portfolio gradient using the 158 alphas as a risk model",
+      "mechanism": "Inside forward (loss block at quant_moe_model.py:634-665, x[B,T,N] available from :311 VERIFIED), take X = x[:,-1,:] -> [B,158] (already RobustZScore-normed) as a per-stock factor-loading proxy; form dollar-neutral book w=(p-mean(p)); add l_neut = sum_f (sum_i w_i X_{i,f})^2 / (||w||^2 * 158 + eps). total_loss += lambda*l_neut at the :691 aggregation seam via QIB_MODEL_OVERRIDES_JSON, lambda in {0.01,0.03,0.1}, MSE weight fixed 1.0. No buffer, no cross-day state, no label.",
+      "target_metric": "MaxDD_wc down and IR up via sqrt(BR_eff); IC within -0.002 of 0.0669",
+      "rationale": "Q4, kept distinct as the CLEANEST member of the portfolio-aux family. Survives because no objective term has ever entered the live loss touching breadth, and this is the only one that is label-free (zero IC double-count — the loss-forensics warn the IR/Sharpe numerator partly re-adds IC, but ||X^T w||^2 carries a genuine single-batch correlation gradient with no IC overlap) and buffer-free (no leakage surface, no segment-reset to get wrong). Directly attacks the established, code-verified gap (MSE's diagonal Hessian => provably indifferent to within-day concentration / w^T Sigma w; IR = IC*sqrt(BR_eff)*TC). Distinct from killed CrossStockBlock/pool (objective-space, not architecture; no inter-stock message passing). Cleanest first probe of 'does a breadth gradient lift IR/MDD'.",
+      "est_cost": "~1 GPU-day (n=6 from-scratch, seeds 42-47); negligible per-batch overhead (one B x 158 matmul)"
+    },
+    {
+      "title": "IR/Sharpe + turnover auxiliary on the BARE backbone (readout OFF) — the deployment-IR gradient and the ONLY available gradient on transaction cost",
+      "mechanism": "At the :691 loss seam, total += lambda_ir*ramp*l_ir + lambda_to*l_to with use_readout_stock_attn=FALSE (readout OFF), all via QIB_MODEL_OVERRIDES_JSON (no work_flow.py edit). l_ir: L1-normalized dollar-neutral book w=(p-mean(p))/(sum|p-mean(p)|+eps), per-day r_t=sum_i w_i y_i, l_ir = -r_t/sqrt(detached EMA_var + eps). l_to = mean((w_t[id]-w_prev[id])^2) from a DETACHED id-keyed EMA buffer of yesterday's weight, updated AFTER the optimizer step and RESET at every train/valid/test segment boundary; use unique-names-only weights to avoid the sampler's with-replacement duplicate inflation (sampler.py:72-75 VERIFIED). lambda ramps 0->~0.08-0.1, MSE weight fixed 1.0.",
+      "target_metric": "with-cost IR up (> 1.75, paired-t p<0.1); realized turnover down; MDD_wc shallower",
+      "rationale": "Merges Q1(Sharpe/IR)+Q3(turnover) = the filed-but-unrun C3 plan rung, kept as one lever (shared cross-day-EMA infra + shared leakage concern). Survives because NO portfolio gradient has ever been in the live objective and turnover/TC is provably in MSE's null space (per-day-separable loss + one-day batch => strictly zero cross-day gradient; the loss-forensics confirm turnover is the only STRICTLY-orthogonal new direction). This is the single most theory-aligned attack on the verified with-cost wound (IR 1.75->1.03, MDD 2.4x). De-stacked to the bare backbone with readout OFF, isolating it from the 6-regime-killed CrossStockBlock — the meta-analysis explicitly flags that the plan back-loads this behind dead-architecture operator rungs and that it should be tested EARLY and decoupled. Keeps MSE main. MUST pass /quant-leakage-audit (buffer reset) first.",
+      "est_cost": "~1 GPU-day (n=6 from-scratch; R0 anchor preds already archived so only the treatment arm is new) + one /quant-leakage-audit (0 GPU)"
+    },
+    {
+      "title": "Turn ON the existing top/bottom-K RankNet auxiliary, matched to TopkDropout K=30 (membership-aligned tail loss) — zero-code objective-space probe",
+      "mechanism": "Config-flag only: set loss_weights.rank=lambda (sweep {0.05,0.1,0.2}) and rank_topk=30 via QIB_MODEL_OVERRIDES_JSON. Wiring VERIFIED present: l_rank=ranknet_topbottom_loss(p,y,rank_topk) is built whenever w['rank']!=0 (quant_moe_model.py:660-661) and added to total_loss as w['rank']*l_rank (:696-697); losses.py:29-49 = softplus(p_bot - p_top).mean() over the K names with the highest/lowest LABELS (currently rank=0.0, rank_topk=5). MSE stays main.",
+      "target_metric": "top-30 precision / NDCG@30 up -> IR up; RankIC within +/-0.002, IC not below 0.0669",
+      "rationale": "Q2, kept distinct as the CHEAPEST objective-space probe (no code). Survives because the rank-aware kills (factor-pool, time-readout, 3-expert, warm-q) were all ARCHITECTURAL placement ablations — a loss-term tail auxiliary on top of frozen MSE has NEVER been ablated (loss-forensics explicitly note it is outside the kill-log). Not a pure-IC double-count: RankNet is membership-restricted by label to the top/bottom-30 — exactly where the topk=30 strategy places bets — supplying a true pairwise cross-name gradient only on the traded tails, orthogonal to uniform squared-residual MSE. Ranked below the breadth/IR auxes because the established gap is breadth/turnover/TC (tail-ordering is adjacent) and the flat-RankIC prior applies, but its zero cost makes it the natural first entry point to the objective-space family.",
+      "est_cost": "~18 GPU-hr per lambda (start lambda=0.1 n=6, seeds 42-47); expand only if it clears the bar"
+    },
+    {
+      "title": "Gen-gap decomposition: same-regime held-out-day diagnostic (is the 'gen-gap wall' overfit or 2008-2020 -> 2020-2022 regime shift?)",
+      "mechanism": "Pure QIB_DATA_OVERRIDES_JSON segment override, no code/loss change. Set train=2014-2018, randomly hold out 15% of TRADING DAYS (+/-5d embargo so the 5-day label can't straddle), checkpoint on a 2018 internal-valid, then evaluate daily rank_ic on (i) the held-out SAME-REGIME days and (ii) the untouched 2020-2022 window. n=3. This separates the overfit component (train vs held-out-train) from the regime-shift component (held-out-train vs 2020-2022).",
+      "target_metric": "gen-gap decomposed into overfit-component vs regime-shift-component",
+      "rationale": "Merges S4(holdout)+P1, kept distinct from the honest-measurement spine because it answers a different question (overfit vs distribution-shift, which imply OPPOSITE fixes) and needs actual short runs. Survives because the entire 'gen-gap is the wall, redirect to sampler/EMA' narrative is currently UNFALSIFIABLE (train-IC ~0.20 vs valid-IC ~0.08 has no same-regime holdout) AND is contradicted by the only direct sampler datapoint (full_daily made gen-gap WORSE, rows 26-31). Decisive and cheap: if held-out-same-regime ~= 2020-2022 valid, the gap is a regime ceiling -> KILL the whole EMA/SWA/dropout/sampler-dedup track (saves repeated wasted GPU); if held-out-train >> valid, train-period reweighting becomes the one live gen-gap lever. Diagnostic, MSE byte-identical.",
+      "est_cost": "~0.3-0.5 GPU-day (n=3 short runs on a 2014-2018 window, no extra epochs)"
+    },
+    {
+      "title": "Inject the cross-sectional coordinate as deterministic INPUT channels (per-day CS-rank/CS-z of top alphas) — give the per-stock model the relative position it is graded on, with zero cross-stock coupling",
+      "mechanism": "Add a feature-side, point-in-time Processor that appends per day the cross-sectional rank-percentile (and/or CS-z) of the top-K most-used Alpha factors as NEW input channels (computed on day-T data only). Backbone/pooling/head stay byte-identical and per-stock; B remains a pure batch dim; tokenizer num_alphas auto-bumps via _init_net. RELATED label-side alternative (lower priority): beta-neutralize the train target (S3) — trailing-60d beta_i, CS-regress the forward-return label on beta_i, train on the residual (then rank/z); eval label raw; loss stays F.mse_loss. Both require /quant-leakage-audit first.",
+      "target_metric": "CS-rank channels: RankIC up (>= +0.005). Beta-neutral alt: IR_wc up + MaxDD down (raw RankIC may fall, expected)",
+      "rationale": "S1-input (S2), with S3 folded as a related label-side alt. Survives because the architecture forensic proves the backbone is cross-sectionally BLIND (a +5sigma perturbation of one stock leaks <1e-5 into others' scores) AND features are time-series-normalized (each stock scaled by its OWN history, never today's peer distribution), so the relative coordinate that determines cross-sectional rank is literally absent from the input tensor. This hands it back as a fixed, leakage-audited input with ZERO inter-stock message passing — distinct from the killed CrossStockBlock/pool (representational coupling) and from factor-pool reweighting (adds genuinely new info, not a reweight of existing tokens); MSE's diagonal Hessian and the one-day-batch invariant are untouched. Ranked last because the benefit is the most uncertain (a single input channel may not overcome the per-stock processing bottleneck) and the beta-neutral alt carries a leakage surface plus a real risk that the portfolio needs the beta tilt.",
+      "est_cost": "~0.6 GPU-day (CS-rank channels: Processor + tokenizer bump + n=3-6) / ~0.7 GPU-day (beta-neutral alt: trailing-beta precompute + CS-regression Processor + n=3-6), each gated by /quant-leakage-audit (0 GPU)"
+    }
+  ],
+  "verified": [
+    {
+      "lever": {
+        "title": "Honest-measurement spine: disjoint write-once test + embargo + strategy-aligned (IR / top-k) selection re-score + cost/limit-ON tradeable backtest",
+        "mechanism": "Pure data_conf/segments + selection + backtest config (QIB_DATA_OVERRIDES_JSON / env); zero loss or work_flow.py change. (a) Split the byte-identical valid==test (work_flow.py:115-116, 2020-07-01..2022-12-31, VERIFIED) into a disjoint internal-valid (2020-07..2021-12, used for checkpoint + every lever decision) and a WRITE-ONCE test (2022-01..2022-12, scored once) with a >=5-trading-day embargo so the 5-day forward label cannot straddle the boundary. (b) Re-score the 6 archived anchor runs' per-epoch states OFFLINE by with-cost IR and top-30 precision/NDCG@30 instead of valid_rank_ic (model_adapter.py:1467-1469,2267-2272), since RankIC is provably not IR-consistent across seeds (analysis/tau_0p5_vs_baseline_n6_20260606.csv: seed44 RankIC0.0735/IR1.10 vs seed47 0.0767/IR1.97). (c) Re-backtest saved pred.pkl with limit_threshold=0.095 + explicit open/close/min costs (VERIFIED all commented at work_flow.py:251-255) plus an eval-only mask dropping limit-locked / top-bottom-0.5% raw-label-tail names (label.pkl max +46.5%). Optional P5 extension: re-test 2-3 prior decisions under Holm-corrected pre-registered bars on the write-once window.",
+        "target_metric": "De-biased OOS RankIC (expect ~-0.004..-0.006 vs 0.0786) + with-cost tradeable IR; selection-bias magnitude quantified",
+        "rationale": "Merges S4(write-once)+P2+Q5+P4(+P5 optional). Survives dedup as the single highest-severity, cross-lens problem (flagged by 4 of 5 forensic dimensions): valid==test with RankIC-checkpoint selection means every headline (0.0786, IR 1.1-2.25) and every n=6 promotion is in-sample, so the kill-discipline currently runs on the reporting set itself; and costs/limit_threshold are verified-off so IR is a frictionless/phantom-fill number. Near-zero-GPU (mostly offline) and it GATES every downstream promotion, so its expected ROI dominates. Touches no model, keeps MSE. P5's killed-lever re-test is permitted ONLY under pre-registered corrected bars — do NOT blindly resurrect h2_stockexp/full_daily/readout.",
+        "est_cost": "~0.2 GPU-day (offline re-score/backtest is CPU; one short split-segment re-run only if per-epoch states are not archived)"
+      },
+      "verdicts": [
+        {
+          "verdict": "revise",
+          "reason": "NOT a renamed dead lever and NOT a leakage-introducer, so it survives those two refutation axes cleanly. The killed list (readout/pool/τ-unclamp/finetune/scalar-gate) is all MODEL/objective changes; this lever touches no net and no loss — it is pure evaluation methodology (segment split + selection metric + backtest frictions), a categorically different object. It REDUCES leakage rather than adding it: the embargo is correctly specified (5-day fwd label, >=5-day embargo at the internal-valid/test boundary; train→valid already has a ~3-month gap), market_state is read-only and unchanged, and processor fit stays on train. The diagnosis is fully code-verified: valid==test is byte-identical (work_flow.py:115-116), all frictions/limit_threshold are commented (work_flow.py:251-255 -> frictionless/phantom-fill IR), and the headline model is the one LOADED from the best-valid_rank_ic checkpoint computed over the full valid==test window (model_adapter.py:1467-1469, 2267-2272, restored at 2319-2322), so 0.0786 is provably in-sample-selected. The RankIC≠IR seed inversion is real in the CSV (baseline s44 0.0735/IR1.10 vs s47 0.0767/IR1.97).\n\nHOWEVER there is one fatal-as-written flaw that forces revise rather than survive: part (b) — 're-score the 6 archived anchor runs PER-EPOCH states OFFLINE' — is infeasible AND contaminated. Code-verified at model_adapter.py:2272: only ONE state_dict (the best by valid_rank_ic over the FULL 2020-07..2022-12 window) is saved per run; there is no per-epoch trajectory to re-select from, and the on-disk archive holds only logs/conf for 3 seeds (42/43/44), zero model states. Worse, that single saved state already 'saw' 2022 during checkpoint selection, so any offline scoring of it (or of the saved pred.pkl) on the proposed 2022 write-once window INHERITS the selection contamination — it is not write-once. Therefore the only honest 2022 number requires RE-RUNNING the 6 anchors with checkpoint on the disjoint internal-valid (2020-07..2021-12) and scoring 2022 exactly once; the '~0.2 GPU-day, mostly offline' estimate is wrong (needs ~0.5-1 GPU-day of re-runs). Secondary caveats: 2022 is a single CSI300 bear regime, so the de-biased OOS number is regime-confounded/high-variance even at n=6; and P5's killed-lever re-tests burn the one-shot write-once window (Holm helps but each query degrades it).",
+          "revised_form": "Honest-measurement spine (revised, no model/loss change): (a) Split valid==test into disjoint internal-valid (2020-07..2021-12, used for checkpoint + ALL lever decisions) and a WRITE-ONCE test (2022-01..2022-12) with a >=5-trading-day embargo at the boundary. (b) PRIMARY clean number: RE-RUN the 6 anchors with checkpoint_metric on internal-valid only and score 2022 exactly once — do NOT offline-rescore archived states for the write-once number, because only a single best-valid_rank_ic state is saved (model_adapter.py:2272, no per-epoch trajectory) and it already peeked at 2022. (b') Offline re-score of any existing archived state/pred is permitted ONLY on the internal-valid window (or must be explicitly labelled still-selection-biased), used to quantify the selection-bias magnitude, not as the OOS figure. (c) Re-backtest the freshly-produced 2022 pred.pkl with limit_threshold=0.095 + explicit open/close/min costs + an eval-only mask dropping limit-locked / top-bottom-0.5% raw-label-tail names, and report with-cost IR / top-30 precision / NDCG@30 alongside RankIC. Report the 2022 number with explicit regime context (single bear window, n=6 seed std). P5 (re-testing 2-3 prior decisions) stays optional, pre-registered, Holm-corrected, and scored-once to preserve the write-once window. Revised cost: ~0.5-1 GPU-day for the 6 re-runs, not 0.2.",
+          "confidence": 0.8
+        },
+        {
+          "verdict": "revise",
+          "reason": "Q1 (MSE) PASSES and is not refutable: total_loss = 1.0*l_mse + l_aux + l_reg (quant_moe_model.py:688-695); the lever is pure data/segments/selection/backtest config, no loss touched. The motivating bugs are real and code-verified: valid==test identical 2020-07-01..2022-12-31 (work_flow.py:115-116), and limit_threshold/open/close/min costs all commented (work_flow.py:251-255). But the lever AS SPECIFIED has three defects that refute its headline + cost claims:\n\n(1) COST IS UNDERESTIMATED 3-7x, and the cheap path is infeasible. Part (b) \"re-score the 6 archived runs' PER-EPOCH states OFFLINE by IR\" cannot be done from existing artifacts: training keeps only ONE best checkpoint_state (deep-copied at best valid_rank_ic epoch, model_adapter.py:2267-2272), and each run dir holds only the FINAL model + FINAL pred.pkl/label.pkl (BASELINE_ANCHOR.md:60-62). No per-epoch states exist anywhere. So re-SELECTING an epoch by IR requires a retrain with per-epoch dumping. One anchor run = ~5.25 GPU-h (master_g012_n3.log: seed43 07:50->13:05, seed44 13:05->18:20). A kill-discipline-valid n>=3 retrain = ~16 GPU-h (~0.7 day); n=6 = ~31 GPU-h (~1.3 day) — not the claimed ~0.2 GPU-day.\n\n(2) THE \"HONEST WRITE-ONCE OOS\" CANNOT BE OBTAINED BY RE-SCORING ARCHIVED RUNS — it would be contaminated. Those checkpoints were selected by valid_rank_ic over the full 2020-07..2022-12 window, which INCLUDES the proposed 2022 write-once test. Slicing the saved pred.pkl (full-window, verified) to 2022 does NOT yield a clean write-once number because selection already peeked at 2022. A clean number requires a fresh retrain with checkpoint-on-internal-valid only — i.e. GPU, not offline.\n\n(3) THE DE-BIAS MAGNITUDE IS CONFOUNDED AND NEAR THE NOISE FLOOR (Q4). The predicted -0.004..-0.006 on a 2022-only window confounds selection bias with the 2022 CSI300 bear-regime shift; RankIC on 2022-only differs from full-window RankIC for regime reasons unrelated to selection. With seed std~0.0033 the shift is ~3-4 SE at n=6 / ~2-3 SE at n=3 even if it were clean — so the headline \"selection-bias magnitude quantified\" is not separable from regime composition and is not a pure-selection number. The true epoch-selection bias (IR-epoch vs rankIC-epoch on same window) needs per-epoch states = infeasible.\n\nNot mechanism-vs-benefit in the usual sense (the \"benefit\" is honesty, not moving IC/IR), and not a KILL: the core idea is correct hygiene that gates all downstream promotions. But the offline/near-zero-GPU framing and the retrospective re-baseline are false as written. Revise to keep only the genuinely cheap+valid pieces and budget the retrain honestly.",
+          "revised_form": "{\"title\":\"Honest-measurement spine v2: disjoint write-once split + embargo for ALL FUTURE decisions, offline cost/limit-ON re-backtest of existing preds, and ONE budgeted anchor RE-TRAIN for a clean OOS number\",\"mechanism\":\"(a) FORWARD (zero marginal GPU): adopt via QIB_DATA_OVERRIDES_JSON a disjoint internal-valid=2020-07-01..2021-12-19 (checkpoint + every lever decision) and WRITE-ONCE test=2022-01-01..2022-12-31, with a >=5-trading-day embargo GAP before 2022 because the label Ref($close,-5)/Ref($close,-1)-1 uses close(t+5) (verified work_flow.py:110) so the last internal-valid label straddles the boundary. This split is the durable win and gates downstream promotions. (b) OFFLINE NOW (CPU, valid): re-backtest the existing n=6 pred.pkl/label.pkl with limit_threshold=0.095 + explicit open/close/min costs (verified-off, work_flow.py:251-255) + eval-mask on limit-locked/tail names, to expose phantom-fill IR — but LABEL this as full-window with contaminated checkpoint selection, NOT as the write-once OOS. (c) GPU (budgeted, NOT 0.2 day): obtain the honest baseline only by a fresh n>=3 (ideally 6) anchor retrain under the new segments with checkpoint-on-internal-valid + cost/limit-ON backtest; ~5.25 GPU-h/run => ~0.7 day (n=3) to ~1.3 day (n=6). Per-epoch IR-selection requires adding a per-epoch state-dump hook to that retrain (else drop it).\",\"target_metric\":\"Clean write-once-2022 RankIC + with-cost/limit-ON tradeable IR from the FRESH retrain (the only uncontaminated number). Any 2020-22-vs-2022 RankIC delta from archived preds is reported as JOINT regime+selection, not pure selection bias.\",\"rationale\":\"Keeps MSE (no loss touched). Fixes the verified valid==test + costs-off bugs and gates all future promotions. Corrects the original's three errors: per-epoch offline re-score is infeasible (only one best checkpoint + final pred.pkl saved); archived-run 2022 slices are selection-contaminated; the de-bias magnitude confounds selection with the 2022 bear regime. Honest budget ~0.7-1.3 GPU-day for the clean number, with cheap offline cost-backtest available immediately.\",\"est_cost\":\"Offline cost/limit re-backtest: ~CPU-hours. Clean OOS baseline: ~0.7 GPU-day (n=3) to ~1.3 GPU-day (n=6) at ~5.25 GPU-h/run; NOT ~0.2 GPU-day.\"}",
+          "confidence": 0.82
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "CSRankNorm train target (rank-to-normal marginal) in place of CSZScoreNorm(robust) — match the trained marginal to the selection metric and the rank-based portfolio",
+        "mechanism": "Change ONLY the train-label transform in work_flow.py:105-108 learn_processors: replace CSZScoreNorm(method='robust') with a per-day cross-sectional rank-to-normal-score map (Qlib CSRankNorm, or a 3-line custom Processor doing y -> Phi^-1(rank_pct)). p and the loss stay byte-identical: still F.mse_loss(p,y) (losses.py:81, mse_normalize=False VERIFIED). Eval label (DK_I) untouched.",
+        "target_metric": "valid/OOS RankIC up (>= +0.005); ICIR up via lower daily-IC tail-event variance",
+        "rationale": "S1, kept distinct. Survives because NO kill ever changed the live MSE TARGET — all rank/IC kills were monitor-only aux terms (ic/listmle) or architectural readout reweighting; this is orthogonal (same MSE, different y) and not the DropExtremeLabel card (full-data monotone transform, drops no names). Addresses the verified fat-tail-gradient-domination forensic: robust-z only clips at ~+/-3 MAD, leaving untrimmed +46%/-37% valid tails, so per-name MSE gradient ~ (p_i-y_i) is dominated by large-magnitude weak-SNR names; a rank-normal target equalizes contribution by ORDER, making MSE Spearman-flavored — aligned with both the valid_rank_ic checkpoint metric and the TopkDropout rank portfolio (the listmle docstring at losses.py:88 literally assumes the label is already a monotone rank transform). Cheapest plausible mover of the headline RankIC, keeps MSE.",
+        "est_cost": "~0.4 GPU-day: one-line processor swap + n=6 x 25-epoch anchor runs (reuse baseline_g012_scale05 env)"
+      },
+      "verdicts": [
+        {
+          "verdict": "revise",
+          "reason": "Survives the three primary skeptic attacks but rests on a FALSE forensic, so it must be re-grounded before spend. (1) NOT a dead lever: every kill was architecture (readout/pool/tau/scalar-gate) or a monitor-only aux term (ic/listmle); the live MSE TARGET has never been an experimental variable (ledger row 83 only just established it is CSZScoreNorm-robust, and flagged the 'CSRankNorm' code comment + ledger header as STALE). Distinct from the open DropExtremeLabel card (drops names vs monotone-transforms all names). (2) NOT leaky: rank map is per-day cross-sectional, train-only via learn_processors/DK_L; valid/test use DK_I so eval label stays raw and RankIC eval is invariant to monotone label transforms; no future info, no train->test fit. mse_normalize=False VERIFIED so the swap genuinely changes the live F.mse_loss gradient (not neutralized). (3) NOT an n=1 mirage: forward hypothesis, n=6 planned. HOWEVER the rationale's central claim is code-false: robust_zscore HARD-CLIPS the train target to [-3,3] (qlib/utils/data.py:27 np.clip(...,-3,3)), so the '+46%/-37% untrimmed tails dominate the per-name MSE gradient' story is wrong — those tails live only in the never-backpropped eval label. The true, still-legitimate difference is cardinal-within-±3 + point-mass-at-±3 (robust-z) vs ordinal evenly-spaced (rank), i.e. Spearman-alignment with the valid_rank_ic checkpoint and the rank-based TopkDropout. Also mis-specified: Qlib CSRankNorm is rank-to-UNIFORM (processor.py:355-358), NOT 'rank-to-normal'/Phi^-1; the two have opposite tail behavior and are not interchangeable. And valid==test with checkpoint_metric=valid_rank_ic means there is no true OOS, so 'valid/OOS RankIC up' is mis-worded. Salvageable: legit, cheap, orthogonal experiment that needs corrected motivation, a pinned transform, and an honest paired-vs-anchor promotion bar.",
+          "confidence": 0.78,
+          "revised_form": "Swap ONLY the train-label transform (work_flow.py:107) CSZScoreNorm(method='robust') -> CSRankNorm (Qlib built-in; rank-to-UNIFORM, VERIFIED processor.py:355-358; NOT Phi^-1 Gaussian — pre-register this exact marginal). Loss stays byte-identical: F.mse_loss(p,y), mse_normalize=False (VERIFIED losses.py:76-81). Eval label (DK_I) untouched. CORRECTED mechanism: robust_zscore already hard-clips the TRAIN target to [-3,3] (qlib/utils/data.py:27), so there are NO untrimmed ±46% tails in the live gradient — the real change is replacing a cardinal-within-±3 target with a tail-point-mass-at-±3 by an ordinal evenly-spaced target, making MSE Spearman-flavored to align with the valid_rank_ic checkpoint metric and the rank-based TopkDropout (orthogonal to the row-83 'MSE maximizes Pearson-to-target' finding: this just chooses a target whose Pearson-correlation is ~the rank correlation to raw return). Does NOT touch portfolio-blindness (still diagonal-Hessian/separable), so it is a target-metric-alignment lever, not a breadth/turnover lever. Promotion bar (reworded, since valid==test and checkpoint selects on valid_rank_ic => no true OOS): paired n=6 ΔRankIC vs the g012 anchor (seeds 42-47, 25ep, reuse baseline_g012_scale05 env) clearing the seed-std≈0.003 noise floor; also report ΔIC_mean/Δscore_std/ΔIR_wc; confirm any survivor with /quant-walk-forward before any OOS/production claim. ~0.25-0.4 GPU-day."
+        },
+        {
+          "verdict": "revise",
+          "reason": "Axis 1 PASSES (verified): with main_loss=\"mse\" only l_mse=F.mse_loss(p,y) backprops (quant_moe_model.py:676-695; losses.py:57-81); ic/listmle weights are inert. The lever swaps only y, so it is genuinely orthogonal to every prior aux/readout kill — not a duplicate, not the DropExtremeLabel card, no leakage. Axes 3 and 4 also clear: RankIC/IC/ICIR are produced by SigAnaRecord and the +0.005 prediction is detectable at n=6 PAIRED (per-run std 0.003; paired-diff SE well under 0.005). Feasible via QIB_DATA_OVERRIDES_JSON (deep_update replaces the learn_processors list) with NO work_flow.py edit, and both targets have std~1 so the z-loss/reg balance is unchanged. BUT two flaws require revision, not survival as written: (a) the motivating forensic is factually wrong about the TRAIN target — Qlib robust_zscore is np.clip(x/mad/1.4826,-3,3), so CSZScoreNorm(robust) ALREADY winsorizes at ±3 (~6% of names pinned at ±3 in sim); the cited +46%/-37% tails live only in the eval label (DK_I, never backprops, scored by rank-invariant RankIC), so 'MSE gradient dominated by fat tails' is overstated; (b) spec error — Qlib CSRankNorm yields a UNIFORM marginal (rank-pct, ±1.73), NOT the 'rank-to-normal' Φ⁻¹ marginal claimed; the two behave oppositely in the tails and 'equalize by order' only loosely holds for uniform. Compounding this, the current robust-z target is already ~95% rank-correlated (sim), so the swap is a modest reshaping → elevated mechanism≠benefit risk (machinery activates, RankIC may not move).",
+          "revised_form": "Reframe rationale honestly: the live train label is ALREADY clipped at ±3 (robust_zscore), so this lever is not 'trimming untrimmed tails' but 'replacing a clipped-Gaussian target marginal with a rank marginal that equalizes per-name gradient magnitude' (current target is ~95% rank-like, so a small but orthogonal reshaping). Pin the marginal to ONE choice — recommend Qlib CSRankNorm (uniform, ±1.73, the most direct gradient-equalizer and what aligns with the rank metric/portfolio); do NOT call it 'rank-to-normal'. If Φ⁻¹-normal-score is preferred instead, state it explicitly and note it re-introduces a deterministic mild tail. Test via QIB_DATA_OVERRIDES_JSON overriding handler.kwargs.learn_processors=[{DropnaLabel},{CSRankNorm,fields_group:label}] (no work_flow.py edit). Run n=6 PAIRED on the baseline_g012_scale05 seeds (swap ONLY the label transform). Promotion gate: paired Δvalid_rank_ic ≥ +0.005 AND a fresh-seed kill-check (per memory: n=3 promotion is unreliable). Also log daily-IC series to test the ICIR/tail-variance sub-claim. Treat a null as the likely outcome given the small target delta.",
+          "confidence": 0.72
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "Model-agnostic ceiling probe: cross-sectional ridge + per-day LightGBM on the same Alpha158 features/label",
+        "mechanism": "Fit two near-zero-GPU references on the identical cached DK_I Alpha158 features and same 5-day label, evaluated by the same daily-Spearman RankIC on 2020-2022: (a) cross-sectional ridge/OLS (linear ceiling), (b) per-day LightGBM/GBDT (nonlinear ceiling). RST-MoE and its MSE objective are never touched — this is a measurement yardstick.",
+        "target_metric": "RankIC ceiling / headroom above ~0.08 (is the architecture track signal-capped?)",
+        "rationale": "P3, kept distinct as a methodologically-independent diagnostic. Survives because the '158 factors equally weak/redundant' conclusion (World C, ledger rows 67-71) came circularly from RST-MoE's OWN pool-SVD probes, which cannot separate a data ceiling from a backbone limitation; no external estimator has ever been run. Near-zero GPU (CPU-minutes, reuse cached pickles) and decisive: if GBDT >= RST-MoE + 0.02 the whole architecture track re-opens (the flat-RankIC kills become RST-MoE-specific, not data-limited); if ridge/GBDT both land within +0.005 of 0.08, all remaining architecture/readout/pool levers are dead a priori and 100% of budget redirects to the objective-space and feature/label levers. Highest information-value-per-GPU on the list.",
+        "est_cost": "~0.05 GPU-day (LightGBM/ridge are CPU-minutes; reuse cached DK_I feature/label pickles)"
+      },
+      "verdicts": [
+        {
+          "verdict": "revise",
+          "confidence": 0.8,
+          "reason": "Not a renamed dead lever and no boundary leakage: code-verified DK_I RobustZScoreNorm is fit train-only (fit_end 2020-03-31, past-only); a ~3-month embargo gap separates train end (2020-03-31) from eval start (2020-07-01) >> the 5-day label horizon; and the killed PROBE-CEILING arms (ledger rows 67-71) ran ridge on the FROZEN BACKBONE pooled hidden state plus univariate slot-ICs, never a joint external estimator on the raw 158 features, so the World-C data-cap conclusion is genuinely circular and this probe is methodologically independent. But it does not cleanly pass as written, due to three fixable flaws. (1) LEAKAGE TRAP: per-day LightGBM is ambiguous; if implemented as refit-on-each-test-day and score-the-same-day it is catastrophic in-sample leakage giving a fake inflated ceiling. Must be train-once on 2008..2020-03-31 then predict-test; per-day can only mean daily-Spearman evaluation. (2) valid==test (both 2020-07-01..2022-12-31, work_flow.py:113-118) with checkpoint_metric=valid_rank_ic/max means RST-MoE 0.0786 is test-peeked/upward-biased. The GBDT>=+0.02 reopens side survives this, but the within-+0.005 all-architecture-dead side is unsound as stated, and any GBDT hyperparameter/early-stop tuning MUST use a train-internal slice (e.g. 2018-2019), never the 2020-2022 window. (3) A single LightGBM fit drives a sweeping 100%-budget-redirect verdict (n=1), and GBDT sees a 1-day 158-feature snapshot vs RST-MoE step_len=8 window, so only GBDT>=RST-MoE is a clean inference. Fixes: train-only fit, forbid per-day refit, train-internal hyperparam tuning, >=3 LightGBM seed band, and state the test-peek and snapshot-vs-sequence asymmetries when reading both thresholds.</parameter>\n<parameter name=\"revised_form\">Model-agnostic JOINT-ceiling probe on raw Alpha158: fit reference estimators on the TRAIN segment ONLY (2008-01-01..2020-03-31; existing ~3-month embargo to 2020-07-01 prevents 5-day-label boundary bleed), then predict on 2020-2022 scored by daily Spearman RankIC. (a) cross-sectional ridge/OLS on the cached DK_I RAW 158 Alpha158 features (explicitly NOT the backbone pooled hidden state, distinct from the killed Arm0 pooled-ridge); (b) LightGBM trained ONCE on train then predicted across all test days (per-day = daily-Spearman EVALUATION only; per-day refit-and-score-same-day is forbidden in-sample leakage). GUARDS: (1) tune any GBDT hyperparameters/early-stopping on a train-internal slice (e.g. 2018-2019 carved from train), NEVER on 2020-2022, because valid==test; (2) report >=3 LightGBM seeds as a band, do not act on a single point; (3) state the asymmetry: RST-MoE 0.0786 is checkpoint-selected on valid==test (test-peeked, inflated) while the reference is honest-OOS, so GBDT>=~0.10 robustly reopens the architecture track but a within-+0.005 result cannot by itself prove all architecture levers dead a priori; (4) note the snapshot-vs-8-step confound: GBDT<RST-MoE is confounded by missing sequence info, only GBDT>=RST-MoE is a clean snapshot-beats-sequence statement.</parameter>\n</invoke>\n"
+        },
+        {
+          "verdict": "revise",
+          "reason": "PASSES the hard constraints and the duplication check, so it is not a kill. (a) MSE-main-loss: trivially satisfied — the lever never touches RST-MoE; ridge/LightGBM are external yardsticks whose own L2 objectives are MSE-congruent. (b) Non-circular & non-duplicate CONFIRMED against code: the existing PROBE-CEILING (scripts/pool_readout_forensics.py:255-261) hooks net.factor_pooling and fits its ridge/Adam arms on the backbone's INTERNAL rep h_last, not on raw Alpha158 — so REPORT.md's \"158 factors equally weak/redundant\" is backbone-conditioned and cannot bound a raw-feature data ceiling. An external estimator on raw DK_I features is genuinely new evidence. (c) Feasibility strong: CPU-minutes, qlib ships LGBModel/LinearModel, dataset.prepare(DK_I/DK_L) is already exercised by the forensic script. (d) Seed noise cannot swamp the decisive direction — n=6 std≈0.0033 (REPORT.md tau_scale_05 0.0775±0.0033), so the +0.02 re-open gate is ~6 sigma. NOT a mechanism-vs-benefit case because it is a diagnostic, not a model intervention; its deliverable is a decision, not an IC gain. BUT it must be revised because TWO of its three pre-committed conclusions are over-claimed as written: (1) FEATURE/INPUT ASYMMETRY — RST-MoE consumes an 8-day window (TSDatasetH step_len=8, work_flow.py:80) plus external macro (use_external_macro=True, line 180), so a day-t Alpha158 snapshot reference sees strictly less; a flat reference could be input-starvation, making the 'ridge&GBDT within +0.005 => ALL architecture/readout/pool levers dead a priori, 100% redirect' claim unsafe. (2) LEAKAGE AMBIGUITY — 'per-day LightGBM'/'cross-sectional ridge' could be misread as per-test-day in-sample refit (catastrophic leakage => false re-open). (3) valid==test checkpoint-selection asymmetry under-credits a plain ridge. (4) decision DEAD ZONE at +0.005..+0.02 with no pre-committed action. All fixable; the cheap, non-circular, re-open-decisive core is sound.",
+          "confidence": 0.8,
+          "revised_form": "Model-agnostic ceiling probe — fixed comparability + pre-committed decision rule. (1) Train BOTH references strictly on the 2008-01-01..2020-03-31 train segment and evaluate strictly OOS on 2020-07-01..2022-12-31 by the same daily-Spearman RankIC (reuse daily_rank_ic in scripts/pool_readout_forensics.py); 'per-day'/'cross-sectional' = eval grouping ONLY, never per-test-day refit. (2) Match RST-MoE's information: run each reference in two variants — (A) day-t Alpha158 snapshot, and (B) the flattened 8-day window (8x158) concatenated with the market_state macro features — so a flat result reflects a data ceiling, not input starvation; report both. (3) Symmetric selection: give LightGBM early-stopping on valid (==test, as RST-MoE does via checkpoint_metric=valid_rank_ic), or compare against an RST-MoE number measured without test-checkpoint-selection. (4) Pre-commit a 3-zone rule vs the n=6 RST-MoE distribution (0.0775+-0.0033): if best reference RankIC >= 0.0786 + 0.02 (clears ~3x pooled std) -> RE-OPEN architecture track; if both references and all variants land within +0.005 of 0.0786 -> data-ceiling supported, redirect budget to objective-space/feature-label levers; MIDDLE zone (+0.005..+0.02) -> pre-committed action = the gap is real-but-modal, keep architecture levers OPEN but down-prioritized and escalate to a feature/label probe. Use >=3 seeds for LightGBM (bagging/feature subsample variance) and report mean+-std for every cell."
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "Within-day factor-neutral breadth regularizer ||X^T w||^2 — a single-batch, label-free portfolio gradient using the 158 alphas as a risk model",
+        "mechanism": "Inside forward (loss block at quant_moe_model.py:634-665, x[B,T,N] available from :311 VERIFIED), take X = x[:,-1,:] -> [B,158] (already RobustZScore-normed) as a per-stock factor-loading proxy; form dollar-neutral book w=(p-mean(p)); add l_neut = sum_f (sum_i w_i X_{i,f})^2 / (||w||^2 * 158 + eps). total_loss += lambda*l_neut at the :691 aggregation seam via QIB_MODEL_OVERRIDES_JSON, lambda in {0.01,0.03,0.1}, MSE weight fixed 1.0. No buffer, no cross-day state, no label.",
+        "target_metric": "MaxDD_wc down and IR up via sqrt(BR_eff); IC within -0.002 of 0.0669",
+        "rationale": "Q4, kept distinct as the CLEANEST member of the portfolio-aux family. Survives because no objective term has ever entered the live loss touching breadth, and this is the only one that is label-free (zero IC double-count — the loss-forensics warn the IR/Sharpe numerator partly re-adds IC, but ||X^T w||^2 carries a genuine single-batch correlation gradient with no IC overlap) and buffer-free (no leakage surface, no segment-reset to get wrong). Directly attacks the established, code-verified gap (MSE's diagonal Hessian => provably indifferent to within-day concentration / w^T Sigma w; IR = IC*sqrt(BR_eff)*TC). Distinct from killed CrossStockBlock/pool (objective-space, not architecture; no inter-stock message passing). Cleanest first probe of 'does a breadth gradient lift IR/MDD'.",
+        "est_cost": "~1 GPU-day (n=6 from-scratch, seeds 42-47); negligible per-batch overhead (one B x 158 matmul)"
+      },
+      "verdicts": [
+        {
+          "verdict": "survive",
+          "reason": "Passes all three refutation axes against code. (1) NOT a dead-lever rename: every killed lever is architecture-space (readout/pool reweighting, time readout, tau-unclamp, finetune, scalar-gate); the closest relative (CrossStockBlock C1) is OPEN, not killed. This is objective-space (a loss penalty on output direction, no inter-stock message passing), and code confirms NO breadth term has ever been in the live loss (quant_moe_model.py:691 total_loss = mse + router-z + sparsity only; listmle/ic are monitor-only). (2) NOT leakage: label-free, buffer-free, no cross-day state, no future market_state; X=x[:,-1,:] is RobustZScore input already present (DK_I, applied identically across segments) — zero new leakage surface. (3) NOT an n=1 mirage by design: protocol is n=6 from-scratch seeds 42-47. The mechanism is also non-degenerate and sound: l_neut = wT XXT w/(||w||^2*158) = Sum sigma_k^2 (u_k.w)^2 is a sigma^2-weighted Rayleigh quotient — it concentrates on dominant common-factor directions (an effective variance-weighted common-mode repeller, not a naive 'neutralize all alpha'), is scale-invariant so it won't fight MSE's dispersion/calibration anchoring, and is O(1) vs MSE ~1-IC^2 so the gradient won't freeze. CONDITIONS (hygiene, not flaws): (a) it is NOT env-only — must add a config field (e.g. neut_lambda) to the model AND register it in the work_flow.py overridable-key allowlist (~:296); (b) pin down valid-mask handling so w and the X rows use a consistent stock set (cleanest: compute over all B, never mix masked-p with full-X); (c) the IR/MaxDD target is measured on valid==test under checkpoint_metric=valid_rank_ic, so any single-window IR/MDD lift must be confirmed by walk-forward before promotion; (d) honor the -0.002 IC guardrail as the kill-trigger (dominant common mode may carry alpha and degrade IC). Residual risk is empirical IC-degradation, which the n=6 + IC guardrail will adjudicate — not a refutation of the lever's cleanliness.",
+          "confidence": 0.74
+        },
+        {
+          "verdict": "revise",
+          "reason": "MSE-main constraint PASSES (code-verified): at quant_moe_model.py:688-695 only l_mse backprops as l_main; an added lambda*l_neut is a true additive aux with MSE weight fixed 1.0 — this is NOT a replacement. The gradient is also genuinely non-vacuous (couples stocks via shared factor loadings), unlike the killed scalar gate. So it is not a clean infeasibility kill. But three formulation flaws make benefit-null highly likely and the test mis-specified — all fixable, hence revise not kill:\n\n(1) CONCEPTUAL MISTARGET / IC-conflict. The rationale calls X = the 158 Alpha158 features \"a risk model.\" It is not — Alpha158 is an ALPHA library, and X[:,-1,:] is literally the model's input substrate. Penalizing sum_f(sum_i w_i X_{i,f})^2 forces the score book orthogonal to its own predictive factors. Two outcomes, both bad: if w spans X, IC drops well past the ±0.002 tolerance (IC-killer); if w is orthogonal to last-day X (the project's established \"time-dominated\" regime), l_neut and its gradient are ~0 (no-op). The falsifiable window is narrow-to-empty.\n\n(2) GRADIENT-TARGET MISMATCH (the recurring mechanism≠benefit trap). The regularizer shapes the full ~300-name dollar-neutral book w=p-mean(p), but MaxDD/IR come from a 30-name LONG-ONLY TopkDropout(topk=30,n_drop=5) portfolio. Factor-neutralizing the whole cross-section does not directly constrain top-30 concentration or tail risk, so the mechanism→target link is weak. Plus sampler.py up/downsamples with replacement, so the training \"book\" contains duplicate/subsampled names — a corrupted breadth proxy.\n\n(3) UNDERPOWERED + UNMEASURABLE PREDICTION. The stated mechanism \"IR up via sqrt(BR_eff)\" is not a recorder artifact — no run emits BR_eff; it is only back-solvable from Grinold (fragile). The measurable targets MaxDD_wc/IR are the noisiest metrics, and this project ALREADY established \"portfolio edge = NULL at n=6\" for τ-unclamp (same regime). The ±0.002 IC band is below per-seed std 0.003. So at n=6 the predicted MDD/IR move is very likely swamped — exactly the prior failure.\n\nINJECTION CLAIM ALSO WRONG: it cannot be added \"via QIB_MODEL_OVERRIDES_JSON at :691\"; that path only merges config values (model_configuration.py:12 / work_flow.py:377) and the loss block reads no such flag — a code edit to forward() behind a new config attr is mandatory.",
+          "revised_form": "Keep the label-free, single-batch, MSE-preserving aux gradient, but: (a) implement as REAL code — add config attr `breadth_neut_lambda` read in forward()'s loss block (~634-665), computing l_neut on the valid-masked AND DE-DUPLICATED daily cross-section (handle sampler up/down-sampling) so w is a real book; total_loss += lambda*l_neut, MSE weight fixed 1.0. (b) Do NOT neutralize against all 158 alphas (self-defeating). Instead neutralize w against a SMALL curated common-risk subspace — e.g. top-k within-batch PCs of X (k~3-5, the common-mode directions) or a handful of bona-fide Barra-like Alpha158 columns — preserving idiosyncratic alpha; OR apply the penalty only to the traded top/bottom sleeve that actually drives MaxDD. (c) Re-specify the falsifiable prediction as a DIRECTLY MEASURABLE, paired n>=6 (prefer n>=8) test on a recorder-emitted quantity (rank_ic + an explicit logged book-concentration / Herfindahl of the top-30, added to metrics), and demote MaxDD/IR to exploratory given the established portfolio-edge-null-at-n=6. Gate promotion on: rank_ic delta >= -0.002 paired AND a measured, logged concentration reduction — not on the unobservable BR_eff.",
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "IR/Sharpe + turnover auxiliary on the BARE backbone (readout OFF) — the deployment-IR gradient and the ONLY available gradient on transaction cost",
+        "mechanism": "At the :691 loss seam, total += lambda_ir*ramp*l_ir + lambda_to*l_to with use_readout_stock_attn=FALSE (readout OFF), all via QIB_MODEL_OVERRIDES_JSON (no work_flow.py edit). l_ir: L1-normalized dollar-neutral book w=(p-mean(p))/(sum|p-mean(p)|+eps), per-day r_t=sum_i w_i y_i, l_ir = -r_t/sqrt(detached EMA_var + eps). l_to = mean((w_t[id]-w_prev[id])^2) from a DETACHED id-keyed EMA buffer of yesterday's weight, updated AFTER the optimizer step and RESET at every train/valid/test segment boundary; use unique-names-only weights to avoid the sampler's with-replacement duplicate inflation (sampler.py:72-75 VERIFIED). lambda ramps 0->~0.08-0.1, MSE weight fixed 1.0.",
+        "target_metric": "with-cost IR up (> 1.75, paired-t p<0.1); realized turnover down; MDD_wc shallower",
+        "rationale": "Merges Q1(Sharpe/IR)+Q3(turnover) = the filed-but-unrun C3 plan rung, kept as one lever (shared cross-day-EMA infra + shared leakage concern). Survives because NO portfolio gradient has ever been in the live objective and turnover/TC is provably in MSE's null space (per-day-separable loss + one-day batch => strictly zero cross-day gradient; the loss-forensics confirm turnover is the only STRICTLY-orthogonal new direction). This is the single most theory-aligned attack on the verified with-cost wound (IR 1.75->1.03, MDD 2.4x). De-stacked to the bare backbone with readout OFF, isolating it from the 6-regime-killed CrossStockBlock — the meta-analysis explicitly flags that the plan back-loads this behind dead-architecture operator rungs and that it should be tested EARLY and decoupled. Keeps MSE main. MUST pass /quant-leakage-audit (buffer reset) first.",
+        "est_cost": "~1 GPU-day (n=6 from-scratch; R0 anchor preds already archived so only the treatment arm is new) + one /quant-leakage-audit (0 GPU)"
+      },
+      "verdicts": [
+        {
+          "verdict": "revise",
+          "reason": "NOT a duplicate of the killed list: it is correctly de-stacked from the 6-regime-killed readout (readout OFF), is no scalar-gate / no finetune / no tau-unclamp / no pool-reweight, adds a genuinely-new off-diagonal-coupled gradient MSE lacks, and is pre-registered n=6 from-scratch paired-t (not an n=1 mirage). So it is not KILL-as-dead-lever. But two specific, code-verified flaws block SURVIVE.\n\n(1) TURNOVER HALF IS MECHANICALLY MIS-SPECIFIED. The headline claim — \"turnover is the ONLY STRICTLY-orthogonal new direction / the ONLY gradient on transaction cost\" — is false as written. Turnover is a cross-day quantity, but: (a) the comparison weight comes from a DETACHED id-keyed EMA buffer, so grad flows only through today's w_t toward a constant target => l_to is a per-day shrinkage-to-target penalty, NOT a differentiable turnover gradient; the actual TC/turnover term stays in the loss null space exactly as MSE leaves it; (b) training day order is SHUFFLED (model_adapter.py:1969 shuffle=True -> FixedDailyBatchSampler rng.permutation, sampler.py:54-55), so \"yesterday's weight\" is a RANDOM calendar day (within a shuffled epoch it can even be a FUTURE calendar day). The buffer therefore degrades to a per-stock running-mean weight; l_to becomes a shrinkage-toward-historical-mean-weight regularizer (with a persistence/momentum bias), which is not what \"turnover down\" measures.\n\n(2) IR/SHARPE HALF: the \"risk-adjustment\" is illusory because the variance denominator is DETACHED — sqrt(EMA_var) is a constant, contributing zero gradient on return variance. With a single-day batch, l_ir reduces to a soft, L1-normalized long-short return = a concentration-aware soft-IC. The L1 norm does inject some off-diagonal name coupling (so it is NOT pure MSE-redundant), but its dominant gradient is the same IC-alignment MSE already maximizes (plan §2: L*=1-IC^2; plan §3-C4 explicitly DROPPED a cardinal l_ic term for double-counting MSE's IC gradient). So it is worth testing but must be framed as a soft long-short-return aux, not \"Sharpe/IR.\"\n\n(3) BUNDLING violates single-variable attribution — the plan deliberately split these as R4 (IR) and R5 (turnover); fused, a win/loss is unattributable. (4) \"config-only via QIB_MODEL_OVERRIDES_JSON, no work_flow.py edit\" undercounts cost: verified there is NO l_ir/l_to/EMA-buffer plumbing in losses.py or quant_moe_model.py — this needs new stateful source (loss fns + cross-batch buffer + post-step update + segment-reset), exactly where leakage bugs live; the loss IS computed during valid forward (quant_moe_model.py:715), so the buffer must be guarded against updating in eval. (5) valid==test means the absolute IR_wc>1.75 bar is read on the model-selection window; the paired-Delta vs anchor cancels differential bias but the absolute threshold is optimistic and must defer to walk-forward+stress. Net: salvageable, not clean -> revise.",
+          "revised_form": "De-bundle and run the IR half ALONE first. (R4) On the bare backbone (readout OFF), add only the soft long-short-return aux: w=(p-mean(p))/(sum|p-mean(p)|+eps) on UNIQUE names only, l_ir=-r_t/sqrt(detached EMA_var+eps), total += lambda_ir*ramp*l_ir, MSE main fixed at 1.0, lambda ramp 0->~0.08; n=6 from-scratch seeds 42-47, paired-Delta vs the g012 anchor, AFTER a passing /quant-leakage-audit. Report it as a soft long-short-return/IC-family aux (not Sharpe), and pre-check it is not merely re-deriving MSE's IC gradient (kill if IC and rank_ic both flat while only turnover moves). For the TURNOVER term (separate R5, only if R4 lifts pre-cost IR): it MUST actually see cross-day turnover — either (i) keep two CONSECUTIVE trading days in the graph (no detach of the comparison weight) using the deterministic chronological sampler with day-shuffle DISABLED for the turnover stream, or (ii) if kept as the cheap detached-EMA form, explicitly re-cast and justify it as a weight-SMOOTHING regularizer (drop the \"transaction-cost gradient\" claim) and still disable day-shuffle so the EMA is chronologically meaningful. In all cases: assert the buffer NEVER updates during valid/test forward (update only post-optimizer-step), reset at every segment boundary, and defer any production IR claim to /quant-walk-forward + /quant-stress given valid==test.",
+          "confidence": 0.7
+        },
+        {
+          "verdict": "revise",
+          "reason": "Code-verified, the lever is theory-aligned (MSE IS portfolio-blind: loss seam quant_moe_model.py:691 backprops only w[\"mse\"]*l_mse=1.0 plus z/reg aux; l_ic & l_listmle are monitor-only at :701-714; one-day batch + per-name-separable MSE => turnover/cost genuinely in the null space) and KEEPS MSE main (constraint 1 PASS), and the falsifiable metrics ARE recorded (information_ratio_with_cost / max_drawdown_with_cost at work_flow.py:1281-1282, turnover at :1284-1285; costs are default-ON despite being commented at :253-255). So not a clean kill. But three material, fixable flaws:\n\n(1) FEASIBILITY CLAIM IS FALSE. \"all via QIB_MODEL_OVERRIDES_JSON (no work_flow.py edit)\" cannot work. forward(self, x, factor_ids, labels, macro_features) at quant_moe_model.py:287 receives only FACTOR-channel ids [N] and per-sample labels [B] — NO instrument/stock identity. The train collate returns (bx, by, bmacro, day) (model_adapter.py:1214) — stock id is dropped; only the predict collate carries positional ids (:1230-1248). The loss is computed INSIDE net.forward where no id exists, and the override whitelist (work_flow.py:296-324) has no ir/to key. An id-keyed cross-day EMA turnover buffer therefore requires plumbing instrument ids sampler->collate->adapter->model, a forward-signature change (or moving loss out to the adapter loop), a persistent cross-module buffer with segment-boundary reset and after-step update, new loss fns in losses.py, AND it must survive the valid-mask re-index (bx_t=bx_t[valid] at :1718). This is real engineering + a real leakage surface, not 0-code.\n\n(2) SURROGATE<->DEPLOYMENT DECOUPLING = the mechanism!=benefit trap that already killed the readout. The loss optimizes a CONTINUOUS dollar-neutral L1 long-short book's Sharpe and weight-smoothness, but the backtested portfolio is TopkDropoutStrategy(topk=30, n_drop=5) (work_flow.py:236-242) — a discrete, rank-based, long-side selector whose turnover FLOOR is set by n_drop (~5/30 forced churn), not by continuous-weight smoothness. So \"realized turnover down\" is structurally capped and \"with-cost IR up\" optimizes a portfolio that is never deployed. High risk of activating machinery without moving the metric.\n\n(3) IR HALF LIKELY REDUNDANT + BUNDLING CONFOUND. Per the row-83 theory, MSE already maximizes Pearson IC; the L1-renormalized dollar-neutral IR gradient is the same long-short-spread ascent in MSE's span (the lever itself concedes only turnover is \"strictly orthogonal\"). Bundling IR+turnover confounds attribution. Also POWER: target is with-cost IR paired-t p<0.1 at n=6, but seed std is only known for rank_ic (~0.003); IR cross-seed std is unmeasured and memory warns \"RankIC!=IR at promotion\" and \"n=3 promotion unreliable\".",
+          "revised_form": "Split off and test the TURNOVER-smoothing auxiliary ALONE on the bare backbone (readout OFF, IR/Sharpe term DROPPED to a later rung since it is likely in MSE's span), with MSE fixed at weight 1.0. Define the turnover penalty to target the ACTUALLY-DEPLOYED portfolio (e.g. rank-order stability of the top-30 boundary under TopkDropout, or co-vary n_drop in a QIB_PORT_OVERRIDES_JSON arm) rather than a continuous L1 book that is never traded. Budget the REAL implementation: plumb instrument ids sampler->collate->adapter (currently dropped at model_adapter.py:1214), add a detached id-keyed cross-day EMA buffer updated after optimizer.step and reset at every train/valid/test segment boundary, survive the valid-mask reindex at model_adapter.py:1718, and add the loss fn in losses.py — NOT env-var-only. Gate behind (a) /quant-leakage-audit on the buffer reset/no-future-leak and (b) a pre-measured control with-cost-IR cross-seed std from the archived R0 anchor preds to confirm n=6 paired-t actually has power before spending the GPU-day.",
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "Turn ON the existing top/bottom-K RankNet auxiliary, matched to TopkDropout K=30 (membership-aligned tail loss) — zero-code objective-space probe",
+        "mechanism": "Config-flag only: set loss_weights.rank=lambda (sweep {0.05,0.1,0.2}) and rank_topk=30 via QIB_MODEL_OVERRIDES_JSON. Wiring VERIFIED present: l_rank=ranknet_topbottom_loss(p,y,rank_topk) is built whenever w['rank']!=0 (quant_moe_model.py:660-661) and added to total_loss as w['rank']*l_rank (:696-697); losses.py:29-49 = softplus(p_bot - p_top).mean() over the K names with the highest/lowest LABELS (currently rank=0.0, rank_topk=5). MSE stays main.",
+        "target_metric": "top-30 precision / NDCG@30 up -> IR up; RankIC within +/-0.002, IC not below 0.0669",
+        "rationale": "Q2, kept distinct as the CHEAPEST objective-space probe (no code). Survives because the rank-aware kills (factor-pool, time-readout, 3-expert, warm-q) were all ARCHITECTURAL placement ablations — a loss-term tail auxiliary on top of frozen MSE has NEVER been ablated (loss-forensics explicitly note it is outside the kill-log). Not a pure-IC double-count: RankNet is membership-restricted by label to the top/bottom-30 — exactly where the topk=30 strategy places bets — supplying a true pairwise cross-name gradient only on the traded tails, orthogonal to uniform squared-residual MSE. Ranked below the breadth/IR auxes because the established gap is breadth/turnover/TC (tail-ordering is adjacent) and the flat-RankIC prior applies, but its zero cost makes it the natural first entry point to the objective-space family.",
+        "est_cost": "~18 GPU-hr per lambda (start lambda=0.1 n=6, seeds 42-47); expand only if it clears the bar"
+      },
+      "verdicts": [
+        {
+          "verdict": "survive",
+          "reason": "Code-verified clean on all three fatal-flaw axes. (1) NOT killed-under-renaming: wiring at quant_moe_model.py:660-661/696-697 + losses.py:29-49 is a softplus(p_bot-p_top) pairwise term on label-tails added to total_loss; every archived run (g012, warm-q, current) shows rank:0.0, so it has literally never fired. The prior rank-aware kills (warm-q, factor-pool, time-readout, τ-unclamp) are all ARCHITECTURAL placement / τ-MLP ablations, not a loss-term auxiliary on frozen MSE — genuinely outside the kill-log. (2) NO leakage: top/bottom selected by training label within each batch, and sampler.py:39 groups by datetime so a batch = one trading-day cross-section, making top/bottom-by-label = that day's forward-return tails — standard supervised signal, no fitted-stat train→valid crossing, no future info. test==valid is a pre-existing baseline-wide caveat, not introduced here and apples-to-apples under paired seeds. (3) NOT an n=1 mirage: n=6 paired seeds 42-47 with explicit guardrails (RankIC ±0.002, IC≥0.0669). MSE stays the live main loss (rank term ~O(0.07) vs MSE O(1.0) at λ=0.1; l_listmle/l_ic remain monitor-only) so hard-constraint-1 holds; zero-code since loss_weights and rank_topk are both override-exposed (work_flow.py:297,299); cheap single-GPU. The only substantive critique is that, by the project's own RankIC≠IR / flat-RankIC priors and the established turnover/TC gap, this tail-ORDERING loss (no turnover/cost term) is LIKELY NULL and could even raise turnover — but 'likely-null-by-prior' is a ranking argument (which the proposal already honors by ranking it lowest), not a fatal flaw. It cleanly passes the dead-lever and leakage screens.",
+          "confidence": 0.72
+        },
+        {
+          "verdict": "revise",
+          "reason": "Code verified: MSE truly stays main (quant_moe_model.py:676-692; l_listmle/l_ic are monitor-only, only loss_map[main_loss] is summed), RankNet is a genuine additive aux (:696-697, w[\"rank\"]*l_rank), wiring/defaults match (losses.py:29-49 selects tails by torch.topk(target)=LABEL; rank=0.0, rank_topk=5), and zero-code launch works via _deep_update partial-merge. So constraint-1 passes and it is not an architectural duplicate. But three fixable problems block it as written: (1) Unmeasurable target — no precision@K/NDCG@K exists anywhere (work_flow.py/model_adapter.py only have AMP 'precision'); zero-code artifacts are IC/RankIC (sig_analysis) and portfolio IR (port_analysis_1day.pkl), so the stated falsifiable metric needs new offline code, breaking the 'zero-code' framing. (2) Leaky alignment — RankNet membership is by LABEL, TopkDropout bets by PREDICTION, so it does NOT directly optimize predicted-top-30 precision. (3) Strong mechanism≠benefit prior — softplus(p_bot−p_top).mean() is additively separable, hence portfolio-blind by the project's own theorem (no breadth/turnover/TC gradient); it improves a RankIC-flavored tail-ordering quantity, exactly the thing durable findings (RankIC≠IR; τ-unclamp portfolio-edge NULL at n=6) say will not move IR, and MSE already over-weights extreme-label names. At n=6 the noisy IR endpoint will likely swamp any effect, repeating the τ-unclamp NULL. Revise: restate the gate against measurable endpoints, run a single λ paired against the existing 6 control seeds with a pre-registered paired-IR bar, and treat it as a low-prior mechanism probe demoted below the breadth/IR-cost auxiliaries that actually target the identified gap.",
+          "revised_form": "Turn ON RankNet tail aux (loss_weights.rank=0.1, rank_topk=30 via QIB_MODEL_OVERRIDES_JSON; MSE stays main) as a single-cell, properly-powered MECHANISM PROBE — not a precision@30 win bet. PRIMARY gate = paired portfolio IR delta (portfolio_analysis/port_analysis_1day.pkl) over n=6 treatment seeds 42-47 vs the SAME 6 archived control seeds, required to exceed the control's n=6 IR seed-std (no single-point lifts). GUARDRAILS = RankIC within ±0.002 of control mean and IC ≥ 0.0669 (sig_analysis/ric.pkl, ic.pkl). Do NOT sweep {0.05,0.1,0.2} up front (~54 GPU-hr); run λ=0.1 only (~18 GPU-hr) and expand only if the paired IR delta clears noise. Drop the precision@30/NDCG@30 promotion claim (not recorder-computable zero-code); if wanted, compute it post-hoc read-only from saved pred.pkl as mechanism-confirmation only, and downgrade the 'zero-code' claim to 'zero TRAINING-code'. Acknowledge the LABEL-vs-prediction membership leak (loss trains realized-tail ordering, not predicted-top-30 precision). Expect NULL on IR per the RankIC≠IR prior; gate this behind / only if the breadth-IR-cost auxiliaries (which target the breadth/turnover/TC gap) are unavailable.",
+          "confidence": 0.62
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "Gen-gap decomposition: same-regime held-out-day diagnostic (is the 'gen-gap wall' overfit or 2008-2020 -> 2020-2022 regime shift?)",
+        "mechanism": "Pure QIB_DATA_OVERRIDES_JSON segment override, no code/loss change. Set train=2014-2018, randomly hold out 15% of TRADING DAYS (+/-5d embargo so the 5-day label can't straddle), checkpoint on a 2018 internal-valid, then evaluate daily rank_ic on (i) the held-out SAME-REGIME days and (ii) the untouched 2020-2022 window. n=3. This separates the overfit component (train vs held-out-train) from the regime-shift component (held-out-train vs 2020-2022).",
+        "target_metric": "gen-gap decomposed into overfit-component vs regime-shift-component",
+        "rationale": "Merges S4(holdout)+P1, kept distinct from the honest-measurement spine because it answers a different question (overfit vs distribution-shift, which imply OPPOSITE fixes) and needs actual short runs. Survives because the entire 'gen-gap is the wall, redirect to sampler/EMA' narrative is currently UNFALSIFIABLE (train-IC ~0.20 vs valid-IC ~0.08 has no same-regime holdout) AND is contradicted by the only direct sampler datapoint (full_daily made gen-gap WORSE, rows 26-31). Decisive and cheap: if held-out-same-regime ~= 2020-2022 valid, the gap is a regime ceiling -> KILL the whole EMA/SWA/dropout/sampler-dedup track (saves repeated wasted GPU); if held-out-train >> valid, train-period reweighting becomes the one live gen-gap lever. Diagnostic, MSE byte-identical.",
+        "est_cost": "~0.3-0.5 GPU-day (n=3 short runs on a 2014-2018 window, no extra epochs)"
+      },
+      "verdicts": [
+        {
+          "verdict": "revise",
+          "reason": "NOT a dead lever: pure MSE-byte-identical diagnostic; none of the killed levers (readout/pool/tau-unclamp/finetune/scalar-gate) apply; genuinely new info because every existing gen-gap datapoint (ledger rows ~27-32) is train_rank_ic minus valid(2020-2022)_rank_ic, which cannot separate overfit from regime-shift, yet row 32 already routed the program to EMA/sampler-dedup on that under-determined basis. Decision-relevant. But it cannot run as specified; three flaws force revise.\n\n(1) MECHANISM IMPOSSIBLE AS WRITTEN: \"randomly hold out 15% of TRADING DAYS via pure QIB_DATA_OVERRIDES_JSON segment override, no code change.\" work_flow.py:113-117 + _apply_env_overrides(357-386) + model_adapter.py:1063/1983/2365 show segments are contiguous (start,end) tuples consumed by dataset.prepare(name); a deep-merge cannot express a non-contiguous random-day subset. So it either needs real code (a per-day mask), contradicting \"no code change,\" or degenerates to a contiguous held-out block, which is itself a local time-shift and re-confounds the overfit-vs-shift split the diagnostic exists to make.\n\n(2) SELECTION / TEST==VALID LEAKAGE: checkpoint selects on valid_rank_ic (model_adapter.py:1456-1467,2268). If the held-out-same-regime eval set equals the 2018 checkpoint-valid set, the overfit component is optimistically biased and misattributed to regime-shift. Need three mutually-embargoed same-regime splits, and valid must be moved into 2014-2018; leaving checkpoint pointed at 2020-2022 selects the model on the very window reported as held-out, reproducing the original valid==test contamination (work_flow.py:116).\n\n(3) NORMALIZATION-FIT CONFOUND: RobustZScoreNorm is fit on fit_start..fit_end=2008-01-01..2020-03-31 (work_flow.py:87-88), independent of the train segment; a pure segment override leaves feature-norm stats over 2008-2020Q1 (includes held-out 2018 + ~2yr never trained on). No future-leak past 2020-07, but a confound; fit_end_time must also be overridden, so it is not a pure segment override.\n\nMinor: +/-5d embargo only purges the 5-day label-label overlap; step_len=8 means a kept training day up to ~8d away can touch the eval-day window, so use purge=5 + buffer~=8.</parameter>\n<parameter name=\"revised_form\">Same-regime overfit-vs-shift decomposition, n>=3, MSE/model untouched. (a) Add a small loss-neutral DK_L-only per-day holdout mask (deterministic, seed-keyed) in the train sampler, OR stay pure-data via a purged walk-forward over contiguous blocks with the contiguous-block caveat flagged. (b) 3-way mutually-embargoed split inside 2014-2018: train=2014..mid-2017, checkpoint-valid=late-2017 (purged), held-out-eval=2018 (purged); checkpoint on the 2017 valid, NEVER on 2020-2022. (c) Override fit_end_time to ~2017-12-31 so RobustZScoreNorm is fit only on train. (d) Embargo purge=5 + buffer~=8d (>= max(label_horizon, step_len)). (e) Report three IC numbers (train / held-out-same-regime-2018 / untouched-2020-2022); pre-verify market_state_csi300.pkl has no look-ahead over 2014-2018 (shift=0 past-only). Decision rule unchanged.",
+          "confidence": 0.72
+        },
+        {
+          "verdict": "revise",
+          "reason": "Core question is valid (the 'gen-gap wall' narrative IS currently unfalsifiable) and MSE is untouched, so not a kill. But three as-written claims fail code verification and one confound corrupts the conclusion, so it does not survive: (1) 'Pure QIB_DATA_OVERRIDES_JSON segment override, no code change' is FALSE — work_flow.py:383-384/_deep_update only merges contiguous (start,end) segment tuples (_get_segment_range requires len==2); a random 15%-of-trading-days holdout is inexpressible. FixedDailyBatchSampler (sampler.py:28-39) builds daily_groups from get_index() with no holdout hook, and the recorder only emits pred.pkl/rank_ic on the contiguous test segment — so both the interleaved-day holdout AND its daily-rank_ic eval require custom code, not env overrides. (2) External-validity confound: baseline trains 2008-2020 (line 114); this card trains 2014-2018 (~1/3 the data), which overfits MORE by construction, biasing the 'overfit-component' upward and making the decomposition unequal to the baseline's real gap — you diagnose a proxy, not the object. (3) Random-day ±5d embargo decimates a large fraction of the 2014-2018 calendar, further inflating apparent overfit. (4) Decision value is overstated as binary (regime-ceiling XOR overfit); modal outcome is 'both non-trivial', which kills/promotes nothing. At n=3 on a smaller/higher-variance window with a ~150-day held-out set (daily-IC SE ~0.015-0.02), only components >~0.04 resolve.",
+          "revised_form": "Same-regime held-out diagnostic on the ACTUAL baseline object: keep the train window = baseline 2008-2020, and hold out a random 15% of train WEEKS/BLOCKS (not single days, to bound ±5d embargo loss) via a small day-mask added to FixedDailyBatchSampler / dataset index filtering (explicitly a minor code change, MSE byte-identical). Checkpoint on the existing 2020-2022 valid; add a one-off inference script that computes daily rank_ic on (i) the held-out same-regime blocks and (ii) the untouched 2020-2022 window from saved predictions. n>=3 fresh seeds; report per-day IC distributions and paired diffs. Pre-register THREE outcomes, not two: overfit-dominant (holdout<<train) -> train-period reweighting is the live lever; shift-dominant (holdout~=2022<<train) -> KILL EMA/SWA/dropout/sampler-dedup track; both non-trivial -> neither resolved (accept inconclusive). Before spending GPU, check whether the existing quant-walk-forward decay-slope already supplies a same-regime-vs-shifted signal, to avoid duplication.",
+          "confidence": 0.62
+        }
+      ]
+    },
+    {
+      "lever": {
+        "title": "Inject the cross-sectional coordinate as deterministic INPUT channels (per-day CS-rank/CS-z of top alphas) — give the per-stock model the relative position it is graded on, with zero cross-stock coupling",
+        "mechanism": "Add a feature-side, point-in-time Processor that appends per day the cross-sectional rank-percentile (and/or CS-z) of the top-K most-used Alpha factors as NEW input channels (computed on day-T data only). Backbone/pooling/head stay byte-identical and per-stock; B remains a pure batch dim; tokenizer num_alphas auto-bumps via _init_net. RELATED label-side alternative (lower priority): beta-neutralize the train target (S3) — trailing-60d beta_i, CS-regress the forward-return label on beta_i, train on the residual (then rank/z); eval label raw; loss stays F.mse_loss. Both require /quant-leakage-audit first.",
+        "target_metric": "CS-rank channels: RankIC up (>= +0.005). Beta-neutral alt: IR_wc up + MaxDD down (raw RankIC may fall, expected)",
+        "rationale": "S1-input (S2), with S3 folded as a related label-side alt. Survives because the architecture forensic proves the backbone is cross-sectionally BLIND (a +5sigma perturbation of one stock leaks <1e-5 into others' scores) AND features are time-series-normalized (each stock scaled by its OWN history, never today's peer distribution), so the relative coordinate that determines cross-sectional rank is literally absent from the input tensor. This hands it back as a fixed, leakage-audited input with ZERO inter-stock message passing — distinct from the killed CrossStockBlock/pool (representational coupling) and from factor-pool reweighting (adds genuinely new info, not a reweight of existing tokens); MSE's diagonal Hessian and the one-day-batch invariant are untouched. Ranked last because the benefit is the most uncertain (a single input channel may not overcome the per-stock processing bottleneck) and the beta-neutral alt carries a leakage surface plus a real risk that the portfolio needs the beta tilt.",
+        "est_cost": "~0.6 GPU-day (CS-rank channels: Processor + tokenizer bump + n=3-6) / ~0.7 GPU-day (beta-neutral alt: trailing-beta precompute + CS-regression Processor + n=3-6), each gated by /quant-leakage-audit (0 GPU)"
+      },
+      "verdicts": [
+        {
+          "verdict": "revise",
+          "confidence": 0.7,
+          "reason": "NOT a renamed killed lever and NOT fatally leaky, but not clean as written. Verified novel+non-redundant: RobustZScoreNorm (work_flow.py:95-97) is a global train-pooled affine, the same monotone map daily, so the per-stock backbone sees f_i,T but cannot recover the day-T cross-sectional rank (forensic blindness) — CS-rank is genuinely new info, not a pool reweight. Core mechanism leakage-clean: datetime-grouped, fit-free, uses only day-T peers. MSE intact (quant_moe_model.py:679-699: total_loss is MSE-only, listmle/ic monitor-only). Four fixable defects block survive: (1) BUNDLING two distinct mechanisms (S2 input-channel/RankIC vs S3 beta-neutral label/IR-MaxDD) — split into separate cards. (2) SELECTION-LEAKAGE: 'top-K most-used alphas' peeks if usage measured over full sample incl valid/test — use train-only or fixed set. (3) SCHEMA HAZARD: model_adapter.py:820-852 silently truncates/strips trailing channels as 'packed label' at inference, and _init_net (1356) bumps num_alphas from first train batch only — appended channels can vanish at infer; add hard train==infer schema assert. (4) IN-SAMPLE PROMOTION: valid==test (work_flow.py:114-116) and +0.005 RankIC < 2x seed-std (~0.003) — require paired multi-seed + walk-forward. No fatal flaw (not kill); not clean (not survive).</parameter>\n<parameter name=\"revised_form\">Split into two cards. CARD A (primary, ~0.6 GPU-day): append per-day CS-rank-percentile/CS-z of a pre-registered, train-only-selected alpha set (or all 158) as NEW input channels via a datetime-grouped, fit-free Processor; backbone/pool/head byte-identical; num_alphas auto-bumps via _init_net. MANDATORY: /quant-leakage-audit first; hard train==infer feature-schema assert to defeat the silent _coerce_feature_dim truncation/label-strip (model_adapter.py:820-852); top-K from TRAIN-window usage only. Promote on paired n>=3-6 fresh-seed RankIC delta >= +0.005 AND > 2x seed-std, confirmed by /quant-walk-forward (valid==test makes single split in-sample). CARD B (separate): beta-neutralize TRAIN label with strictly past-only trailing-60d beta + per-day CS-regression, eval raw, loss stays MSE; gate on /quant-leakage-audit and judge IR/MaxDD via /quant-stress with costs ENABLED (currently commented out in port_conf).</parameter>\n</invoke>\n"
+        },
+        {
+          "verdict": "revise",
+          "reason": "Code-verified, the PRIMARY lever (CS-rank/CS-z input channels) passes all four refutation gates, so it is not killable; but two sub-parts are fixable defects, hence revise. (1) MSE-main-loss: PASS — quant_moe_model.py:691-699 only backprops w[mse]*l_mse + router-z + selection-reg; l_listmle/l_ic are monitor-only (the cfg loss_weights listmle:1/ic:1 are dead), and cs_mse_loss(mse_normalize=False)=F.mse_loss exactly. The input-channel lever touches no loss code. (2) mechanism!=benefit: NOT construction-null like the killed pool-reweight. RobustZScoreNorm is a GLOBAL train-fit affine (not per-stock-own-history as the rationale wrongly states), so within-day rank order survives monotonically but day-conditional peer position is absent, and the CS-blind backbone cannot recover it — so CS-rank is genuinely new day-conditional info. Residual empirical risk: CSI300 dispersion is fairly stable, so a fixed f(X) may already capture most of it and the true effect could fall under +0.005. (3) Feasibility: PASS — _init_net (model_adapter.py:1355) auto-bumps num_alphas=F so the FeatureTokenizer widens with negligible params; tiny model; RankIC readable from SigAnaRecord. CAVEAT: work_flow.py:115-116 valid==test ranges are identical with checkpoint_metric=valid_rank_ic, so the absolute RankIC is checkpoint-selection-optimistic and only the paired delta is trustworthy. (4) Seed noise: per-seed diff-std ~ sqrt2*0.003 ~ 0.0042 (tokenizer reinit decorrelates pairing); +0.005 is ~3sigma at n=6 (detectable) but only ~2sigma at n=3 (under-powered), so n=3 must be dropped. The bundled beta-neutral label ALT is the weakest piece: bigger leakage surface (trailing-beta past-only + per-day CS-regression), it fights the long-only top-30 beta harvest, and its falsifiable target (IR_wc up + MaxDD down) lives on portfolio metrics far noisier than RankIC at n<=6 — it should be spun out into its own separately-gated card, not ridden alongside the clean input-channel test.",
+          "revised_form": "Inject the cross-sectional coordinate as deterministic INPUT channels (per-day CS-rank-percentile and/or CS-z of the top-K most-used Alpha factors) computed point-in-time on day-T cross-section only; backbone/pooling/head stay byte-identical and per-stock (B remains a pure batch dim, MSE diagonal Hessian and one-day-batch invariant untouched); tokenizer num_alphas auto-bumps via _init_net. REVISIONS: (a) Drop the beta-neutral label alt from this card and file it as a SEPARATE /quant-hypothesis card (it has a distinct leakage surface, conflicts with long-only beta harvest, and predicts on noisy IR/MaxDD). (b) Compute CS-rank/CS-z on the PRE-clip raw feature (clip_outlier=True collapses tail ranks) and implement as a fit-free non-parametric processor so there is zero train/test fit leakage; still gate on /quant-leakage-audit. (c) Require n=6 paired fresh seeds (not n=3) and report the paired delta as the test statistic; acknowledge valid==test makes the absolute RankIC checkpoint-selection-optimistic. (d) Promotion threshold unchanged: paired mean RankIC delta >= +0.005 with the n=6 paired SE (~0.0017) giving ~3sigma separation; below that = mechanism-confirmed-but-benefit-null, kill.",
+          "confidence": 0.7
+        }
+      ]
+    }
+  ]
+}

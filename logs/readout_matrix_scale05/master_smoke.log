@@ -1,0 +1,17 @@
+==== readout matrix (smoke, 1ep) designs=[d3cin d3mix d1pma duala dualb] seeds=[42] start Sun, Jun  7, 2026  1:16:34 PM ====
+
+#### d3cin seed 42 (smoke) start Sun, Jun  7, 2026  1:16:34 PM ####
+d3cin_seed42_EXIT=0 Sun, Jun  7, 2026  1:20:05 PM
+
+#### d3mix seed 42 (smoke) start Sun, Jun  7, 2026  1:20:05 PM ####
+d3mix_seed42_EXIT=0 Sun, Jun  7, 2026  1:23:55 PM
+
+#### d1pma seed 42 (smoke) start Sun, Jun  7, 2026  1:23:55 PM ####
+d1pma_seed42_EXIT=0 Sun, Jun  7, 2026  1:27:48 PM
+
+#### duala seed 42 (smoke) start Sun, Jun  7, 2026  1:27:48 PM ####
+duala_seed42_EXIT=0 Sun, Jun  7, 2026  1:31:55 PM
+
+#### dualb seed 42 (smoke) start Sun, Jun  7, 2026  1:31:55 PM ####
+dualb_seed42_EXIT=0 Sun, Jun  7, 2026  1:36:15 PM
+==== readout matrix (smoke) done Sun, Jun  7, 2026  1:36:15 PM ====
