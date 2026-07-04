@@ -1,0 +1,24 @@
+{
+  "setting": "full_135",
+  "cmd": [
+    "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+    "-u",
+    "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+  ],
+  "model_overrides": {
+    "use_regime_time_embedding": true,
+    "use_regime_factor_gate": true,
+    "router_use_layer_summary": true,
+    "router_mode": "learned"
+  },
+  "trainer_overrides": {
+    "seed": 42,
+    "train_stop_threshold": 1.35,
+    "use_tqdm": false
+  },
+  "data_overrides": {},
+  "port_overrides": {},
+  "stdout": "diagnostic_runs\\print_only_formal_check\\full_135\\stdout.log",
+  "stderr": "diagnostic_runs\\print_only_formal_check\\full_135\\stderr.log",
+  "returncode": null
+}

@@ -1,0 +1,12 @@
+[setup] seed=44 out=analysis\readout_redesign\stepA\seed44
+[load] backbone (frozen) T=8 D=64 device=cuda
+[cache] valid ...
+[sanity] model valid daily_rank_ic=0.072355 (611 days)
+[cache] train ...
+[cache] train 106991 samples / 372 days ; valid 183300
+[train] designs (8ep, frozen reps) ...
+  baseline  valid_ric=0.06886 hold=0.14553 bonus=+0.00000 {} (1s)
+  d1pma     valid_ric=0.07301 hold=0.14333 bonus=+0.00414 {'gate_g': 0.4846661686897278, 'attn_over_T': [0.114, 0.124, 0.112, 0.112, 0.119, 0.135, 0.137, 0.147]} (1s)
+  duala     valid_ric=0.06731 hold=0.13679 bonus=-0.00155 {'head_zT_norm': 0.40154144167900085, 'head_zF_norm': 0.05956515669822693} (1s)
+  dualb     valid_ric=0.05839 hold=0.12174 bonus=-0.01048 {'head_zT_norm': 0.3893234431743622, 'head_zF_norm': 0.09727562963962555} (1s)
+  d3cid     valid_ric=0.07008 hold=0.14524 bonus=+0.00121 {'W_per_t': [0.011, 0.011, 0.012, 0.012, 0.013, 0.016, 0.016, 0.999], 'W_last_frac': 0.916674792766571} (1s)

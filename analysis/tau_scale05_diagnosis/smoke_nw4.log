@@ -1,0 +1,70 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[24020:MainThread](2026-06-27 18:01:03,243) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[24020:MainThread](2026-06-27 18:01:03,253) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[24020:MainThread](2026-06-27 18:01:03,253) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[24020:MainThread](2026-06-27 18:02:27,538) INFO - qlib.timer - [log.py:127] - Time cost: 84.283s | Loading data Done
+[24020:MainThread](2026-06-27 18:02:28,396) INFO - qlib.timer - [log.py:127] - Time cost: 0.779s | RobustZScoreNorm Done
+[24020:MainThread](2026-06-27 18:02:28,573) INFO - qlib.timer - [log.py:127] - Time cost: 0.177s | Fillna Done
+[24020:MainThread](2026-06-27 18:02:28,697) INFO - qlib.timer - [log.py:127] - Time cost: 0.032s | DropnaLabel Done
+[24020:MainThread](2026-06-27 18:02:29,866) INFO - qlib.timer - [log.py:127] - Time cost: 1.169s | CSZScoreNorm Done
+[24020:MainThread](2026-06-27 18:02:29,870) INFO - qlib.timer - [log.py:127] - Time cost: 2.333s | fit & process data Done
+[24020:MainThread](2026-06-27 18:02:29,870) INFO - qlib.timer - [log.py:127] - Time cost: 86.615s | Init data Done
+C:\Users\60585\PycharmProjects\qibMacV2\module\model_adapter.py:206: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\mlflow\tracking\_tracking_service\utils.py:140: FutureWarning: Filesystem tracking backend (e.g., './mlruns') is deprecated. Please switch to a database backend (e.g., 'sqlite:///mlflow.db'). For feedback, see: https://github.com/mlflow/mlflow/issues/18534
+  return FileStore(store_uri, store_uri)
+[24020:MainThread](2026-06-27 18:02:34,102) WARNING - qlib.workflow - [expm.py:231] - No valid experiment found. Create a new experiment with name Official_Alignment_RST_MoE_loss-mse_d64_l2_ff128_ctx8_embft_time1_decay1_film1_fgs1.0_fsh0.2_rSum1_rModelearned_featSel0_mseNorm0_macro1_mDrop0.1_pool0.7_msmarket_state_csi300_settingsmoke_nw4.
+[24020:MainThread](2026-06-27 18:02:34,186) INFO - qlib.workflow - [exp.py:258] - Experiment 211556558256246558 starts running ...
+[24020:MainThread](2026-06-27 18:02:34,591) INFO - qlib.workflow - [recorder.py:345] - Recorder 867da03bd9f14ab1b0d6d5d9ebdf287c starts running under Experiment 211556558256246558 ...
+warning: in the working copy of '.agents/skills/qlibQuantExp-skills/shared/ledger.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'module/dataloader/sampler.py', LF will be replaced by CRLF the next time Git touches it
+[24020:MainThread](2026-06-27 18:02:35,586) INFO - qlib.timer - [log.py:127] - Time cost: 0.016s | waiting `async_log` Done
+>>> [qlib.init] kernels=1 (serial data loading; QIB_QLIB_KERNELS to override)
+>>> [Config:env] Applied experiment overrides
+>>> [Config:env] run_setting=smoke_nw4
+>>> [Config] Clip backtest window (dataset.test segment): 2020-07-01~2022-12-31 -> 2020-07-01~2021-06-30
+>>> [Config:planned] model: loss=mse, d_model=64, layers=2, heads=4, context_len=8, num_alphas=158, val_emb=feature_tokenizer, time_emb=on, factor_gate=on, router=learned, feat_sel=off, alibi=off, macro=external(market_state_csi300.pkl, dim=auto, shift=0, strict=True), macro_drop=0.1
+>>> [Config:planned] trainer: lr=5e-05, epochs=3, batch=300, accum=1, early_stop=0, warmup=on(ratio=0.05), precision=amp_fp16, seed=42, checkpoint=valid_rank_ic:max, train_stop=off, min_epochs=3, k=999999
+>>> [Phase 1] Training Model...
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+>>> [Schema] Packed-label detected on train segment: total_dim=159, feature_dim=158, label_dim=1. Adapter will treat the last 1 channel(s) at the final time step as label.
+[24020:MainThread](2026-06-27 18:02:35,602) ERROR - qlib.workflow - [utils.py:41] - An exception has been raised[AttributeError: Can't pickle local object 'QlibQuantMoE._wrap_with_datetime.<locals>._Wrapped'].
+  File "C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py", line 2737, in <module>
+    model.fit(dataset)
+  File "C:\Users\60585\PycharmProjects\qibMacV2\module\model_adapter.py", line 2015, in fit
+    first = next(iter(train_loader))
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\torch\utils\data\dataloader.py", line 484, in __iter__
+    return self._get_iterator()
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\torch\utils\data\dataloader.py", line 415, in _get_iterator
+    return _MultiProcessingDataLoaderIter(self)
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\torch\utils\data\dataloader.py", line 1138, in __init__
+    w.start()
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\context.py", line 224, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\context.py", line 336, in _Popen
+    return Popen(process_obj)
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\popen_spawn_win32.py", line 93, in __init__
+    reduction.dump(process_obj, to_child)
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\reduction.py", line 60, in dump
+    ForkingPickler(file, protocol).dump(obj)
+AttributeError: Can't pickle local object 'QlibQuantMoE._wrap_with_datetime.<locals>._Wrapped'
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[32024:MainThread](2026-06-27 18:02:37,716) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[32024:MainThread](2026-06-27 18:02:37,716) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[32024:MainThread](2026-06-27 18:02:37,716) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[32024:MainThread](2026-06-27 18:02:37,732) ERROR - qlib.workflow - [utils.py:41] - An exception has been raised[EOFError: Ran out of input].
+  File "<string>", line 1, in <module>
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\spawn.py", line 116, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "C:\Users\60585\miniconda3\envs\quantEnv\lib\multiprocessing\spawn.py", line 126, in _main
+    self = reduction.pickle.load(from_parent)
+>>> [qlib.init] kernels=1 (serial data loading; QIB_QLIB_KERNELS to override)
+EOFError: Ran out of input

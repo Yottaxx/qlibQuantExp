@@ -1,0 +1,11 @@
+[setup] seed=42 label=full_135 out=analysis\time_readout_probe\seed42
+[load] backbone from mlruns/325032212672679181/26e088e3282a4170a59a53f0fa8c8319/artifacts/model (device=cuda)
+[pass] cache valid h_time + model sanity ...
+[sanity] model valid daily_rank_ic=0.080201 over 611 days
+[pass] cache train h_time ...
+[probe] train cache: 53496 samples over 186 days
+[probe] T0/T-mean/T-flatten fit done
+[probe] T-attn hold_ric=0.14864 attn_over_T=[0.035, 0.065, 0.026, 0.033, 0.1, 0.068, 0.164, 0.508] cross_stock_std=0.0314
+[pass] eval temporal arms on valid ...
+[TIME-PROBE] T0_last=0.07181 | T_mean gap=-0.00906 | T_flatten gap=-0.00008 | T_attn gap=-0.00202 | best_t=7 (last=T-1=7) | any_helps=False
+[TIME-PROBE] per-timestep marginal rank_ic: [0.0618, 0.0636, 0.0624, 0.0635, 0.0635, 0.0607, 0.0635, 0.0718]

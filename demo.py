@@ -30,13 +30,13 @@ if __name__ == "__main__":
     x[:, :, :10] = torch.randn(bsz, 30, 10) * 5.0
 
     factor_ids = torch.arange(50)
-    # date_ids = torch.randint(0, 100, (bsz,))
-    macro_features = torch.randn(bsz,50)
-    labels = torch.randn(bsz, 50)  # 真实收益率
+    macro_features = torch.randn(bsz, 50)
+    labels = torch.randn(bsz)  # 真实收益率（每个样本一个 label）
 
     # 3. 前向传播
+    # Note: date_ids removed - regime signal is computed from internal statistics of x
     model.train()  # 确保 Gumbel Noise 和 Dropout 开启
-    outputs = model(x, factor_ids, date_ids=None, labels=labels,macro_features=macro_features)
+    outputs = model(x, factor_ids, labels=labels, macro_features=macro_features)
 
     # 4. 打印结果分析
     print("\n--- Training Metrics ---")

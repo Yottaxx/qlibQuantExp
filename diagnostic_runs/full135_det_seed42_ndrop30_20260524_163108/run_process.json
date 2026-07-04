@@ -1,0 +1,14 @@
+﻿{
+    "pid":  25304,
+    "out_dir":  "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\full135_det_seed42_ndrop30_20260524_163108",
+    "started_at":  "2026-05-24T16:31:08",
+    "command":  "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe -u work_flow.py",
+    "env":  {
+                "QIB_RUN_SETTING":  "full_135_det_seed42_ndrop30",
+                "QIB_MODEL_OVERRIDES_JSON":  "{\"use_regime_time_embedding\":true,\"use_regime_factor_gate\":true,\"router_use_layer_summary\":true,\"router_mode\":\"learned\"}",
+                "QIB_TRAINER_OVERRIDES_JSON":  "{\"seed\":42,\"device\":\"auto\",\"deterministic_mode\":\"warn\",\"seed_workers\":true,\"train_sampler_mode\":\"sampled_daily\",\"sampler_diag\":true,\"use_tqdm\":false}",
+                "QIB_PORT_OVERRIDES_JSON":  "{\"strategy\":{\"kwargs\":{\"n_drop\":30}}}"
+            },
+    "stdout":  "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\full135_det_seed42_ndrop30_20260524_163108\\stdout.log",
+    "stderr":  "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\full135_det_seed42_ndrop30_20260524_163108\\stderr.log"
+}

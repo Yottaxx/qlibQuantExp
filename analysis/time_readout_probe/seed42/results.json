@@ -1,0 +1,45 @@
+{
+  "seed": 42,
+  "config_label": "full_135",
+  "universe": "csi300",
+  "T": 8,
+  "D": 64,
+  "loaded_from": "mlruns/325032212672679181/26e088e3282a4170a59a53f0fa8c8319/artifacts/model",
+  "sanity_valid_rank_ic": 0.08020112118390539,
+  "valid_n_days": 611,
+  "TIME_PROBE": {
+    "T0_last_rank_ic": 0.07181080141816183,
+    "T_mean_rank_ic": 0.06275312653677655,
+    "T_mean_gap": -0.009057674881385286,
+    "T_flatten_rank_ic": 0.07173238988091929,
+    "T_flatten_gap": -7.841153724254257e-05,
+    "T_attn_rank_ic": 0.0697913330503638,
+    "T_attn_gap": -0.0020194683677980385,
+    "T_attn_avg_weights": [
+      0.03493475914001465,
+      0.06537634134292603,
+      0.025884460657835007,
+      0.033318374305963516,
+      0.10031478106975555,
+      0.06805539131164551,
+      0.16380417346954346,
+      0.5083117485046387
+    ],
+    "T_attn_cross_stock_std": 0.03140350431203842,
+    "per_timestep_marginal_rank_ic": [
+      0.06175068927566405,
+      0.06362705954743694,
+      0.06244324599559899,
+      0.06348654632791784,
+      0.06351372930467042,
+      0.06068343941806711,
+      0.06354322527334509,
+      0.07181080141816183
+    ],
+    "argmax_informative_timestep": 7,
+    "gate_T_mean": false,
+    "gate_T_flatten": false,
+    "gate_T_attn": false,
+    "any_time_readout_helps": false
+  }
+}

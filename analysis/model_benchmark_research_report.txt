@@ -1,0 +1,576 @@
+QuantMoE benchmark research report
+Generated: 2026-05-13
+
+Evidence policy
+1. This report does not use existing repository .md files as evidence.
+2. Evidence comes from Python code, MLflow / diagnostic / repro artifacts, generated CSV/JSON inventories, and newly searched paper pages.
+3. No model code, loss function, or training logic was changed. The only new artifacts are analysis files under analysis/.
+
+
+Generated inventory artifacts
+The complete experiment inventory is machine-readable in:
+- analysis/experiment_inventory_unified.csv
+- analysis/experiment_inventory_unified.json
+- analysis/aggregate_by_setting.csv
+- analysis/aggregate_by_setting.json
+- analysis/aggregate_by_setting_unified.csv
+- analysis/aggregate_by_setting_unified.json
+- analysis/mlflow_runs_inventory.csv
+- analysis/diagnostic_runs_inventory.csv
+- analysis/repro_runs_inventory.csv
+- analysis/suite_csv_inventory.csv
+- analysis/analysis_summary.json
+
+Counts from the parsed artifacts:
+- MLflow runs: 31
+- diagnostic manifests: 31
+- diagnostic manifests with RankIC: 23
+- failed diagnostic manifests: 1
+- parsed repro run: 1
+- unified experiment records after filling suite CSV rows: 34
+- aggregate settings in unified inventory: 17
+
+
+1. Experiment inventory
+
+1.1 Default code configuration
+The default experiment is defined in work_flow.py:116 and then can be overridden through QIB_MODEL_OVERRIDES_JSON / QIB_TRAINER_OVERRIDES_JSON in work_flow.py:329. Experiment names are constructed from resolved config in work_flow.py:432.
+
+Default architecture in code:
+- d_model=64
+- n_heads=4
+- n_layers=2
+- d_ff=128
+- dropout=0.1
+- context_len=8
+- num_alphas=158, later overwritten from data-driven shape in adapter initialization
+- value_embedding_type=feature_tokenizer
+- feature_tokenizer_add_factor_id=False
+- use_regime_time_embedding=True
+- time_tau_min=0.5, time_tau_max=50.0, time_tau_init=5.0
+- use_regime_factor_gate=True
+- factor_gate_scale=1.0
+- factor_gate_shift_scale=0.2
+- router_noise=0.01
+- router_temperature=1.0
+- router_z_loss_coef=0.01
+- router_use_layer_summary=True
+- use_alibi=False
+- use_feature_selection=False
+- main_loss=mse
+- listmle_tau=0.8
+- use_external_macro=True
+- regime_macro_dropout=0.1
+- pooling_alpha=0.7
+
+Default trainer config in code:
+- lr=5e-5
+- n_epochs=40
+- batch_size=300
+- precision=amp_fp16
+- grad_accum_steps=1
+- seed=42
+- train_stop_key=loss_main
+- train_stop_threshold=1.35
+- min_epochs=5
+- consecutive_k=2
+- market_state_path=data/market_state_csi300.pkl
+- market_state_shift=0
+- market_state_strict=True
+- use_warmup=True
+- warmup_ratio=0.05
+
+1.2 Actual experiment families found
+The full row-level inventory is in analysis/experiment_inventory_unified.csv. The main families are:
+
+- repro_3675090: one default workflow repro run from stdout/log artifacts.
+- seed42_matrix_gradfix_20260430_2105: earlier seed42 matrix, metrics recovered from suite_diagnostic_summary.csv because manifests do not carry all metrics.
+- four_day_plan_20260501_125906/matrix_40epoch_seed42: current 40-epoch ablation matrix.
+- four_day_plan_20260501_125906/capacity_full135_40epoch/stage1_seed42: cap00-cap08 capacity sweep.
+- stage2_seed43_44: repeat seeds 43/44 for cap00/cap01/cap02.
+- stage3_aggressive_seed42: cap09-cap11 larger/aggressive capacity sweep.
+- print_only_formal_check: print-only/formal check, no benchmark metric.
+
+1.3 Current seed42 ablation matrix, manifest-backed
+
+setting             RankIC    RankICIR  AnnRet(cost)  IR(cost)  train-valid gap  post-peak decay  time_ratio  router_entropy
+full_135            0.079135  0.549612  0.177875      1.564012  0.120813         0.009061         0.670812    0.897017
+fixed_router_05     0.077071  0.576090  0.154921      1.534843  0.110751         0.007323         0.500000    1.000000
+film_only           0.076786  0.584437  0.179788      1.575226  0.143250         0.019227         0.734945    0.807584
+time_only           0.071970  0.548347  0.160872      1.575366  0.099784         0.005970         0.542891    0.897593
+base                0.071236  0.539073  0.138200      1.369382  0.106377         0.003621         0.688188    0.840082
+no_layer_summary    0.069079  0.514995  0.193047      1.843191  0.112985         0.005027         0.647826    0.893887
+
+Key ablation deltas from the current matrix:
+- full_135 - base = +0.007899 RankIC.
+- time_only - base = +0.000734 RankIC. Time embedding alone is weak.
+- film_only - base = +0.005550 RankIC. Regime-conditioned factor FiLM is the dominant single component.
+- full_135 - film_only = +0.002349 RankIC. Combining time + FiLM + learned routing helps, but the incremental edge over FiLM alone is modest.
+- full_135 - fixed_router_05 = +0.002064 RankIC. Learned routing helps RankIC in this seed, but fixed_router_05 has better RankICIR, which means the learned router edge is not yet statistically secure.
+- no_layer_summary is worse than base by -0.002158 RankIC. The router layer summary is important; removing it hurts more than removing only learned routing.
+
+1.4 Capacity sweep, manifest-backed aggregate
+
+setting                         n  seeds       d_model h  layers d_ff dropout RankIC    RankICIR AnnRet(cost) IR(cost) gap      decay
+cap06_d96_h4_l2_ff384_do020     1  42          96      4  2      384  0.20    0.079374 0.541603 0.220231     2.086089 0.120013 0.004990
+full_135                        1  42          -       -  -      -    -       0.079135 0.549612 0.177875     1.564012 0.120813 0.009061
+cap11_d128_h4_l2_ff512_do020    1  42          128     4  2      512  0.20    0.077561 0.527095 0.151711     1.375004 0.133664 0.006845
+cap07_d96_h6_l2_ff384_do015     1  42          96      6  2      384  0.15    0.077492 0.530411 0.166840     1.584894 0.127671 0.005703
+cap05_d96_h4_l2_ff384_do015     1  42          96      4  2      384  0.15    0.077287 0.543495 0.183458     1.754429 0.128798 0.005057
+cap02_d80_h4_l2_ff320_do015     3  42,43,44    80      4  2      320  0.15    0.077077 0.541638 0.213247     2.029287 0.120569 0.005720
+fixed_router_05                 1  42          -       -  -      -    -       0.077071 0.576090 0.154921     1.534843 0.110751 0.007323
+film_only                       1  42          -       -  -      -    -       0.076786 0.584437 0.179788     1.575226 0.143250 0.019227
+cap10_d128_h8_l2_ff512_do025    1  42          128     8  2      512  0.25    0.076664 0.520999 0.166394     1.519312 0.131417 0.007855
+cap00_d64_h4_l2_ff128_do010     3  42,43,44    64      4  2      128  0.10    0.076259 0.559786 0.182308     1.796348 0.122095 0.007050
+cap09_d128_h8_l2_ff384_do020    1  42          128     8  2      384  0.20    0.075703 0.494299 0.212223     1.868388 0.142902 0.013711
+cap01_d64_h4_l2_ff256_do015     3  42,43,44    64      4  2      256  0.15    0.075677 0.537294 0.201898     1.904755 0.112264 0.003295
+cap03_d96_h4_l2_ff288_do015     1  42          96      4  2      288  0.15    0.075351 0.510369 0.169633     1.612065 0.124596 0.005212
+cap04_d96_h4_l2_ff288_do020     1  42          96      4  2      288  0.20    0.074528 0.479963 0.167285     1.442828 0.127606 0.009005
+time_only                       1  42          -       -  -      -    -       0.071970 0.548347 0.160872     1.575366 0.099784 0.005970
+base                            1  42          -       -  -      -    -       0.071236 0.539073 0.138200     1.369382 0.106377 0.003621
+no_layer_summary                1  42          -       -  -      -    -       0.069079 0.514995 0.193047     1.843191 0.112985 0.005027
+
+Failed/incomplete:
+- cap08_d96_h4_l3_ff384_do020 returned code 1 and has no diagnostic matrix. Depth=3 is therefore not evaluated.
+- print_only_formal_check has no metric-bearing benchmark run.
+
+1.5 Seed variance
+Only cap00/cap01/cap02 have 3-seed evidence in the current capacity sweep:
+- cap00 mean RankIC=0.076259, std=0.002986, range 0.072377 to 0.079639.
+- cap01 mean RankIC=0.075677, std=0.001756, range 0.074067 to 0.078119.
+- cap02 mean RankIC=0.077077, std=0.001577, range 0.075144 to 0.079006.
+
+The single best run is cap00 seed43 with RankIC=0.079639, but the 3-seed mean is not best. This is a seed-variance warning, not proof that smaller cap00 dominates.
+
+1.6 Repro run
+Parsed repro artifact:
+- path: repro_runs/3675090_repro_20260429_202047
+- command: work_flow.py
+- started_at: 2026-04-29T20:20:49.9033525+08:00
+- git head: 3675090480ea25c84fc073716460ec8277eafd5b
+- train_epochs=32, valid_epochs=32
+- best_valid_rank_ic=0.078940 at epoch 17
+- last_valid_rank_ic=0.067965
+- last_valid_ic=0.061439
+- last_valid_time_ratio=0.653879
+- last_valid_gate_entropy=0.631301
+- last_train_loss_main=1.329779
+- last_train_rank_ic=0.189691
+
+This run shows a large train-valid rank gap late in training, consistent with the diagnostics seen in the newer matrix.
+
+
+2. Process and monitoring indicators
+
+2.1 Performance indicators
+- performance/daily_rank_ic_mean
+- performance/rank_icir
+- performance/daily_ic_mean
+- performance/icir
+- performance/rolling20_rank_ic_min
+- performance/rolling60_rank_ic_min
+- performance/top_bottom_spread_mean
+- performance/worst5_day_rank_ic_mean
+
+2.2 Portfolio indicators
+- portfolio/annualized_return_with_cost
+- portfolio/annualized_return_without_cost
+- portfolio/cost_drag
+- portfolio/information_ratio_with_cost
+- portfolio/max_drawdown_with_cost
+- portfolio/top_bottom_spread
+- portfolio/turnover
+
+2.3 Optimization/process indicators
+- best_valid_rank_ic, best_valid_rank_ic_epoch
+- final_valid_rank_ic
+- best_minus_final_valid_rank_ic
+- optimization/post_peak_decay = best_valid_rank_ic - final_valid_rank_ic
+- optimization/rank_ic_gap_last = train rank IC - valid RankIC near the end
+- optimization/loss_gap_last
+- optimization/train_grad_norm_last
+- optimization/train_grad_nonfinite_rate_last
+- optimization/train_grad_skipped_rate_last
+- train_score_std / valid_score_std
+- train_label_std / valid_label_std
+
+2.4 Router indicators
+From QuantMoEModel and RegimeAdaptiveMoEBlock:
+- router/time_ratio_mean
+- router/factor_ratio_mean = 1 - time_ratio
+- router/collapse_ratio
+- router/entropy_norm_mean
+- router/layer_k_time_ratio_last
+- router/layer_k_entropy_norm_last
+- router/layer_k_logit_margin_last
+- router/time_ratio_vs_*_spearman
+
+For a two-expert router, normalized entropy is approximately
+H(g) / log(2), where H(g) = -sum_i g_i log(g_i).
+If H/log(2) is near 1, the gate is close to uniform. If it is near 0, it is near a hard expert choice.
+
+Current diagnostics show no hard collapse:
+- collapse_ratio is 0 in the main successful runs.
+- entropy_norm is often 0.80 to 0.95.
+- time_ratio ranges roughly from 0.49 to 0.74.
+
+2.5 Time embedding indicators
+RegimeAdaptiveTimeEmbedding computes a regime-conditioned time scale tau and exponential lag weights:
+tau = softplus(tau_base + MLP(r) * tau_mlp_out_scale) + tau_min
+w_lag = exp(-lag / tau)
+time_emb = base_time_embedding * normalized w_lag
+
+Diagnostics include:
+- time_tau
+- time_tau_std
+- time_tau_p10 / p90
+- time_tau_range_util
+- time_half_life = tau * log(2)
+- tau_vs_rank_ic_spearman / tau_vs_tail_spearman / tau_vs_volatility_spearman
+
+2.6 Factor FiLM and pooling indicators
+RegimeAdaptiveFactorGate computes:
+gamma = 1 + scale * tanh((W_r r * LN(e_factor)) / sqrt(D))
+beta = shift_scale * tanh((W_beta r * LN(e_factor)) / sqrt(D))
+y = LayerNorm(x) * gamma + beta
+
+Diagnostics include:
+- factor_film/gamma_strength_mean
+- factor_film/beta_strength_mean
+- factor_film/factor_gate_entropy_mean
+- factor_film/factor_gate_topk_mass_5_mean
+- factor_film/factor_gate_topk_mass_10_mean
+- factor_film/gate_js_divergence_regime_mean
+- attention_pooling/factor_entropy_norm_mean
+- attention_pooling/factor_top10_mass_mean
+- attention_pooling/pool_entropy_norm_mean
+- attention_pooling/pooling_top10_vs_film_top10_overlap
+
+
+3. Code-derived model logic
+
+3.1 Data and target
+The workflow builds a daily cross-sectional stock ranking task. The label is a future return over the configured horizon, and the default context length is 8. Training uses daily cross-section batches through FixedDailyBatchSampler; evaluation and prediction use DailyChunkBatchSampler. Relevant code:
+- module/dataloader/sampler.py:7,37,51,53
+- module/dataloader/sampler.py:66,102
+- module/model_adapter.py:1099,1104,1120,2094
+
+The sampler mismatch matters. Training fixes each daily batch to batch_size=300, using replacement if a day has fewer names, while evaluation consumes daily chunks deterministically. If a benchmark universe has occasional non-300 daily counts or missing names, the train objective sees a subtly different empirical cross-section than validation.
+
+3.2 Regime encoder
+RegimeContextEncoder is created in module/quant_moe_model.py:87. It uses external macro state if available; otherwise it builds internal regime statistics such as correlation crowding, pc1 ratio, tail activity, and drift. Relevant code:
+- module/architecture/regime_encoder.py:8
+- module/architecture/regime_encoder.py:48
+- module/architecture/regime_encoder.py:161
+- module/architecture/regime_encoder.py:180
+- module/model_adapter.py:590
+
+Let m_t be the external daily macro state and x be the sample tensor. The model computes:
+r_t = E(m_t) when external macro is configured,
+or r_t = E(phi(x_t)) when internal regime stats are used.
+
+In the current config, use_external_macro=True and market_state_path=data/market_state_csi300.pkl, so the intended path is external macro state.
+
+3.3 Tokenization, time embedding, and FiLM
+Let x_{i,t,n} be stock i, lag t, factor n. Tokenization gives h_{i,t,n}. Then:
+h'_{i,t,n} = h_{i,t,n} + P_t(r_i)
+P_t(r_i) = e_t * exp(-lag_t / tau(r_i)) / mean_lag exp(-lag / tau(r_i))
+
+FiLM then creates factor-specific regime modulation:
+tilde h_{i,t,n} = gamma(r_i, e_n) * LN(h'_{i,t,n}) + beta(r_i, e_n)
+
+This is not just a generic deep net. It is a low-rank interaction between regime vector r and factor identity e_n, applied before the time/factor experts. That explains why film_only creates most of the base-to-full gain.
+
+3.4 Two-expert MoE block
+RegimeAdaptiveMoEBlock is defined in module/architecture/moe_block.py:12. It computes:
+- a time expert over T for each factor
+- a factor expert over N for each time
+- a router over the two experts, optionally conditioned on layer summary
+
+Relevant implementation:
+- router_use_layer_summary / router_mode: module/architecture/moe_block.py:26
+- layer summary projection: module/architecture/moe_block.py:34
+- fixed router: module/architecture/moe_block.py:87
+- learned softmax router: module/architecture/moe_block.py:102
+- time expert: module/architecture/moe_block.py:154
+- factor expert: module/architecture/moe_block.py:163
+- fusion: module/architecture/moe_block.py:169
+
+Mathematically:
+g_l = softmax(W_l [r_i; s_l] / temperature)
+z_l = g_{l,time} A_time(h_l) + g_{l,factor} A_factor(h_l)
+h_{l+1} = h_l + z_l + FFN(LN(h_l + z_l))
+
+For fixed_router_05, g=(0.5,0.5). For learned routing, g depends on regime and layer summary.
+
+The key diagnostic implication:
+If learned routing gives only about +0.002 RankIC over fixed 0.5, then either:
+- the two experts are not sufficiently specialized, so A_time(h)-A_factor(h) has limited useful variation, or
+- the regime/router signal is not accurately estimating which expert should dominate, or
+- both are true.
+
+The gain from better routing is approximately driven by:
+E[(g*(r)-0.5) * Delta_alpha(r)]
+where Delta_alpha(r) is the conditional alpha advantage of time expert over factor expert. Improving this term requires better regime state, expert specialization, or router calibration. It does not require changing the loss.
+
+3.5 Prediction head and loss boundary
+After MoE layers, AdaptivePooling aggregates the last time-step factor tokens and the head emits a stock score. Relevant code:
+- module/quant_moe_model.py:105
+- module/quant_moe_model.py:185
+- module/quant_moe_model.py:450
+- module/quant_moe_model.py:465
+
+The current main loss is mse. This report does not recommend modifying main_loss or adding a new loss. Some existing auxiliary mechanisms such as router_z_loss_coef are part of the current implementation, but the proposed next steps below avoid loss changes.
+
+
+4. What the benchmark results say
+
+4.1 There is still improvement space
+Yes, there is likely room on this benchmark, but the evidence does not point to "change the loss" as the next lever. The main reasons:
+
+1. Full model beats base by about +0.0079 RankIC, so the architecture is extracting real signal.
+2. FiLM alone explains most of the base-to-full gain. This means regime-factor interaction is valuable.
+3. Time embedding alone contributes almost nothing over base in the current seed42 matrix.
+4. Learned routing beats fixed 0.5 in RankIC, but fixed router has higher RankICIR. The learned router is useful but not yet robustly proven.
+5. RankIC gap is large: most good runs end with train-valid gap around 0.10 to 0.14. This is too large for a mature benchmark solution.
+6. Some settings have non-trivial post_peak_decay, especially film_only and cap09. The best checkpoint restores performance, but learning dynamics are not clean.
+7. Larger models are not consistently better. cap06 d96/h4/ff384/dropout0.20 is strong, but d128/h8 variants do not dominate and often have worse RankICIR or larger gap.
+8. Only some capacity candidates have multi-seed evidence. cap06 and full_135 need seed repeats before claiming improvement.
+
+4.2 What is strong
+- The model's regime-conditioned factor modulation is valuable.
+- Router collapse is not the primary failure mode; the gate remains active.
+- The diagnostic harness is rich enough to identify whether a proposed change changes alpha, stability, or only portfolio turnover.
+- Best current single-run RankIC is close to 0.08, which is a meaningful benchmark level for this style of Qlib-like cross-sectional task.
+
+4.3 What is weak
+- The time expert is not carrying enough unique signal by itself.
+- Learned routing has not separated itself decisively from fixed 0.5.
+- Capacity scaling is not monotone.
+- Training RankIC is much larger than validation/test RankIC.
+- Regime response exists, but regime-to-alpha alignment is weak.
+
+The repro regime correlation file supports this: routing/time diagnostics correlate with market-state variables, but the same market-state variables have much weaker direct association with RankIC. In plain terms, the model notices regimes, but the current regime representation is not yet deciding the right alpha behavior sharply enough.
+
+
+5. Literature signals and implications
+
+Searched and used sources:
+- MASTER, AAAI 2024: https://ojs.aaai.org/index.php/AAAI/article/view/27767
+- StockMixer, AAAI 2024: https://ojs.aaai.org/index.php/AAAI/article/view/28681
+- TRA, KDD 2021 / Microsoft Research: https://www.microsoft.com/en-us/research/publication/learning-multiple-stock-trading-patterns-with-temporal-routing-adaptor-and-optimal-transport/
+- DoubleAdapt, KDD 2023 / arXiv index: https://ideas.repec.org/p/arx/papers/2306.09862.html
+- RevIN, ICLR 2022 / OpenReview: https://openreview.net/forum?id=cGDAkQo1C0p
+- Non-stationary Transformers, NeurIPS 2022: https://proceedings.neurips.cc/paper_files/paper/2022/hash/4054556fcaa934b0bf76da52cf4f92cb-Abstract-Conference.html
+- PatchTST, ICLR 2023 / OpenReview: https://openreview.net/forum?id=Jbdc0vTOcol
+- iTransformer, ICLR 2024: https://proceedings.iclr.cc/paper_files/paper/2024/hash/2ea18fdc667e0ef2ad82b2b4d65147ad-Abstract-Conference.html
+- TimeMixer, ICLR 2024: https://proceedings.iclr.cc/paper_files/paper/2024/hash/a7ac8a21e5a27e7ab31a5f42a0117bdb-Abstract-Conference.html
+- Qlib, Microsoft Research: https://www.microsoft.com/en-us/research/publication/qlib-an-ai-oriented-quantitative-investment-platform/
+
+Implications for this model:
+
+MASTER points directly at market-guided feature effectiveness and cross-time stock correlation. Your current model already has market-guided FiLM and axis-separated time/factor experts, but it does not explicitly model cross-time stock-to-stock correlation. That is a likely non-loss improvement direction.
+
+StockMixer argues that simpler indicator-time-stock mixing can beat more complex architectures because financial data is limited and noisy. This supports testing simpler or more constrained router/pooling designs instead of only increasing d_model/n_heads.
+
+TRA is directly relevant to your learned router. It shows the value of routing multiple trading patterns, but also emphasizes that routing is hard without explicit pattern identifiers. Your current learned router has no hard collapse, but its edge over fixed routing is small, which fits this warning.
+
+DoubleAdapt and RevIN both push toward non-stationarity handling and local stationarization. Your model has regime conditioning, but not a full data-adaptation or reversible normalization layer. The large train-valid gap and weak regime-to-RankIC alignment make this a high-priority area.
+
+Non-stationary Transformers warns that pure stationarization can remove useful non-stationary information; it combines stationarization with de-stationary attention. For this model, that means: normalize cross-sectional/temporal distributions carefully, but feed regime statistics back into attention/router so bursts are not washed out.
+
+PatchTST, iTransformer, and TimeMixer all support better temporal representation before or inside attention: patching, variate/factor-token inversion, and multi-scale decomposition. Your current context_len=8 is short for a t+5 label; the weak time_only ablation suggests the temporal path needs richer structure, not a different loss.
+
+
+6. Prioritized non-loss improvement directions
+
+P0. Statistical confirmation before architecture churn
+Run cap06, full_135, fixed_router_05, and film_only across at least seeds 42/43/44/45/46 with identical data, split, precision, and checkpoint rule.
+
+Decision rule:
+- Do not accept a new architecture unless mean RankIC improves by at least 0.0015 to 0.0020 and RankICIR does not degrade.
+- Bootstrap by day and by seed. Treat single-seed +0.002 as suggestive, not conclusive.
+
+Reason:
+The current single best run can be explained by seed variance. The 3-seed std for cap00 is about 0.0030, larger than many architectural deltas.
+
+P1. Improve regime state, not loss
+The most plausible alpha improvement is better regime representation.
+
+Concrete changes to test:
+- Add leakage-safe rolling market realized volatility, breadth, turnover/liquidity, dispersion, and drawdown state.
+- Add correlation spectrum beyond pc1: top eigenvalue ratio, eigenvalue entropy, mean off-diagonal correlation, sector-neutral crowding.
+- Add lagged regime bank: r_t, r_{t-1}, r_{t-3}, r_{t-5}, summarized by a small causal temporal encoder.
+- Standardize macro/regime features using train-fit statistics only.
+- Orthogonalize highly collinear regime features to reduce noisy router inputs.
+- Bucket diagnostics by regime quantiles and report RankIC per bucket.
+
+Why:
+The model already reacts to market states, but the reaction does not strongly align with RankIC. Better regime state should increase Cov(router decision, conditional expert advantage).
+
+P2. Router calibration and specialization without loss changes
+The learned router should beat fixed 0.5 more decisively if it is useful.
+
+Concrete changes:
+- Test bounded residual routing: g_time = 0.5 + c * tanh(a(r,s)), with c in {0.10,0.20,0.30}. This keeps routing adaptive while preventing noisy over-steering.
+- Test router_temperature in {0.7,1.0,1.5,2.0}; monitor entropy, logit margin, RankICIR, and post_peak_decay.
+- Test router_noise {0.0,0.005,0.01}. Noise may help exploration but can hurt a small-signal benchmark.
+- Keep router_use_layer_summary=True, but enrich summary with separate time/factor summary statistics instead of one pooled vector.
+- Measure expert disagreement directly: daily corr(A_time score, A_factor score), daily alpha spread by expert, and whether router weight predicts which expert wins.
+
+Why:
+If fixed routing is competitive, the router should be regularized by architecture and calibration, not by changing main_loss.
+
+P3. Make the time path useful
+Current time_only is almost base. That is the clearest architectural weakness.
+
+Concrete changes:
+- Test context_len 16 and 32 for the t+5 label.
+- Use causal multi-scale/dilated temporal tokens: recent 1/2/4/8-day patches plus longer rolling summaries.
+- Test PatchTST-style subseries patches over the time dimension.
+- Add TimeMixer-style decomposition into short-term residual and slower trend components before the time expert.
+- Keep label and loss unchanged; only change temporal representation.
+
+Why:
+With context_len=8, the model may not see enough temporal structure to justify a specialized time expert. Stronger temporal structure should increase Delta_alpha between time and factor experts.
+
+P4. Improve factor/stock interaction
+Your current architecture has time expert and factor expert, but it does not explicitly model stock-to-stock interaction inside the neural model in the way MASTER and StockMixer emphasize.
+
+Concrete changes:
+- Add a stock-mixing stage after per-stock representation, constrained to market/sector aggregates to avoid O(N^2) instability.
+- Add sector/industry neutral summary tokens if sector metadata exists.
+- Test market-to-stock and stock-to-market mixing, not full pairwise attention first.
+- Turn on feature_tokenizer_add_factor_id and test whether explicit factor identity helps FiLM and pooling.
+- Add missingness masks as inputs if factor coverage varies.
+
+Why:
+Financial alpha is often relative. A model that scores each stock with only implicit batch context may leave cross-sectional structure unused.
+
+P5. Fix train/eval sampling mismatch
+Training uses FixedDailyBatchSampler with random downsample/upsample to batch_size=300; evaluation uses deterministic daily chunks.
+
+Concrete changes:
+- Add a no-replacement daily sampler variant for training.
+- If a day has more than batch_size names, split into deterministic chunks and accumulate gradients by day.
+- If a day has fewer names, avoid replacement; pad/mask instead.
+- Report train batch effective universe count, duplicate rate, and valid/test daily count distribution.
+
+Why:
+RankIC is a cross-sectional metric. Duplicating names in a daily cross-section changes the empirical geometry of the target and score distribution even if the loss is unchanged.
+
+P6. Precision and optimization stability
+Current grad_nonfinite/skipped rates are small but nonzero under amp_fp16.
+
+Concrete changes:
+- Repeat best configs with amp_bf16 if hardware supports it.
+- Run one fp32 sanity benchmark for cap06/full_135.
+- Keep gradient clipping diagnostics and compare grad norm distribution by module.
+- Test EMA or checkpoint averaging; this changes inference weights but not loss.
+- Test smaller weight decay/dropout grid around cap06, because cap06 dropout=0.20 looks better than nearby d96 settings.
+
+Why:
+RankIC deltas are small; mixed precision instability can consume the same order of magnitude as real improvements.
+
+P7. Validation protocol and model selection
+Concrete changes:
+- Use rolling/walk-forward evaluation windows.
+- Report day-bootstrap confidence intervals for RankIC and RankICIR.
+- Use seed ensembles or checkpoint averaging only after single-model gains are validated.
+- Track performance by volatility/crowding/tail regime buckets.
+
+Why:
+The benchmark is non-stationary. A single split and single seed can overstate progress.
+
+P8. Data and leakage checks
+Concrete changes:
+- Audit market_state_shift=0 carefully. If macro state uses same-day close-derived values unavailable at prediction time, shift or reconstruct it causally.
+- Verify label horizon and feature availability timestamps.
+- Add train-fit-only normalization for both features and macro state.
+- Add sector/industry neutralization diagnostics if metadata exists.
+
+Why:
+At RankIC around 0.08, a small timestamp leak or normalization mismatch can dominate the claimed improvement.
+
+
+7. Proposed next experiment plan
+
+Phase A: Reproduce and rank the true incumbents
+- full_135 seeds 42-46
+- cap06 seeds 42-46
+- fixed_router_05 under full_135 and cap06 seeds 42-46
+- film_only under full_135 and cap06 seeds 42-46
+
+Acceptance:
+- cap06/full must beat fixed/film by mean RankIC >= 0.0015 and no RankICIR degradation.
+- If not, simplify router or focus on FiLM/regime state.
+
+Phase B: Regime state ablation
+- current macro state
+- richer causal macro state
+- richer macro + lag bank
+- richer macro + orthogonalized features
+- macro dropout grid 0.0/0.1/0.2
+
+Acceptance:
+- improved RankIC in high-vol/crowding/tail buckets without reducing normal-regime RankIC.
+- stronger relation between router decision and expert winner.
+
+Phase C: Temporal representation
+- context_len 8/16/32
+- multi-scale lag summary
+- patch temporal tokens
+- time decomposition before time expert
+
+Acceptance:
+- time_only must improve materially over base; otherwise temporal path remains decorative.
+
+Phase D: Router and pooling
+- bounded residual router
+- temperature/noise sweep
+- factor_id token on/off
+- pooling alpha grid and multi-query pooling
+
+Acceptance:
+- learned router must beat fixed 0.5 in mean RankIC and RankICIR across seeds.
+
+Phase E: Sampler/precision
+- no-replacement daily sampler
+- duplicate-rate logging
+- amp_bf16/fp32 comparison
+
+Acceptance:
+- smaller train-valid gap and equal or better RankIC.
+
+
+8. Current benchmark judgment
+
+My judgment: the model has real headroom, but the next headroom is not in changing the loss.
+
+The strongest evidence-backed path is:
+1. Confirm cap06/full_135 with more seeds.
+2. Improve regime state and causal stationarization.
+3. Make routing more calibrated and expert specialization measurable.
+4. Strengthen temporal representation so time_only is no longer near base.
+5. Remove sampler/precision artifacts that can mask small alpha gains.
+
+The least promising near-term path is:
+- simply scaling d_model/n_heads,
+- adding depth before cap08 failure is understood,
+- making the router more expressive without proving it predicts expert advantage,
+- changing main_loss.
+
+
+9. Completion audit
+
+User objective coverage:
+- All discovered experiments organized: yes, in analysis/experiment_inventory_unified.csv and aggregate files.
+- Parameters organized: yes, default config and actual setting parameters are included in CSV/JSON and summarized above.
+- Process analysis indicators organized: yes, training/checkpoint/gap/decay/grad diagnostics summarized above and in inventories.
+- Monitoring indicators organized: yes, router/time/FiLM/pooling/regime/portfolio indicators summarized above and in inventories.
+- Model analyzed from code logic flow: yes, based on work_flow.py, module/quant_moe_model.py, module/architecture/*, module/model_adapter.py, and module/dataloader/sampler.py.
+- Existing .md files used: no, not as report evidence.
+- SOTA research searched: yes, sources listed above.
+- Loss modification proposed: no.
+- Next non-loss improvement directions: yes, prioritized P0-P8 and phased experiment plan.
+

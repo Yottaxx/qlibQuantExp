@@ -1,0 +1,70 @@
+{
+  "config_label": "g012_anchor_seed42",
+  "loaded_from": "mlruns/716849652326531066/2e8e24fe541a4a31949275b387da2ef2/artifacts/model",
+  "device": "cpu",
+  "universe": "csi300",
+  "D": 64,
+  "n_heads": 4,
+  "d_head": 16,
+  "scale": 0.25,
+  "n_layers": 2,
+  "num_alphas": 158,
+  "valid_stride": 3,
+  "n_factor_slots": 8,
+  "sanity_valid_rank_ic": 0.07638069290541655,
+  "valid_n_days": 203,
+  "faithful": true,
+  "temp_grid": [
+    0.5,
+    1.0,
+    2.0,
+    3.0,
+    5.0
+  ],
+  "STOCK_KEY_SVD": {
+    "layer0": {
+      "s1_over_common_mean": 0.7851209502706646,
+      "s1_over_common_median": 0.7678352512715245,
+      "common_energy_frac_mean": 0.6048613537503341,
+      "common_energy_frac_median": 0.6064675930198209,
+      "eff_rank_mean": 1.3364812622369804,
+      "s2_over_s1_mean": 0.30266953382285583,
+      "common_norm_mean": 6.02389877946506,
+      "s1_mean": 79.95628297622568,
+      "peakability_entropy_norm_by_T": {
+        "T0.5": 0.9788051240990314,
+        "T1": 0.9275597239582997,
+        "T2": 0.8351971216389699,
+        "T3": 0.7846884803818952,
+        "T5": 0.727590603469481
+      },
+      "common_mode_dominated": false,
+      "residual_peakable": true,
+      "world_verdict": "not_common_mode_dominated",
+      "n_slots": 1624,
+      "n_days": 203
+    },
+    "layer1": {
+      "s1_over_common_mean": 0.8587798592829354,
+      "s1_over_common_median": 0.6504423027177566,
+      "common_energy_frac_mean": 0.5914304675596963,
+      "common_energy_frac_median": 0.6385232928939735,
+      "eff_rank_mean": 2.099903686660264,
+      "s2_over_s1_mean": 0.451666150441576,
+      "common_norm_mean": 5.975548625653013,
+      "s1_mean": 74.2827872912872,
+      "peakability_entropy_norm_by_T": {
+        "T0.5": 0.9757711478495246,
+        "T1": 0.9057485099533215,
+        "T2": 0.7774087784288846,
+        "T3": 0.7156441114943823,
+        "T5": 0.6509420753151564
+      },
+      "common_mode_dominated": false,
+      "residual_peakable": true,
+      "world_verdict": "not_common_mode_dominated",
+      "n_slots": 1624,
+      "n_days": 203
+    }
+  }
+}

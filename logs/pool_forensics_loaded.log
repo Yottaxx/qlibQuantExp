@@ -1,0 +1,552 @@
+=== two-family loaded pool forensics started Sat, Jun  6, 2026  2:59:35 PM ===
+
+########## full_135 seed 42 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[198560:MainThread](2026-06-06 14:59:38,883) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[198560:MainThread](2026-06-06 14:59:38,890) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[198560:MainThread](2026-06-06 14:59:38,892) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=42 smoke=False out=analysis\pool_readout_forensics\full_135\seed42
+[198560:MainThread](2026-06-06 15:00:23,440) INFO - qlib.timer - [log.py:127] - Time cost: 44.547s | Loading data Done
+[198560:MainThread](2026-06-06 15:00:27,597) INFO - qlib.timer - [log.py:127] - Time cost: 3.822s | RobustZScoreNorm Done
+[198560:MainThread](2026-06-06 15:00:28,384) INFO - qlib.timer - [log.py:127] - Time cost: 0.787s | Fillna Done
+[198560:MainThread](2026-06-06 15:00:28,867) INFO - qlib.timer - [log.py:127] - Time cost: 0.152s | DropnaLabel Done
+[198560:MainThread](2026-06-06 15:00:33,668) INFO - qlib.timer - [log.py:127] - Time cost: 4.801s | CSZScoreNorm Done
+[198560:MainThread](2026-06-06 15:00:33,687) INFO - qlib.timer - [log.py:127] - Time cost: 10.247s | fit & process data Done
+[198560:MainThread](2026-06-06 15:00:33,687) INFO - qlib.timer - [log.py:127] - Time cost: 54.795s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/26e088e3282a4170a59a53f0fa8c8319/artifacts/model in 2.7s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0099
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.080201 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=1.00000 cur_logit_std=0.0005013 s1/common=2.4915 peakability_ent[std1,std3]=[0.9074,0.5428] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4335
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9423 top10=0.2409 hold_ric=0.15252
+[probe] ArmA-prime(k1) hold_ric=0.15622 cross_stock_wstd=0.0007 | ArmC(k4) hold_ric=0.15252
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07147 | ArmA(static hold)=0.07147 gap=-0.00000 | ArmA'(cond k1)=0.06942 gap=-0.00205 | ArmC(k4)=0.07147 gap=-0.00000 | ASP std-contrib=-0.00077 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\full_135\seed42\results.json
+full_135_seed42_EXIT=0
+
+########## full_135 seed 43 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[188380:MainThread](2026-06-06 15:06:44,746) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[188380:MainThread](2026-06-06 15:06:44,748) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[188380:MainThread](2026-06-06 15:06:44,749) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=43 smoke=False out=analysis\pool_readout_forensics\full_135\seed43
+[188380:MainThread](2026-06-06 15:07:28,864) INFO - qlib.timer - [log.py:127] - Time cost: 44.113s | Loading data Done
+[188380:MainThread](2026-06-06 15:07:32,954) INFO - qlib.timer - [log.py:127] - Time cost: 3.780s | RobustZScoreNorm Done
+[188380:MainThread](2026-06-06 15:07:33,738) INFO - qlib.timer - [log.py:127] - Time cost: 0.783s | Fillna Done
+[188380:MainThread](2026-06-06 15:07:34,231) INFO - qlib.timer - [log.py:127] - Time cost: 0.166s | DropnaLabel Done
+[188380:MainThread](2026-06-06 15:07:38,988) INFO - qlib.timer - [log.py:127] - Time cost: 4.757s | CSZScoreNorm Done
+[188380:MainThread](2026-06-06 15:07:39,005) INFO - qlib.timer - [log.py:127] - Time cost: 10.141s | fit & process data Done
+[188380:MainThread](2026-06-06 15:07:39,007) INFO - qlib.timer - [log.py:127] - Time cost: 54.255s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/77e0c2a3d77b4076aa90e5dbc8b9d1e2/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.1048
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.077945 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99991 cur_logit_std=0.02948 s1/common=2.8661 peakability_ent[std1,std3]=[0.9419,0.8538] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4.174e+05
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9575 top10=0.1885 hold_ric=0.15850
+[probe] ArmA-prime(k1) hold_ric=0.15766 cross_stock_wstd=0.0008 | ArmC(k4) hold_ric=0.16032
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07792 | ArmA(static hold)=0.07251 gap=-0.00541 | ArmA'(cond k1)=0.07739 gap=-0.00054 | ArmC(k4)=0.06603 gap=-0.01189 | ASP std-contrib=-0.00234 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\full_135\seed43\results.json
+full_135_seed43_EXIT=0
+
+########## full_135 seed 44 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[228164:MainThread](2026-06-06 15:13:52,317) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[228164:MainThread](2026-06-06 15:13:52,320) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[228164:MainThread](2026-06-06 15:13:52,320) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=44 smoke=False out=analysis\pool_readout_forensics\full_135\seed44
+[228164:MainThread](2026-06-06 15:14:36,418) INFO - qlib.timer - [log.py:127] - Time cost: 44.095s | Loading data Done
+[228164:MainThread](2026-06-06 15:14:40,496) INFO - qlib.timer - [log.py:127] - Time cost: 3.769s | RobustZScoreNorm Done
+[228164:MainThread](2026-06-06 15:14:41,284) INFO - qlib.timer - [log.py:127] - Time cost: 0.786s | Fillna Done
+[228164:MainThread](2026-06-06 15:14:41,755) INFO - qlib.timer - [log.py:127] - Time cost: 0.154s | DropnaLabel Done
+[228164:MainThread](2026-06-06 15:14:46,482) INFO - qlib.timer - [log.py:127] - Time cost: 4.725s | CSZScoreNorm Done
+[228164:MainThread](2026-06-06 15:14:46,503) INFO - qlib.timer - [log.py:127] - Time cost: 10.084s | fit & process data Done
+[228164:MainThread](2026-06-06 15:14:46,504) INFO - qlib.timer - [log.py:127] - Time cost: 54.181s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/f58411c85d1845b2b7e249643b440486/artifacts/model in 2.7s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0903
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.073465 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99994 cur_logit_std=0.02367 s1/common=1.5063 peakability_ent[std1,std3]=[0.9523,0.8658] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4.285
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9413 top10=0.2449 hold_ric=0.17070
+[probe] ArmA-prime(k1) hold_ric=0.17169 cross_stock_wstd=0.0004 | ArmC(k4) hold_ric=0.17070
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.05742 | ArmA(static hold)=0.05742 gap=+0.00000 | ArmA'(cond k1)=0.05587 gap=-0.00155 | ArmC(k4)=0.05742 gap=-0.00000 | ASP std-contrib=+0.00655 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\full_135\seed44\results.json
+full_135_seed44_EXIT=0
+
+########## full_135 seed 45 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[241400:MainThread](2026-06-06 15:21:03,073) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[241400:MainThread](2026-06-06 15:21:03,076) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[241400:MainThread](2026-06-06 15:21:03,076) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=45 smoke=False out=analysis\pool_readout_forensics\full_135\seed45
+[241400:MainThread](2026-06-06 15:21:47,109) INFO - qlib.timer - [log.py:127] - Time cost: 44.031s | Loading data Done
+[241400:MainThread](2026-06-06 15:21:51,196) INFO - qlib.timer - [log.py:127] - Time cost: 3.778s | RobustZScoreNorm Done
+[241400:MainThread](2026-06-06 15:21:51,976) INFO - qlib.timer - [log.py:127] - Time cost: 0.780s | Fillna Done
+[241400:MainThread](2026-06-06 15:21:52,460) INFO - qlib.timer - [log.py:127] - Time cost: 0.164s | DropnaLabel Done
+[241400:MainThread](2026-06-06 15:21:57,174) INFO - qlib.timer - [log.py:127] - Time cost: 4.714s | CSZScoreNorm Done
+[241400:MainThread](2026-06-06 15:21:57,191) INFO - qlib.timer - [log.py:127] - Time cost: 10.082s | fit & process data Done
+[241400:MainThread](2026-06-06 15:21:57,192) INFO - qlib.timer - [log.py:127] - Time cost: 54.113s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/da8e3a0c00364ae3b98afdca608f3d76/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.1148
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.081030 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99991 cur_logit_std=0.0292 s1/common=1.6203 peakability_ent[std1,std3]=[0.9009,0.6741] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4266
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9265 top10=0.2641 hold_ric=0.15109
+[probe] ArmA-prime(k1) hold_ric=0.15109 cross_stock_wstd=0.0000 | ArmC(k4) hold_ric=0.15187
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07650 | ArmA(static hold)=0.07650 gap=+0.00000 | ArmA'(cond k1)=0.07650 gap=+0.00000 | ArmC(k4)=0.07406 gap=-0.00244 | ASP std-contrib=+0.00020 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\full_135\seed45\results.json
+full_135_seed45_EXIT=0
+
+########## full_135 seed 46 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[261152:MainThread](2026-06-06 15:28:10,376) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[261152:MainThread](2026-06-06 15:28:10,379) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[261152:MainThread](2026-06-06 15:28:10,380) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=46 smoke=False out=analysis\pool_readout_forensics\full_135\seed46
+[261152:MainThread](2026-06-06 15:28:54,528) INFO - qlib.timer - [log.py:127] - Time cost: 44.147s | Loading data Done
+[261152:MainThread](2026-06-06 15:28:58,679) INFO - qlib.timer - [log.py:127] - Time cost: 3.840s | RobustZScoreNorm Done
+[261152:MainThread](2026-06-06 15:28:59,470) INFO - qlib.timer - [log.py:127] - Time cost: 0.790s | Fillna Done
+[261152:MainThread](2026-06-06 15:28:59,952) INFO - qlib.timer - [log.py:127] - Time cost: 0.166s | DropnaLabel Done
+[261152:MainThread](2026-06-06 15:29:04,690) INFO - qlib.timer - [log.py:127] - Time cost: 4.737s | CSZScoreNorm Done
+[261152:MainThread](2026-06-06 15:29:04,707) INFO - qlib.timer - [log.py:127] - Time cost: 10.178s | fit & process data Done
+[261152:MainThread](2026-06-06 15:29:04,707) INFO - qlib.timer - [log.py:127] - Time cost: 54.325s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/fbd6e6ac44e54e93b0bfb67fea287594/artifacts/model in 2.7s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0049
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.079159 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=1.00000 cur_logit_std=0.0001063 s1/common=1.3999 peakability_ent[std1,std3]=[0.8528,0.2684] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4350
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9571 top10=0.1887 hold_ric=0.15800
+[probe] ArmA-prime(k1) hold_ric=0.15859 cross_stock_wstd=0.0003 | ArmC(k4) hold_ric=0.15800
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07335 | ArmA(static hold)=0.07335 gap=-0.00000 | ArmA'(cond k1)=0.07348 gap=+0.00013 | ArmC(k4)=0.07335 gap=+0.00000 | ASP std-contrib=-0.00067 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\full_135\seed46\results.json
+full_135_seed46_EXIT=0
+
+########## full_135 seed 47 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[238116:MainThread](2026-06-06 15:35:18,946) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[238116:MainThread](2026-06-06 15:35:18,949) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[238116:MainThread](2026-06-06 15:35:18,949) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=47 smoke=False out=analysis\pool_readout_forensics\full_135\seed47
+[238116:MainThread](2026-06-06 15:36:02,916) INFO - qlib.timer - [log.py:127] - Time cost: 43.964s | Loading data Done
+[238116:MainThread](2026-06-06 15:36:07,053) INFO - qlib.timer - [log.py:127] - Time cost: 3.825s | RobustZScoreNorm Done
+[238116:MainThread](2026-06-06 15:36:07,840) INFO - qlib.timer - [log.py:127] - Time cost: 0.787s | Fillna Done
+[238116:MainThread](2026-06-06 15:36:08,341) INFO - qlib.timer - [log.py:127] - Time cost: 0.169s | DropnaLabel Done
+[238116:MainThread](2026-06-06 15:36:13,089) INFO - qlib.timer - [log.py:127] - Time cost: 4.748s | CSZScoreNorm Done
+[238116:MainThread](2026-06-06 15:36:13,106) INFO - qlib.timer - [log.py:127] - Time cost: 10.190s | fit & process data Done
+[238116:MainThread](2026-06-06 15:36:13,107) INFO - qlib.timer - [log.py:127] - Time cost: 54.155s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/ddce1ee1e361477d8a7f40bb3456288d/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0831
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.076713 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99996 cur_logit_std=0.0206 s1/common=3.1562 peakability_ent[std1,std3]=[0.9102,0.7491] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=425.1
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9483 top10=0.2160 hold_ric=0.17074
+[probe] ArmA-prime(k1) hold_ric=0.17074 cross_stock_wstd=0.0000 | ArmC(k4) hold_ric=0.17074
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07288 | ArmA(static hold)=0.07288 gap=-0.00000 | ArmA'(cond k1)=0.07288 gap=-0.00000 | ArmC(k4)=0.07288 gap=-0.00000 | ASP std-contrib=-0.00113 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\full_135\seed47\results.json
+full_135_seed47_EXIT=0
+
+########## tau_scale_05 seed 42 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[286332:MainThread](2026-06-06 15:42:24,269) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[286332:MainThread](2026-06-06 15:42:24,273) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[286332:MainThread](2026-06-06 15:42:24,274) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=42 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed42
+[286332:MainThread](2026-06-06 15:43:08,387) INFO - qlib.timer - [log.py:127] - Time cost: 44.111s | Loading data Done
+[286332:MainThread](2026-06-06 15:43:12,472) INFO - qlib.timer - [log.py:127] - Time cost: 3.775s | RobustZScoreNorm Done
+[286332:MainThread](2026-06-06 15:43:13,257) INFO - qlib.timer - [log.py:127] - Time cost: 0.784s | Fillna Done
+[286332:MainThread](2026-06-06 15:43:13,730) INFO - qlib.timer - [log.py:127] - Time cost: 0.155s | DropnaLabel Done
+[286332:MainThread](2026-06-06 15:43:18,483) INFO - qlib.timer - [log.py:127] - Time cost: 4.753s | CSZScoreNorm Done
+[286332:MainThread](2026-06-06 15:43:18,500) INFO - qlib.timer - [log.py:127] - Time cost: 10.111s | fit & process data Done
+[286332:MainThread](2026-06-06 15:43:18,501) INFO - qlib.timer - [log.py:127] - Time cost: 54.223s | Init data Done
+[load] loaded backbone from mlruns/867178867749867261/917808d52d9a4a13b36c6e20a4155d55/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0986
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.081062 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99992 cur_logit_std=0.02897 s1/common=5.4166 peakability_ent[std1,std3]=[0.9322,0.8254] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=430.1
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9630 top10=0.1753 hold_ric=0.17676
+[probe] ArmA-prime(k1) hold_ric=0.18302 cross_stock_wstd=0.0007 | ArmC(k4) hold_ric=0.18073
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.06959 | ArmA(static hold)=0.06959 gap=+0.00000 | ArmA'(cond k1)=0.06527 gap=-0.00432 | ArmC(k4)=0.07046 gap=+0.00087 | ASP std-contrib=+0.00364 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\seed42\results.json
+tau_scale_05_seed42_EXIT=0
+
+########## tau_scale_05 seed 43 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[300008:MainThread](2026-06-06 15:49:30,688) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[300008:MainThread](2026-06-06 15:49:30,690) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[300008:MainThread](2026-06-06 15:49:30,691) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=43 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed43
+[300008:MainThread](2026-06-06 15:50:14,850) INFO - qlib.timer - [log.py:127] - Time cost: 44.156s | Loading data Done
+[300008:MainThread](2026-06-06 15:50:18,930) INFO - qlib.timer - [log.py:127] - Time cost: 3.771s | RobustZScoreNorm Done
+[300008:MainThread](2026-06-06 15:50:19,710) INFO - qlib.timer - [log.py:127] - Time cost: 0.779s | Fillna Done
+[300008:MainThread](2026-06-06 15:50:20,183) INFO - qlib.timer - [log.py:127] - Time cost: 0.153s | DropnaLabel Done
+[300008:MainThread](2026-06-06 15:50:24,927) INFO - qlib.timer - [log.py:127] - Time cost: 4.743s | CSZScoreNorm Done
+[300008:MainThread](2026-06-06 15:50:24,944) INFO - qlib.timer - [log.py:127] - Time cost: 10.094s | fit & process data Done
+[300008:MainThread](2026-06-06 15:50:24,944) INFO - qlib.timer - [log.py:127] - Time cost: 54.251s | Init data Done
+[load] loaded backbone from mlruns/867178867749867261/659cb7dccb784796b674257e4d13baf8/artifacts/model in 2.7s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.1302
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.078812 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99979 cur_logit_std=0.04566 s1/common=2.6054 peakability_ent[std1,std3]=[0.9296,0.8156] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4.197e+04
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9573 top10=0.1903 hold_ric=0.16119
+[probe] ArmA-prime(k1) hold_ric=0.16153 cross_stock_wstd=0.0016 | ArmC(k4) hold_ric=0.16119
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07524 | ArmA(static hold)=0.07524 gap=+0.00000 | ArmA'(cond k1)=0.07450 gap=-0.00074 | ArmC(k4)=0.07524 gap=+0.00000 | ASP std-contrib=+0.00007 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\seed43\results.json
+tau_scale_05_seed43_EXIT=0
+
+########## tau_scale_05 seed 44 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[212208:MainThread](2026-06-06 15:56:41,639) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[212208:MainThread](2026-06-06 15:56:41,641) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[212208:MainThread](2026-06-06 15:56:41,642) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=44 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed44
+[212208:MainThread](2026-06-06 15:57:25,623) INFO - qlib.timer - [log.py:127] - Time cost: 43.978s | Loading data Done
+[212208:MainThread](2026-06-06 15:57:29,741) INFO - qlib.timer - [log.py:127] - Time cost: 3.799s | RobustZScoreNorm Done
+[212208:MainThread](2026-06-06 15:57:30,531) INFO - qlib.timer - [log.py:127] - Time cost: 0.789s | Fillna Done
+[212208:MainThread](2026-06-06 15:57:31,004) INFO - qlib.timer - [log.py:127] - Time cost: 0.154s | DropnaLabel Done
+[212208:MainThread](2026-06-06 15:57:35,686) INFO - qlib.timer - [log.py:127] - Time cost: 4.682s | CSZScoreNorm Done
+[212208:MainThread](2026-06-06 15:57:35,704) INFO - qlib.timer - [log.py:127] - Time cost: 10.080s | fit & process data Done
+[212208:MainThread](2026-06-06 15:57:35,704) INFO - qlib.timer - [log.py:127] - Time cost: 54.060s | Init data Done
+[load] loaded backbone from mlruns/867178867749867261/21a05e198fd34b43bd0d3a14f63e8e2b/artifacts/model in 2.7s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.1007
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.072355 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99993 cur_logit_std=0.02636 s1/common=1.7643 peakability_ent[std1,std3]=[0.9110,0.7347] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=42.53
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9396 top10=0.2494 hold_ric=0.16267
+[probe] ArmA-prime(k1) hold_ric=0.16492 cross_stock_wstd=0.0015 | ArmC(k4) hold_ric=0.16424
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.06046 | ArmA(static hold)=0.06046 gap=-0.00000 | ArmA'(cond k1)=0.04775 gap=-0.01271 | ArmC(k4)=0.05775 gap=-0.00271 | ASP std-contrib=-0.00180 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\seed44\results.json
+tau_scale_05_seed44_EXIT=0
+
+########## tau_scale_05 seed 45 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[295468:MainThread](2026-06-06 16:03:50,058) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[295468:MainThread](2026-06-06 16:03:50,060) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[295468:MainThread](2026-06-06 16:03:50,061) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=45 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed45
+[295468:MainThread](2026-06-06 16:04:33,958) INFO - qlib.timer - [log.py:127] - Time cost: 43.895s | Loading data Done
+[295468:MainThread](2026-06-06 16:04:38,093) INFO - qlib.timer - [log.py:127] - Time cost: 3.818s | RobustZScoreNorm Done
+[295468:MainThread](2026-06-06 16:04:38,886) INFO - qlib.timer - [log.py:127] - Time cost: 0.792s | Fillna Done
+[295468:MainThread](2026-06-06 16:04:39,360) INFO - qlib.timer - [log.py:127] - Time cost: 0.157s | DropnaLabel Done
+[295468:MainThread](2026-06-06 16:04:44,070) INFO - qlib.timer - [log.py:127] - Time cost: 4.709s | CSZScoreNorm Done
+[295468:MainThread](2026-06-06 16:04:44,087) INFO - qlib.timer - [log.py:127] - Time cost: 10.126s | fit & process data Done
+[295468:MainThread](2026-06-06 16:04:44,087) INFO - qlib.timer - [log.py:127] - Time cost: 54.024s | Init data Done
+[load] loaded backbone from mlruns/867178867749867261/af816bff348943b8b1674b15913adc37/artifacts/model in 2.7s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.1332
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.078095 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99983 cur_logit_std=0.04116 s1/common=1.7463 peakability_ent[std1,std3]=[0.9018,0.7079] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4212
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9152 top10=0.2946 hold_ric=0.15207
+[probe] ArmA-prime(k1) hold_ric=0.15207 cross_stock_wstd=0.0000 | ArmC(k4) hold_ric=0.15207
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07337 | ArmA(static hold)=0.07337 gap=-0.00000 | ArmA'(cond k1)=0.07337 gap=-0.00000 | ArmC(k4)=0.07337 gap=-0.00000 | ASP std-contrib=-0.00325 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\seed45\results.json
+tau_scale_05_seed45_EXIT=0
+
+########## tau_scale_05 seed 46 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[344676:MainThread](2026-06-06 16:10:57,803) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[344676:MainThread](2026-06-06 16:10:57,805) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[344676:MainThread](2026-06-06 16:10:57,806) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=46 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed46
+[344676:MainThread](2026-06-06 16:11:41,819) INFO - qlib.timer - [log.py:127] - Time cost: 44.009s | Loading data Done
+[344676:MainThread](2026-06-06 16:11:45,904) INFO - qlib.timer - [log.py:127] - Time cost: 3.775s | RobustZScoreNorm Done
+[344676:MainThread](2026-06-06 16:11:46,712) INFO - qlib.timer - [log.py:127] - Time cost: 0.806s | Fillna Done
+[344676:MainThread](2026-06-06 16:11:47,215) INFO - qlib.timer - [log.py:127] - Time cost: 0.160s | DropnaLabel Done
+[344676:MainThread](2026-06-06 16:11:51,970) INFO - qlib.timer - [log.py:127] - Time cost: 4.754s | CSZScoreNorm Done
+[344676:MainThread](2026-06-06 16:11:51,987) INFO - qlib.timer - [log.py:127] - Time cost: 10.167s | fit & process data Done
+[344676:MainThread](2026-06-06 16:11:51,987) INFO - qlib.timer - [log.py:127] - Time cost: 54.179s | Init data Done
+[load] loaded backbone from mlruns/867178867749867261/dd07c8e7206b401ba231ba079a124e84/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0138
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.079750 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=1.00000 cur_logit_std=0.0004774 s1/common=1.7815 peakability_ent[std1,std3]=[0.8835,0.4024] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4319
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9623 top10=0.1866 hold_ric=0.15263
+[probe] ArmA-prime(k1) hold_ric=0.15316 cross_stock_wstd=0.0007 | ArmC(k4) hold_ric=0.15263
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07342 | ArmA(static hold)=0.07342 gap=+0.00000 | ArmA'(cond k1)=0.07446 gap=+0.00104 | ArmC(k4)=0.07342 gap=+0.00000 | ASP std-contrib=+0.00185 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\seed46\results.json
+tau_scale_05_seed46_EXIT=0
+
+########## tau_scale_05 seed 47 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[359356:MainThread](2026-06-06 16:18:06,055) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[359356:MainThread](2026-06-06 16:18:06,057) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[359356:MainThread](2026-06-06 16:18:06,058) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=47 smoke=False out=analysis\pool_readout_forensics\tau_scale_05\seed47
+[359356:MainThread](2026-06-06 16:18:50,310) INFO - qlib.timer - [log.py:127] - Time cost: 44.249s | Loading data Done
+[359356:MainThread](2026-06-06 16:18:54,446) INFO - qlib.timer - [log.py:127] - Time cost: 3.823s | RobustZScoreNorm Done
+[359356:MainThread](2026-06-06 16:18:55,233) INFO - qlib.timer - [log.py:127] - Time cost: 0.787s | Fillna Done
+[359356:MainThread](2026-06-06 16:18:55,714) INFO - qlib.timer - [log.py:127] - Time cost: 0.156s | DropnaLabel Done
+[359356:MainThread](2026-06-06 16:19:00,494) INFO - qlib.timer - [log.py:127] - Time cost: 4.780s | CSZScoreNorm Done
+[359356:MainThread](2026-06-06 16:19:00,511) INFO - qlib.timer - [log.py:127] - Time cost: 10.201s | fit & process data Done
+[359356:MainThread](2026-06-06 16:19:00,512) INFO - qlib.timer - [log.py:127] - Time cost: 54.450s | Init data Done
+[load] loaded backbone from mlruns/867178867749867261/8144a4a501174ac8b1ddee49dfdf7288/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0830
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.074635 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=0.99996 cur_logit_std=0.02113 s1/common=4.1060 peakability_ent[std1,std3]=[0.9221,0.7781] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=4.257e+05
+[probe] Arm B (158 slot ridges) fit done
+[probe] ArmA static: final_entropy=0.9493 top10=0.2124 hold_ric=0.15783
+[probe] ArmA-prime(k1) hold_ric=0.16182 cross_stock_wstd=0.0005 | ArmC(k4) hold_ric=0.16821
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.06987 | ArmA(static hold)=0.06987 gap=-0.00000 | ArmA'(cond k1)=0.06810 gap=-0.00177 | ArmC(k4)=0.06631 gap=-0.00356 | ASP std-contrib=+0.00079 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\seed47\results.json
+tau_scale_05_seed47_EXIT=0
+
+########## AGGREGATE full_135 (n=6) ##########
+# Pool/readout forensics � aggregate report
+
+- seeds: [42, 43, 44, 45, 46, 47]  | runs found: 6
+- sanity valid_rank_ic per seed: ['0.08020', '0.07794', '0.07347', '0.08103', '0.07916', '0.07671'] (promoted anchor ~0.0768)
+
+## KEY-SVD-GATE (factor pool: A operator / B input / C live-projection)
+- current softmax entropy (six-nines check): **0.99995**
+- key s1/common-norm (across-factor key contrast size): **2.1734**
+- key sigma2/sigma1: 0.4295  | key effective rank: 4.21
+- peakability entropy (unit-aligned top key dir) at target logit-std: 0.5=0.9761 1=0.9109 2=0.7539 3=0.6590 5=0.5639
+- current logit-std (operator coldness): 0.017261
+- value-channel s1/common-norm (world-C: value bank varies across factors?): 1.6510
+- cross-stock attention-weight std (is attention even stock-varying?): 0.000055
+- per-seed verdicts: ['operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse']
+- **aggregate world verdict: operator_state_collapse**
+
+## PROBE-CEILING (does non-uniform factor reweighting help on frozen reps?)
+| seed | arm0 (mean-pool) | armA (convex-reweight) | gap |
+|---|---:|---:|---:|
+| 42 | 0.07147 | 0.06942 | -0.00205 |
+| 43 | 0.07792 | 0.07739 | -0.00054 |
+| 44 | 0.05742 | 0.05587 | -0.00155 |
+| 45 | 0.07650 | 0.07650 | 0.00000 |
+| 46 | 0.07335 | 0.07348 | 0.00013 |
+| 47 | 0.07288 | 0.07288 | -0.00000 |
+- gap mean: **-0.00762**  | seeds with gap>=+0.003: 0/6
+- Arm B slot-IC decile ratio (mean): 1.45 (need >=2.0)
+- Arm B slot-signal cov effective rank (mean): 6.07 (need >=2 = non-degenerate)
+- Arm B max |slot-IC| (mean): 0.0746
+- **sharpening_can_help: False** | rational-equilibrium null supported: True
+
+
+[done] wrote analysis\pool_readout_forensics\full_135\aggregate.json and analysis\pool_readout_forensics\full_135\report.md
+
+########## AGGREGATE tau_scale_05 (n=6) ##########
+# Pool/readout forensics � aggregate report
+
+- seeds: [42, 43, 44, 45, 46, 47]  | runs found: 6
+- sanity valid_rank_ic per seed: ['0.08106', '0.07881', '0.07235', '0.07809', '0.07975', '0.07463'] (promoted anchor ~0.0768)
+
+## KEY-SVD-GATE (factor pool: A operator / B input / C live-projection)
+- current softmax entropy (six-nines check): **0.99990**
+- key s1/common-norm (across-factor key contrast size): **2.9033**
+- key sigma2/sigma1: 0.2996  | key effective rank: 2.75
+- peakability entropy (unit-aligned top key dir) at target logit-std: 0.5=0.9757 1=0.9134 2=0.7844 3=0.7107 5=0.6362
+- current logit-std (operator coldness): 0.027292
+- value-channel s1/common-norm (world-C: value bank varies across factors?): 1.6085
+- cross-stock attention-weight std (is attention even stock-varying?): 0.000087
+- per-seed verdicts: ['operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse', 'operator_state_collapse']
+- **aggregate world verdict: operator_state_collapse**
+
+## PROBE-CEILING (does non-uniform factor reweighting help on frozen reps?)
+| seed | arm0 (mean-pool) | armA (convex-reweight) | gap |
+|---|---:|---:|---:|
+| 42 | 0.06959 | 0.06527 | -0.00432 |
+| 43 | 0.07524 | 0.07450 | -0.00074 |
+| 44 | 0.06046 | 0.04775 | -0.01271 |
+| 45 | 0.07337 | 0.07337 | -0.00000 |
+| 46 | 0.07342 | 0.07446 | 0.00104 |
+| 47 | 0.06987 | 0.06810 | -0.00177 |
+- gap mean: **-0.00700**  | seeds with gap>=+0.003: 0/6
+- Arm B slot-IC decile ratio (mean): 1.40 (need >=2.0)
+- Arm B slot-signal cov effective rank (mean): 6.09 (need >=2 = non-degenerate)
+- Arm B max |slot-IC| (mean): 0.0740
+- **sharpening_can_help: False** | rational-equilibrium null supported: True
+
+
+[done] wrote analysis\pool_readout_forensics\tau_scale_05\aggregate.json and analysis\pool_readout_forensics\tau_scale_05\report.md
+
+########## COMBINED REPORT ##########
+# Pool / Readout Forensics — Combined Archived Report
+
+**Claim card:** `pool-readout-gate-20260606` (KEY-SVD-GATE + PROBE-CEILING). Backbones LOADED from MLflow artifacts (no retraining): `full_135` = tau-frozen baseline (exp 325032212672679181), `tau_scale_05` = tau-unclamp scale=0.5 (exp 867178867749867261).
+
+## 0. Faithfulness (sanity valid rank_ic recomputed by the forensic fp32 forward)
+
+| family | n | valid rank_ic (mean ± std) | per-seed |
+|---|---:|---|---|
+| full_135 | 6 | 0.0781 ± 0.0027 | 42:0.0802, 43:0.0779, 44:0.0735, 45:0.0810, 46:0.0792, 47:0.0767 |
+| tau_scale_05 | 6 | 0.0775 ± 0.0033 | 42:0.0811, 43:0.0788, 44:0.0724, 45:0.0781, 46:0.0797, 47:0.0746 |
+
+Gate [0.072, 0.082]: all faithful → the geometry below is measured on the promoted-class model.
+
+## 1. KEY-SVD-GATE — is the six-nines factor-pool collapse input-forced (B) or operator-state (A/C)?
+
+| metric | full_135 | tau_scale_05 | reads |
+|---|---:|---:|---|
+| current softmax entropy | 0.99995 ± 0.00004 | 0.99990 ± 0.00008 | ≈1.0 ⇒ six-nines reproduced |
+| current logit std | 0.017261 ± 0.013560 | 0.027292 ± 0.016064 | ≈0 ⇒ operator is cold |
+| **key s1/common-norm** | 2.1734 ± 0.7611 | 2.9033 ± 1.5327 | **world-B indicator: ≤0.05 ⇒ keys ~constant** |
+| key sigma2/sigma1 | 0.4295 ± 0.3046 | 0.2996 ± 0.2473 | across-factor key rank structure |
+| key effective rank | 4.21 ± 4.22 | 2.75 ± 3.15 | # independent across-factor contrasts |
+| peakability entropy @ logit-std 1 | 0.9109 ± 0.0351 | 0.9134 ± 0.0186 | shape of top key dir |
+| peakability entropy @ logit-std 3 | 0.6590 ± 0.2259 | 0.7107 ± 0.1577 | <0.9 ⇒ a sharp op could peak |
+| value s1/common-norm | 1.6510 ± 0.3102 | 1.6085 ± 0.1811 | world-C: value bank varies across factors? |
+| cross-stock attn-weight std | 0.000055 ± 0.000043 | 0.000087 ± 0.000052 | is attention even stock-varying? |
+
+- **full_135 verdict:** `operator_state_collapse`
+- **tau_scale_05 verdict:** `operator_state_collapse`
+
+## 2. PROBE-CEILING — can any factor-pool operator beat equal-weight (LN-mean) pooling?
+
+All arms: ridge/Adam heads on the FROZEN backbone reps; metric daily_rank_ic on valid; +0.003 promotion gate vs Arm0. Arm0 = LN-mean parity. ArmA = STATIC global reweight (hold-selected). **ArmA' = INPUT-CONDITIONAL query pooler (the R1/R3 function class).** ArmC = PMA k=4 multi-mode. Arm-ASP = 2nd-moment dispersion (separate lever).
+
+| arm | full_135 | tau_scale_05 | function class |
+|---|---:|---:|---|
+| Arm0 mean-pool rank_ic | 0.07159 ± 0.00735 | 0.07032 ± 0.00531 | parity |
+| ArmA static reweight (hold-sel) | 0.07069 ± 0.00672 | 0.07032 ± 0.00531 | global static |
+| **ArmA − Arm0 gap** (static) | -0.00090 ± 0.00221 | 0.00000 ± 0.00000 | global static |
+| **ArmA' conditional rank_ic** | 0.07092 ± 0.00790 | 0.06724 ± 0.01027 | **per-sample (R1/R3)** |
+| **ArmA' − Arm0 gap** (the GATE) | -0.00067 ± 0.00092 | -0.00308 ± 0.00506 | **per-sample (R1/R3)** |
+| ArmC PMA-k4 rank_ic | 0.06920 ± 0.00646 | 0.06942 ± 0.00652 | multi-mode (R1) |
+| ArmC − Arm0 gap | -0.00239 ± 0.00476 | -0.00090 ± 0.00178 | multi-mode (R1) |
+| Arm-ASP std contribution | 0.00031 ± 0.00317 | 0.00021 ± 0.00248 | 2nd-moment (separate) |
+| ArmA' cross-stock weight std | 0.00036 ± 0.00035 | 0.00083 ± 0.00060 | is cond. weighting used? |
+| ArmB slot-IC decile ratio | 1.45 ± 0.22 | 1.40 ± 0.08 | factor equality |
+| ArmB max |slot-IC| | 0.0746 ± 0.0048 | 0.0740 ± 0.0029 | best single factor |
+
+- **full_135** ArmA' (conditional) per-seed gap: 42:-0.0021, 43:-0.0005, 44:-0.0015, 45:0.0000, 46:0.0001, 47:-0.0000  | seeds ≥+0.003: cond 0/6, pma4 0/6, static 0/6, asp 1/6  → **R1/R2/R3 helps=False**, ASP helps=False
+- **tau_scale_05** ArmA' (conditional) per-seed gap: 42:-0.0043, 43:-0.0007, 44:-0.0127, 45:-0.0000, 46:0.0010, 47:-0.0018  | seeds ≥+0.003: cond 0/6, pma4 0/6, static 0/6, asp 1/6  → **R1/R2/R3 helps=False**, ASP helps=False
+
+## 3. Cross-family: is the factor-pool pathology τ-invariant?
+- Δ(key s1/common) [full_135−tau_scale_05] = -0.7300; Δ(ArmA'-conditional gap) = 0.00242.
+- Established finding (ledger 16/46): τ acts only on the additive time-embedding, architecturally disconnected from `factor_pooling`. Near-zero deltas corroborate the pool pathology is τ-invariant.
+
+## 4. Settlement (pool-readout-gate-20260606)
+
+- KEY-SVD verdict (all families): {'operator_state_collapse'} — collapse is **operator-state, NOT input-forced** (P1 does not fire; key s1/common >> 0.05).
+- **P2 FIRES (world C, full strength):** neither static reweight, the per-sample input-conditional pooler (ArmA', = the R1/R3 function class), nor PMA-k4 (R1) beats LN-mean by +0.003 on a seed-majority in either family. Equal-weight pooling is ~IC-optimal; the 158 factors are near-equally-weak & redundant. **Do NOT re-dispatch pool-forensics R1/R2/R3 to chase RankIC** — they would un-collapse pool_entropy but leave RankIC flat. Feeds the parked HC-3 / read-from-time-hidden-state decision.
+- ASP 2nd-moment side-channel: no material gain — the dispersion lever is also flat.
+
+**Scope (caveats that travel with this settlement):**
+- PROVEN: static-global AND per-sample-conditional AND PMA-k4 factor reweighting are parity-or-worse at n=6×2 (csi300, t+5).
+- The static ArmA magnitude was selection-inflated (Arm0 hold-λ-selected vs ArmA unselected final-step); this report uses the HOLD-SELECTED ArmA, so the honest static ceiling is parity.
+- Regime scope: single split, csi300-only, 2020-2022, n=6 same-window seeds → seed-robust, not regime-robust (csi800/other windows untested).
+- n=6 per family (kill-check-grade, per the τ n=3→n=6 reversal lesson).
+
+
+[done] wrote analysis\pool_readout_forensics\REPORT.md and analysis\pool_readout_forensics\combined.json
+COMBINED_EXIT=0
+=== done Sat, Jun  6, 2026  4:25:12 PM ===

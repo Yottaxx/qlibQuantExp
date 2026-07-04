@@ -1,0 +1,10 @@
+==== run_stock_backbone_2x2 start Wed, Jun 24, 2026 10:35:02 PM ====
+---- launching gamma_init=0.0 seed=42 Wed, Jun 24, 2026 10:35:02 PM ----
+---- returned gamma_init=0.0 seed=42 ec=0 Thu, Jun 25, 2026  5:25:30 AM ----
+---- launching gamma_init=0.0 seed=43 Thu, Jun 25, 2026  5:25:30 AM ----
+---- returned gamma_init=0.0 seed=43 ec=0 Thu, Jun 25, 2026 12:15:54 PM ----
+---- launching gamma_init=1.0 seed=42 Thu, Jun 25, 2026 12:15:54 PM ----
+---- returned gamma_init=1.0 seed=42 ec=0 Thu, Jun 25, 2026  7:06:28 PM ----
+---- launching gamma_init=1.0 seed=43 Thu, Jun 25, 2026  7:06:28 PM ----
+---- returned gamma_init=1.0 seed=43 ec=0 Fri, Jun 26, 2026  1:54:46 AM ----
+==== run_stock_backbone_2x2 done Fri, Jun 26, 2026  1:54:46 AM ====

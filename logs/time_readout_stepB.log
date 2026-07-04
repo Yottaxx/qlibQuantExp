@@ -1,0 +1,206 @@
+=== Step-B time-readout finetune started Sun, Jun  7, 2026 12:16:48 AM ===
+
+########## control seed 42 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[231000:MainThread](2026-06-07 00:16:51,178) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[231000:MainThread](2026-06-07 00:16:51,180) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[231000:MainThread](2026-06-07 00:16:51,180) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=control seed=42 out=analysis\readout_redesign\stepB\control_seed42
+[231000:MainThread](2026-06-07 00:17:36,216) INFO - qlib.timer - [log.py:127] - Time cost: 45.031s | Loading data Done
+[231000:MainThread](2026-06-07 00:17:40,320) INFO - qlib.timer - [log.py:127] - Time cost: 3.792s | RobustZScoreNorm Done
+[231000:MainThread](2026-06-07 00:17:41,096) INFO - qlib.timer - [log.py:127] - Time cost: 0.774s | Fillna Done
+[231000:MainThread](2026-06-07 00:17:41,584) INFO - qlib.timer - [log.py:127] - Time cost: 0.154s | DropnaLabel Done
+[231000:MainThread](2026-06-07 00:17:46,385) INFO - qlib.timer - [log.py:127] - Time cost: 4.800s | CSZScoreNorm Done
+[231000:MainThread](2026-06-07 00:17:46,402) INFO - qlib.timer - [log.py:127] - Time cost: 10.186s | fit & process data Done
+[231000:MainThread](2026-06-07 00:17:46,403) INFO - qlib.timer - [log.py:127] - Time cost: 55.217s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=control trainable params=78755 (last block + final_norm + factor_pool + head)
+[baseline] step0 valid rank_ic = 0.081062 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.077865 (batches=2979 skip=0) best=0.081062@0 [706s]
+[ep 2] valid_rank_ic=0.077639 (batches=2979 skip=0) best=0.081062@0 [1411s]
+[ep 3] valid_rank_ic=0.077676 (batches=2979 skip=0) best=0.081062@0 [2117s]
+[ep 4] valid_rank_ic=0.077960 (batches=2979 skip=0) best=0.081062@0 [2822s]
+[ep 5] valid_rank_ic=0.077528 (batches=2979 skip=0) best=0.081062@0 [3528s]
+[ep 6] valid_rank_ic=0.077797 (batches=2979 skip=0) best=0.081062@0 [4233s]
+[ep 7] valid_rank_ic=0.077861 (batches=2979 skip=0) best=0.081062@0 [4938s]
+[ep 8] valid_rank_ic=0.077829 (batches=2979 skip=0) best=0.081062@0 [5644s]
+[done] arm=control base=0.08106 best=0.08106@0 bonus=+0.00000 -> analysis\readout_redesign\stepB\control_seed42\results.json
+control_seed42_EXIT=0
+
+########## d3cid seed 42 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[332980:MainThread](2026-06-07 01:53:01,639) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[332980:MainThread](2026-06-07 01:53:01,642) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[332980:MainThread](2026-06-07 01:53:01,643) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=d3cid seed=42 out=analysis\readout_redesign\stepB\d3cid_seed42
+[332980:MainThread](2026-06-07 01:53:46,720) INFO - qlib.timer - [log.py:127] - Time cost: 45.073s | Loading data Done
+[332980:MainThread](2026-06-07 01:53:50,819) INFO - qlib.timer - [log.py:127] - Time cost: 3.790s | RobustZScoreNorm Done
+[332980:MainThread](2026-06-07 01:53:51,595) INFO - qlib.timer - [log.py:127] - Time cost: 0.777s | Fillna Done
+[332980:MainThread](2026-06-07 01:53:52,081) INFO - qlib.timer - [log.py:127] - Time cost: 0.159s | DropnaLabel Done
+[332980:MainThread](2026-06-07 01:53:56,851) INFO - qlib.timer - [log.py:127] - Time cost: 4.770s | CSZScoreNorm Done
+[332980:MainThread](2026-06-07 01:53:56,875) INFO - qlib.timer - [log.py:127] - Time cost: 10.154s | fit & process data Done
+[332980:MainThread](2026-06-07 01:53:56,876) INFO - qlib.timer - [log.py:127] - Time cost: 55.229s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=d3cid trainable params=79267 (last block + final_norm + factor_pool + head + tr_A)
+[baseline] step0 valid rank_ic = 0.081062 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.077885 (batches=2979 skip=0) best=0.081062@0 [714s]
+[ep 2] valid_rank_ic=0.077691 (batches=2979 skip=0) best=0.081062@0 [1428s]
+[ep 3] valid_rank_ic=0.077738 (batches=2979 skip=0) best=0.081062@0 [2142s]
+[ep 4] valid_rank_ic=0.078010 (batches=2979 skip=0) best=0.081062@0 [2856s]
+[ep 5] valid_rank_ic=0.077598 (batches=2979 skip=0) best=0.081062@0 [3570s]
+[ep 6] valid_rank_ic=0.077857 (batches=2979 skip=0) best=0.081062@0 [4284s]
+[ep 7] valid_rank_ic=0.077920 (batches=2979 skip=0) best=0.081062@0 [4999s]
+[ep 8] valid_rank_ic=0.077921 (batches=2979 skip=0) best=0.081062@0 [5714s]
+[done] arm=d3cid base=0.08106 best=0.08106@0 bonus=+0.00000 -> analysis\readout_redesign\stepB\d3cid_seed42\results.json
+d3cid_seed42_EXIT=0
+
+########## control seed 43 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[1124:MainThread](2026-06-07 03:30:23,736) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[1124:MainThread](2026-06-07 03:30:23,739) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[1124:MainThread](2026-06-07 03:30:23,739) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=control seed=43 out=analysis\readout_redesign\stepB\control_seed43
+[1124:MainThread](2026-06-07 03:31:08,820) INFO - qlib.timer - [log.py:127] - Time cost: 45.077s | Loading data Done
+[1124:MainThread](2026-06-07 03:31:12,908) INFO - qlib.timer - [log.py:127] - Time cost: 3.780s | RobustZScoreNorm Done
+[1124:MainThread](2026-06-07 03:31:13,699) INFO - qlib.timer - [log.py:127] - Time cost: 0.792s | Fillna Done
+[1124:MainThread](2026-06-07 03:31:14,172) INFO - qlib.timer - [log.py:127] - Time cost: 0.153s | DropnaLabel Done
+[1124:MainThread](2026-06-07 03:31:18,945) INFO - qlib.timer - [log.py:127] - Time cost: 4.773s | CSZScoreNorm Done
+[1124:MainThread](2026-06-07 03:31:18,962) INFO - qlib.timer - [log.py:127] - Time cost: 10.142s | fit & process data Done
+[1124:MainThread](2026-06-07 03:31:18,962) INFO - qlib.timer - [log.py:127] - Time cost: 55.219s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=control trainable params=78755 (last block + final_norm + factor_pool + head)
+[baseline] step0 valid rank_ic = 0.078812 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.077687 (batches=2979 skip=0) best=0.078812@0 [706s]
+[ep 2] valid_rank_ic=0.077532 (batches=2979 skip=0) best=0.078812@0 [1411s]
+[ep 3] valid_rank_ic=0.077191 (batches=2979 skip=0) best=0.078812@0 [2117s]
+[ep 4] valid_rank_ic=0.077148 (batches=2979 skip=0) best=0.078812@0 [2823s]
+[ep 5] valid_rank_ic=0.076921 (batches=2979 skip=0) best=0.078812@0 [3529s]
+[ep 6] valid_rank_ic=0.076889 (batches=2979 skip=0) best=0.078812@0 [4234s]
+[ep 7] valid_rank_ic=0.076524 (batches=2979 skip=0) best=0.078812@0 [4940s]
+[ep 8] valid_rank_ic=0.076114 (batches=2979 skip=0) best=0.078812@0 [5645s]
+[done] arm=control base=0.07881 best=0.07881@0 bonus=+0.00000 -> analysis\readout_redesign\stepB\control_seed43\results.json
+control_seed43_EXIT=0
+
+########## d3cid seed 43 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[156560:MainThread](2026-06-07 05:06:35,972) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[156560:MainThread](2026-06-07 05:06:35,975) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[156560:MainThread](2026-06-07 05:06:35,976) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=d3cid seed=43 out=analysis\readout_redesign\stepB\d3cid_seed43
+[156560:MainThread](2026-06-07 05:07:21,103) INFO - qlib.timer - [log.py:127] - Time cost: 45.122s | Loading data Done
+[156560:MainThread](2026-06-07 05:07:25,167) INFO - qlib.timer - [log.py:127] - Time cost: 3.754s | RobustZScoreNorm Done
+[156560:MainThread](2026-06-07 05:07:25,943) INFO - qlib.timer - [log.py:127] - Time cost: 0.775s | Fillna Done
+[156560:MainThread](2026-06-07 05:07:26,434) INFO - qlib.timer - [log.py:127] - Time cost: 0.162s | DropnaLabel Done
+[156560:MainThread](2026-06-07 05:07:31,190) INFO - qlib.timer - [log.py:127] - Time cost: 4.756s | CSZScoreNorm Done
+[156560:MainThread](2026-06-07 05:07:31,207) INFO - qlib.timer - [log.py:127] - Time cost: 10.104s | fit & process data Done
+[156560:MainThread](2026-06-07 05:07:31,208) INFO - qlib.timer - [log.py:127] - Time cost: 55.226s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=d3cid trainable params=79267 (last block + final_norm + factor_pool + head + tr_A)
+[baseline] step0 valid rank_ic = 0.078812 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.077666 (batches=2979 skip=0) best=0.078812@0 [714s]
+[ep 2] valid_rank_ic=0.077531 (batches=2979 skip=0) best=0.078812@0 [1428s]
+[ep 3] valid_rank_ic=0.077172 (batches=2979 skip=0) best=0.078812@0 [2142s]
+[ep 4] valid_rank_ic=0.077144 (batches=2979 skip=0) best=0.078812@0 [2856s]
+[ep 5] valid_rank_ic=0.076935 (batches=2979 skip=0) best=0.078812@0 [3570s]
+[ep 6] valid_rank_ic=0.076863 (batches=2979 skip=0) best=0.078812@0 [4284s]
+[ep 7] valid_rank_ic=0.076470 (batches=2979 skip=0) best=0.078812@0 [4998s]
+[ep 8] valid_rank_ic=0.076062 (batches=2979 skip=0) best=0.078812@0 [5711s]
+[done] arm=d3cid base=0.07881 best=0.07881@0 bonus=+0.00000 -> analysis\readout_redesign\stepB\d3cid_seed43\results.json
+d3cid_seed43_EXIT=0
+
+########## control seed 44 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[256572:MainThread](2026-06-07 06:43:55,216) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[256572:MainThread](2026-06-07 06:43:55,219) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[256572:MainThread](2026-06-07 06:43:55,220) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=control seed=44 out=analysis\readout_redesign\stepB\control_seed44
+[256572:MainThread](2026-06-07 06:44:43,179) INFO - qlib.timer - [log.py:127] - Time cost: 47.956s | Loading data Done
+[256572:MainThread](2026-06-07 06:44:47,276) INFO - qlib.timer - [log.py:127] - Time cost: 3.766s | RobustZScoreNorm Done
+[256572:MainThread](2026-06-07 06:44:48,053) INFO - qlib.timer - [log.py:127] - Time cost: 0.776s | Fillna Done
+[256572:MainThread](2026-06-07 06:44:48,525) INFO - qlib.timer - [log.py:127] - Time cost: 0.154s | DropnaLabel Done
+[256572:MainThread](2026-06-07 06:44:53,291) INFO - qlib.timer - [log.py:127] - Time cost: 4.766s | CSZScoreNorm Done
+[256572:MainThread](2026-06-07 06:44:53,309) INFO - qlib.timer - [log.py:127] - Time cost: 10.128s | fit & process data Done
+[256572:MainThread](2026-06-07 06:44:53,309) INFO - qlib.timer - [log.py:127] - Time cost: 58.086s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=control trainable params=78755 (last block + final_norm + factor_pool + head)
+[baseline] step0 valid rank_ic = 0.072355 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.071551 (batches=2979 skip=0) best=0.072355@0 [706s]
+[ep 2] valid_rank_ic=0.071326 (batches=2979 skip=0) best=0.072355@0 [1412s]
+[ep 3] valid_rank_ic=0.071195 (batches=2979 skip=0) best=0.072355@0 [2117s]
+[ep 4] valid_rank_ic=0.070993 (batches=2979 skip=0) best=0.072355@0 [2823s]
+[ep 5] valid_rank_ic=0.070913 (batches=2979 skip=0) best=0.072355@0 [3528s]
+[ep 6] valid_rank_ic=0.070793 (batches=2979 skip=0) best=0.072355@0 [4234s]
+[ep 7] valid_rank_ic=0.070818 (batches=2979 skip=0) best=0.072355@0 [4940s]
+[ep 8] valid_rank_ic=0.070687 (batches=2979 skip=0) best=0.072355@0 [5646s]
+[done] arm=control base=0.07235 best=0.07235@0 bonus=+0.00000 -> analysis\readout_redesign\stepB\control_seed44\results.json
+control_seed44_EXIT=0
+
+########## d3cid seed 44 ##########
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[370268:MainThread](2026-06-07 08:20:10,882) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[370268:MainThread](2026-06-07 08:20:10,885) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[370268:MainThread](2026-06-07 08:20:10,886) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=d3cid seed=44 out=analysis\readout_redesign\stepB\d3cid_seed44
+[370268:MainThread](2026-06-07 08:20:55,902) INFO - qlib.timer - [log.py:127] - Time cost: 45.014s | Loading data Done
+[370268:MainThread](2026-06-07 08:21:00,022) INFO - qlib.timer - [log.py:127] - Time cost: 3.807s | RobustZScoreNorm Done
+[370268:MainThread](2026-06-07 08:21:00,810) INFO - qlib.timer - [log.py:127] - Time cost: 0.788s | Fillna Done
+[370268:MainThread](2026-06-07 08:21:01,281) INFO - qlib.timer - [log.py:127] - Time cost: 0.158s | DropnaLabel Done
+[370268:MainThread](2026-06-07 08:21:06,030) INFO - qlib.timer - [log.py:127] - Time cost: 4.750s | CSZScoreNorm Done
+[370268:MainThread](2026-06-07 08:21:06,047) INFO - qlib.timer - [log.py:127] - Time cost: 10.145s | fit & process data Done
+[370268:MainThread](2026-06-07 08:21:06,048) INFO - qlib.timer - [log.py:127] - Time cost: 55.159s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=d3cid trainable params=79267 (last block + final_norm + factor_pool + head + tr_A)
+[baseline] step0 valid rank_ic = 0.072355 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.071539 (batches=2979 skip=0) best=0.072355@0 [714s]
+[ep 2] valid_rank_ic=0.071304 (batches=2979 skip=0) best=0.072355@0 [1428s]
+[ep 3] valid_rank_ic=0.071171 (batches=2979 skip=0) best=0.072355@0 [2142s]
+[ep 4] valid_rank_ic=0.070983 (batches=2979 skip=0) best=0.072355@0 [2856s]
+[ep 5] valid_rank_ic=0.070857 (batches=2979 skip=0) best=0.072355@0 [3569s]
+[ep 6] valid_rank_ic=0.070761 (batches=2979 skip=0) best=0.072355@0 [4283s]
+[ep 7] valid_rank_ic=0.070786 (batches=2979 skip=0) best=0.072355@0 [4997s]
+[ep 8] valid_rank_ic=0.070677 (batches=2979 skip=0) best=0.072355@0 [5711s]
+[done] arm=d3cid base=0.07235 best=0.07235@0 bonus=+0.00000 -> analysis\readout_redesign\stepB\d3cid_seed44\results.json
+d3cid_seed44_EXIT=0
+
+########## AGGREGATE ##########
+
+---
+
+## Step-B — readout + top-MoE-block continue-finetune (UN-confounded, n=3, scale=0.5)
+
+Paired arms per seed: **control** = last-step readout + top-block finetuned; **d3cid** = per-channel-D linear-over-T readout + top-block finetuned. The readout's true contribution = **d3cid − control** (isolates the readout from the finetuning-the-top effect). baseline = loaded model step0.
+
+| seed | model(step0) | control best | d3cid best | **d3cid − control** | d3cid W_last_frac |
+|---|---:|---:|---:|---:|---:|
+| 42 | 0.08106 | 0.08106 | 0.08106 | **-0.00000** | 0.957 |
+| 43 | 0.07881 | 0.07881 | 0.07881 | **+0.00000** | 0.953 |
+| 44 | 0.07235 | 0.07235 | 0.07235 | **+0.00000** | 0.936 |
+
+- **d3cid − control: +0.00000 ± 0.00000** (n=3); seeds with diff≥+0.003: 0/3
+- control gain vs step0 (top-block finetune alone): +0.00000; d3cid gain vs step0: +0.00000
+- d3cid learned W last-step mass-fraction: 0.949 (≈1 ⇒ stays at last-step = no temporal use; <<1 ⇒ uses earlier steps)
+
+### Verdict (Step-B, un-confounded)
+- **d3cid does NOT beat the finetuned last-step control by +0.003 (diff +0.00000, n=3).** Even with the top block reshaping under an all-T readout gradient, the temporal readout is ~at parity → **last-step readout is ~optimal** (P2 of time-readout-bonus-20260607); headroom is upstream (blocks/data/regime), not the temporal readout. CAVEAT n=3.
+
+[done] appended analysis/readout_redesign/RESULT_overnight.md
+AGG_EXIT=0
+=== Step-B done Sun, Jun  7, 2026  9:57:26 AM ===

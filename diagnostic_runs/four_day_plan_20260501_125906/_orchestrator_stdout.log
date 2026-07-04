@@ -1,0 +1,94 @@
+[2026-05-01 12:59:06] requested Windows execution state: keep system awake while orchestrator runs
+[2026-05-01 12:59:06] waiting for current matrix runner pid=13516: diagnostic_runs\seed42_matrix_gradfix_20260430_2105
+[2026-05-01 12:59:06] current matrix still running; completed=['base', 'film_only', 'full_135', 'time_only']
+[2026-05-01 13:04:06] current matrix still running; completed=['base', 'film_only', 'full_135', 'time_only']
+[2026-05-01 13:09:06] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:14:07] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:19:07] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:24:07] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:29:08] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:34:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:39:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:44:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:49:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:54:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 13:59:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:04:09] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:09:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:14:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:19:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:24:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:29:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:34:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:39:10] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:44:11] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:49:11] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:54:11] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 14:59:11] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:04:11] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:09:11] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:14:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:19:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:24:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:29:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:34:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:39:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:44:12] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:49:13] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:54:13] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 15:59:13] current matrix still running; completed=['base', 'film_only', 'full_135', 'no_layer_summary', 'time_only']
+[2026-05-01 16:04:13] current matrix suite manifest is present
+[2026-05-01 16:04:13] phase start: 40 epoch diagnostic matrix
+[2026-05-01 16:04:13] start full_135
+[2026-05-01 22:10:56] completed full_135
+[2026-05-01 22:10:56] start base
+[2026-05-02 03:54:03] completed base
+[2026-05-02 03:54:03] start time_only
+[2026-05-02 09:43:59] completed time_only
+[2026-05-02 09:43:59] start film_only
+[2026-05-02 15:44:03] completed film_only
+[2026-05-02 15:44:03] start no_layer_summary
+[2026-05-02 21:42:54] completed no_layer_summary
+[2026-05-02 21:42:54] start fixed_router_05
+[2026-05-03 03:32:19] completed fixed_router_05
+[2026-05-03 03:32:19] phase done: 40 epoch diagnostic matrix
+[2026-05-03 03:32:19] phase start: capacity/head/dropout plan
+[2026-05-03 03:32:19] start cap00_d64_h4_l2_ff128_do010
+[2026-05-03 09:40:27] completed cap00_d64_h4_l2_ff128_do010
+[2026-05-03 09:40:27] start cap01_d64_h4_l2_ff256_do015
+[2026-05-03 16:02:39] completed cap01_d64_h4_l2_ff256_do015
+[2026-05-03 16:02:39] start cap02_d80_h4_l2_ff320_do015
+[2026-05-04 10:12:55] completed cap02_d80_h4_l2_ff320_do015
+[2026-05-04 10:12:55] start cap03_d96_h4_l2_ff288_do015
+[2026-05-04 18:07:00] completed cap03_d96_h4_l2_ff288_do015
+[2026-05-04 18:07:00] start cap04_d96_h4_l2_ff288_do020
+[2026-05-05 01:59:36] completed cap04_d96_h4_l2_ff288_do020
+[2026-05-05 01:59:36] start cap05_d96_h4_l2_ff384_do015
+[2026-05-05 10:03:53] completed cap05_d96_h4_l2_ff384_do015
+[2026-05-05 10:03:53] start cap06_d96_h4_l2_ff384_do020
+[2026-05-05 18:09:47] completed cap06_d96_h4_l2_ff384_do020
+[2026-05-05 18:09:47] start cap07_d96_h6_l2_ff384_do015
+[2026-05-06 03:28:05] completed cap07_d96_h6_l2_ff384_do015
+[2026-05-06 03:28:05] start cap08_d96_h4_l3_ff384_do020
+[2026-05-06 21:39:06] failed cap08_d96_h4_l3_ff384_do020: returncode=1
+[2026-05-06 21:39:06] Stage 1 top2 selected for multi-seed: ['cap01_d64_h4_l2_ff256_do015', 'cap02_d80_h4_l2_ff320_do015']
+[2026-05-06 21:39:06] start cap00_d64_h4_l2_ff128_do010_seed43
+[2026-05-07 03:52:49] completed cap00_d64_h4_l2_ff128_do010_seed43
+[2026-05-07 03:52:49] start cap01_d64_h4_l2_ff256_do015_seed43
+[2026-05-07 10:15:04] completed cap01_d64_h4_l2_ff256_do015_seed43
+[2026-05-07 10:15:04] start cap02_d80_h4_l2_ff320_do015_seed43
+[2026-05-08 04:16:55] completed cap02_d80_h4_l2_ff320_do015_seed43
+[2026-05-08 04:16:55] start cap00_d64_h4_l2_ff128_do010_seed44
+[2026-05-08 10:25:28] completed cap00_d64_h4_l2_ff128_do010_seed44
+[2026-05-08 10:25:28] start cap01_d64_h4_l2_ff256_do015_seed44
+[2026-05-08 16:47:53] completed cap01_d64_h4_l2_ff256_do015_seed44
+[2026-05-08 16:47:53] start cap02_d80_h4_l2_ff320_do015_seed44
+[2026-05-09 11:07:18] completed cap02_d80_h4_l2_ff320_do015_seed44
+[2026-05-09 11:07:18] Stage 3 decision: run=True; high-capacity Stage1 configs show no clear overfit: cap06_d96_h4_l2_ff384_do020
+[2026-05-09 11:07:18] start cap09_d128_h8_l2_ff384_do020
+[2026-05-09 23:28:28] completed cap09_d128_h8_l2_ff384_do020
+[2026-05-09 23:28:28] start cap10_d128_h8_l2_ff512_do025
+[2026-05-10 12:11:43] completed cap10_d128_h8_l2_ff512_do025
+[2026-05-10 12:11:43] start cap11_d128_h4_l2_ff512_do020
+[2026-05-10 22:41:13] completed cap11_d128_h4_l2_ff512_do020
+[2026-05-10 22:41:13] phase done: capacity/head/dropout plan

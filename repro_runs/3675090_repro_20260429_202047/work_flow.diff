@@ -1,0 +1,33 @@
+﻿diff --git a/work_flow.py b/work_flow.py
+index 747e4d3..4ec71d0 100644
+--- a/work_flow.py
++++ b/work_flow.py
+@@ -103,7 +103,7 @@ data_conf = {
+         "segments": {
+             "train": ("2008-01-01", "2020-03-31"),
+             "valid": ("2020-07-01", "2022-12-31"),
+-            "test": ("2020-04-01", "2020-06-30"),
++            "test":("2020-07-01", "2022-12-31"),
+         },
+     },
+ }
+@@ -199,7 +199,7 @@ model_conf = {
+             "consecutive_k": 2,
+             "num_workers": 0,  # debug 时用 0，正式训练可以拉高
+             # Optional: precomputed market daily state as macro_features (recommended for longer horizons)
+-            "market_state_path": "market_state_csi300.pkl",
++            "market_state_path": "data/market_state_csi300.pkl",
+             "market_state_shift": 0,
+             "market_state_strict": True,
+             # Warmup 配置（与 adapter 中的默认值一致）：
+@@ -227,8 +227,8 @@ port_conf = {
+         },
+     },
+     "backtest": {
+-        "start_time": "2020-04-01",
+-        "end_time": "2020-06-30",
++        "start_time": "2020-07-01",
++        "end_time": "2022-12-31",
+         "account": 100000000,
+         "benchmark": "SH000300",
+         "exchange_kwargs": {

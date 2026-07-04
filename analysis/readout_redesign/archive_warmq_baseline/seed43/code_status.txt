@@ -1,0 +1,107 @@
+On branch pool-readout-forensics
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .agents/skills/qlibQuantExp-skills/shared/ledger.md
+	modified:   experiments.md
+	modified:   module/architecture/moe_block.py
+	modified:   module/dataloader/sampler.py
+	modified:   module/model_adapter.py
+	modified:   module/quant_moe_model.py
+	modified:   module/utils/model_configuration.py
+	modified:   work_flow.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.agents/.claude/
+	.agents/skills/qlibQuantExp-skills/.gitignore
+	.agents/skills/qlibQuantExp-skills/LICENSE
+	.agents/skills/qlibQuantExp-skills/MANIFEST.yaml
+	.agents/skills/qlibQuantExp-skills/README.md
+	.agents/skills/qlibQuantExp-skills/SKILL.md
+	.agents/skills/qlibQuantExp-skills/shared/analogies/
+	.agents/skills/qlibQuantExp-skills/shared/hardcore.md
+	.agents/skills/qlibQuantExp-skills/shared/lineages.md
+	.agents/skills/qlibQuantExp-skills/shared/notebook/
+	.agents/skills/qlibQuantExp-skills/skills/
+	.agents/skills/quant-ablation-plan/
+	.agents/skills/quant-hypothesis/
+	.agents/skills/quant-leakage-audit/
+	.agents/skills/quant-minimal-repro/
+	.agents/skills/quant-paper-trade/
+	.agents/skills/quant-recent/
+	.agents/skills/quant-regime-diagnose/
+	.agents/skills/quant-stress/
+	.agents/skills/quant-walk-forward/
+	.agents/skills/qx-forge-a-sharp-falsifier/
+	.agents/skills/qx-notebook-the-anomaly/
+	.agents/skills/qx-protect-or-relax-the-hard-core/
+	.agents/skills/qx-research-ledger/
+	.agents/skills/qx-skill-creator/
+	.agents/skills/qx-transpose-from-another-field/
+	.claude/
+	__pycache__/
+	analysis/aggregate_by_setting.csv
+	analysis/aggregate_by_setting.json
+	analysis/aggregate_by_setting_unified.csv
+	analysis/aggregate_by_setting_unified.json
+	analysis/analysis_summary.json
+	analysis/attention_gradient_tutorial.md
+	analysis/current_bottleneck_report.json
+	analysis/current_bottleneck_report.md
+	analysis/current_experiment_records_20260531.md
+	analysis/diagnostic_runs_inventory.csv
+	analysis/diagnostic_runs_inventory.json
+	analysis/experiment_inventory_unified.csv
+	analysis/experiment_inventory_unified.json
+	analysis/full135_det_seed42_ndrop30_diagnostic_readout_20260524.md
+	analysis/full_daily_sampler_paired_promotion_20260524.json
+	analysis/full_daily_sampler_paired_promotion_20260524.md
+	analysis/jepa_latent_pretrain/
+	analysis/mlflow_runs_inventory.csv
+	analysis/mlflow_runs_inventory.json
+	analysis/model_benchmark_research_report.txt
+	analysis/non_tau_model_bottlenecks_20260531.md
+	analysis/repro_runs_inventory.csv
+	analysis/repro_runs_inventory.json
+	analysis/skill_improvement_paths_20260524.md
+	analysis/stock_expert/
+	analysis/suite_csv_inventory.csv
+	analysis/suite_csv_inventory.json
+	analysis/tau_0p5_vs_baseline_n6_20260606.csv
+	analysis/tau_phase2_25e_3seed_20260604.csv
+	analysis/tau_phase2_25e_3seed_20260604.png
+	analysis/tau_router_expert_temporal_20260529.csv
+	analysis/tau_scale_response_20260527.png
+	analysis/tau_scale_response_20260528_9pts.png
+	analysis/time_readout_probe/
+	analysis/weekend_001_002/
+	data/
+	diagnostic_runs/
+	experiments_ledger.jsonl
+	logs/
+	mlruns/
+	module/__pycache__/
+	module/architecture/__pycache__/
+	module/dataloader/__pycache__/
+	module/utils/__pycache__/
+	module/utils/processors.py
+	outputs/
+	repro_runs/
+	scratch_search.py
+	scripts/__pycache__/
+	scripts/analyze_experiment_bottlenecks.py
+	scripts/compare_weekend_vs_anchor.py
+	scripts/run_diagnostic_experiments.py
+	scripts/run_four_day_experiment_plan.py
+	scripts/run_full_daily_sampler_paired_hook.py
+	scripts/run_warmq_43_44.sh
+	scripts/run_weekend_001_002.sh
+	scripts/smoke_demean_stockexp.sh
+	scripts/smoke_warmq_stockexp.sh
+	scripts/smoke_xscenter_stockexp.sh
+	scripts/stock_key_svd.py
+	scripts/vram_probe_stock_expert.py
+	tmp_run/
+
+no changes added to commit (use "git add" and/or "git commit -a")

@@ -1,0 +1,101 @@
+{
+  "counts": {
+    "mlflow_runs": 31,
+    "diagnostic_manifests": 31,
+    "diagnostic_success_with_rankic": 23,
+    "diagnostic_failed": 1,
+    "repro_runs": 1
+  },
+  "top_rankic": [
+    {
+      "setting": "cap00_d64_h4_l2_ff128_do010_seed43",
+      "seed": 43,
+      "rank_ic": 0.0796389624873134,
+      "rank_icir": 0.5832960782357897,
+      "ann_cost": 0.19091099613944706,
+      "ir_cost": 1.9394690279421478,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage2_seed43_44\\cap00_d64_h4_l2_ff128_do010_seed43\\manifest.json"
+    },
+    {
+      "setting": "cap06_d96_h4_l2_ff384_do020",
+      "seed": 42,
+      "rank_ic": 0.07937359407172331,
+      "rank_icir": 0.5416028541522023,
+      "ann_cost": 0.2202313447273886,
+      "ir_cost": 2.086088748683269,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage1_seed42\\cap06_d96_h4_l2_ff384_do020\\manifest.json"
+    },
+    {
+      "setting": "full_135",
+      "seed": 42,
+      "rank_ic": 0.07913506646550444,
+      "rank_icir": 0.5496115387284783,
+      "ann_cost": 0.17787491766501612,
+      "ir_cost": 1.564012034553269,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\matrix_40epoch_seed42\\full_135\\manifest.json"
+    },
+    {
+      "setting": "cap02_d80_h4_l2_ff320_do015_seed44",
+      "seed": 44,
+      "rank_ic": 0.07900580974698307,
+      "rank_icir": 0.5450072473374616,
+      "ann_cost": 0.2007778358959388,
+      "ir_cost": 1.951953534412605,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage2_seed43_44\\cap02_d80_h4_l2_ff320_do015_seed44\\manifest.json"
+    },
+    {
+      "setting": "cap01_d64_h4_l2_ff256_do015_seed44",
+      "seed": 44,
+      "rank_ic": 0.0781186260026794,
+      "rank_icir": 0.5499413630680678,
+      "ann_cost": 0.23328342286717138,
+      "ir_cost": 2.2536675690703483,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage2_seed43_44\\cap01_d64_h4_l2_ff256_do015_seed44\\manifest.json"
+    },
+    {
+      "setting": "cap11_d128_h4_l2_ff512_do020",
+      "seed": 42,
+      "rank_ic": 0.07756069819022336,
+      "rank_icir": 0.5270949386817093,
+      "ann_cost": 0.15171129445394826,
+      "ir_cost": 1.3750037136175788,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage3_aggressive_seed42\\cap11_d128_h4_l2_ff512_do020\\manifest.json"
+    },
+    {
+      "setting": "cap07_d96_h6_l2_ff384_do015",
+      "seed": 42,
+      "rank_ic": 0.07749194350080746,
+      "rank_icir": 0.5304114108327845,
+      "ann_cost": 0.16684033086338615,
+      "ir_cost": 1.5848944202010637,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage1_seed42\\cap07_d96_h6_l2_ff384_do015\\manifest.json"
+    },
+    {
+      "setting": "cap05_d96_h4_l2_ff384_do015",
+      "seed": 42,
+      "rank_ic": 0.07728730575102148,
+      "rank_icir": 0.54349500716962,
+      "ann_cost": 0.18345836549176997,
+      "ir_cost": 1.754429119796694,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage1_seed42\\cap05_d96_h4_l2_ff384_do015\\manifest.json"
+    },
+    {
+      "setting": "cap02_d80_h4_l2_ff320_do015_seed43",
+      "seed": 43,
+      "rank_ic": 0.0770803902665886,
+      "rank_icir": 0.5539426105235584,
+      "ann_cost": 0.20699665457476296,
+      "ir_cost": 1.8707063552913705,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\capacity_full135_40epoch\\stage2_seed43_44\\cap02_d80_h4_l2_ff320_do015_seed43\\manifest.json"
+    },
+    {
+      "setting": "fixed_router_05",
+      "seed": 42,
+      "rank_ic": 0.07707132031873405,
+      "rank_icir": 0.5760899141994799,
+      "ann_cost": 0.1549206254377406,
+      "ir_cost": 1.5348429773576733,
+      "path": "diagnostic_runs\\four_day_plan_20260501_125906\\matrix_40epoch_seed42\\fixed_router_05\\manifest.json"
+    }
+  ]
+}

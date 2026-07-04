@@ -1,0 +1,11 @@
+[setup] arm=d3cid seed=42 out=analysis\readout_redesign\stepB\d3cid_seed42
+[wire] arm=d3cid trainable params=79267 (last block + final_norm + factor_pool + head + tr_A)
+[baseline] step0 valid rank_ic = 0.081062 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.077885 (batches=2979 skip=0) best=0.081062@0 [714s]
+[ep 2] valid_rank_ic=0.077691 (batches=2979 skip=0) best=0.081062@0 [1428s]
+[ep 3] valid_rank_ic=0.077738 (batches=2979 skip=0) best=0.081062@0 [2142s]
+[ep 4] valid_rank_ic=0.078010 (batches=2979 skip=0) best=0.081062@0 [2856s]
+[ep 5] valid_rank_ic=0.077598 (batches=2979 skip=0) best=0.081062@0 [3570s]
+[ep 6] valid_rank_ic=0.077857 (batches=2979 skip=0) best=0.081062@0 [4284s]
+[ep 7] valid_rank_ic=0.077920 (batches=2979 skip=0) best=0.081062@0 [4999s]
+[ep 8] valid_rank_ic=0.077921 (batches=2979 skip=0) best=0.081062@0 [5714s]

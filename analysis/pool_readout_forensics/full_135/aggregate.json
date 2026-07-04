@@ -1,0 +1,80 @@
+{
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47
+  ],
+  "n_runs": 6,
+  "KEY_SVD_GATE": {
+    "current_softmax_entropy_norm_mean": 0.9999549491128762,
+    "key_s1_over_common_norm_mean": 2.173371030417395,
+    "key_sigma2_over_sigma1_mean": 0.42951799861133727,
+    "key_effective_rank_mean": 4.21151750077953,
+    "best_achievable_entropy_norm_current_temp": 0.9999568142702183,
+    "value_sigma2_over_sigma1_mean": 0.6102310841862734,
+    "value_s1_over_common_norm_mean": 1.6509752192894618,
+    "crossstock_attn_weight_std_mean": 5.4782864527337866e-05,
+    "current_logit_std_mean": 0.017260838099056774,
+    "best_achievable_entropy_by_temp": {
+      "T0.5": 0.9761185860258837,
+      "T1": 0.9109345826093107,
+      "T2": 0.7539160940942587,
+      "T3": 0.6590045496775737,
+      "T5": 0.5639241900344569
+    },
+    "verdicts_per_seed": [
+      "operator_state_collapse",
+      "operator_state_collapse",
+      "operator_state_collapse",
+      "operator_state_collapse",
+      "operator_state_collapse",
+      "operator_state_collapse"
+    ]
+  },
+  "PROBE_CEILING": {
+    "arm0_per_seed": [
+      0.07147151151521063,
+      0.07792214069258988,
+      0.057419740532285886,
+      0.07649753596009486,
+      0.07335000752216825,
+      0.07288305676852065
+    ],
+    "armA_per_seed": [
+      0.06941865763504236,
+      0.07738656984726915,
+      0.05587115170621527,
+      0.07649776582271718,
+      0.07347889182326767,
+      0.07288275459194231
+    ],
+    "gap_per_seed": [
+      -0.002052853880168265,
+      -0.0005355708453207292,
+      -0.0015485888260706182,
+      2.2986262232516097e-07,
+      0.00012888430109941895,
+      -3.0217657834286094e-07
+    ],
+    "gap_mean": -0.007619661808010807,
+    "decile_ratio_mean": 1.4494141187833887,
+    "cov_effrank_mean": 6.067938407262166,
+    "slot_ic_abs_max_mean": 0.07455693691138245,
+    "n_seeds_gap_ge_0p003": 0,
+    "n_seeds": 6,
+    "sanity_valid_rank_ic_per_seed": [
+      0.08020112118390539,
+      0.07794496071828907,
+      0.07346520128120554,
+      0.0810302295676201,
+      0.0791587110981916,
+      0.07671268084835091
+    ],
+    "sharpening_can_help": false,
+    "rational_equilibrium_null_supported": true
+  },
+  "world_verdict": "operator_state_collapse"
+}

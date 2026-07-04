@@ -54,6 +54,33 @@ class QuantLossFunctions:
         return F.huber_loss(pred.flatten(), target.flatten(), delta=delta)
 
     @staticmethod
+    def cs_mse_loss(
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        *,
+        normalize: bool = False,
+        eps: float = 1e-6,
+    ) -> torch.Tensor:
+        """
+        Cross-Sectional MSE Loss.
+        pred, target: [B]
+        """
+        pred = pred.flatten()
+        target = target.flatten()
+
+        mask = torch.isfinite(pred) & torch.isfinite(target)
+        if mask.sum() < 1:
+            return torch.tensor(0.0, device=pred.device)
+        p = pred[mask]
+        y = target[mask]
+        if normalize:
+            p = p - p.mean()
+            y = y - y.mean()
+            p = p / (p.std(unbiased=False) + eps)
+            y = y / (y.std(unbiased=False) + eps)
+        return F.mse_loss(p, y)
+
+    @staticmethod
     def listmle_loss(pred: torch.Tensor, target: torch.Tensor, tau: float = 1.0) -> torch.Tensor:
         """
         ListMLE loss (list-wise ranking).
@@ -74,9 +101,13 @@ class QuantLossFunctions:
         _, indices = torch.sort(target, descending=True)
         s = pred[indices]  # [n]
 
-        # 2) 温度 + 数值稳定
-        s = s / tau
-        s = s - s.max()
+        # 2) 数值稳定 + 温度
+        # ★ 正确顺序：先减最大值，再除以温度
+        # 若先除以温度，当 tau<1 时会放大数值，引发 logcumsumexp 溢出
+        # NOTE: detach max to avoid routing gradients through argmax (shift-invariant anyway)
+        s = s - s.max().detach()  # 数值稳定（先归一化）
+        tau = max(tau, 1e-6)  # 防止除零
+        s = s / tau  # 温度缩放
 
         # 3) 逐前缀 logsumexp
         rev_s = s.flip(0)

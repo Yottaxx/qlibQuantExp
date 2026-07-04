@@ -1,0 +1,313 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[6296:MainThread](2026-06-27 02:21:48,872) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[6296:MainThread](2026-06-27 02:21:48,872) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[6296:MainThread](2026-06-27 02:21:48,872) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[6296:MainThread](2026-06-27 02:25:18,630) INFO - qlib.timer - [log.py:127] - Time cost: 209.758s | Loading data Done
+[6296:MainThread](2026-06-27 02:25:20,783) INFO - qlib.timer - [log.py:127] - Time cost: 2.010s | RobustZScoreNorm Done
+[6296:MainThread](2026-06-27 02:25:21,245) INFO - qlib.timer - [log.py:127] - Time cost: 0.462s | Fillna Done
+[6296:MainThread](2026-06-27 02:25:21,483) INFO - qlib.timer - [log.py:127] - Time cost: 0.095s | DropnaLabel Done
+[6296:MainThread](2026-06-27 02:25:24,704) INFO - qlib.timer - [log.py:127] - Time cost: 3.221s | CSZScoreNorm Done
+[6296:MainThread](2026-06-27 02:25:24,721) INFO - qlib.timer - [log.py:127] - Time cost: 6.091s | fit & process data Done
+[6296:MainThread](2026-06-27 02:25:24,721) INFO - qlib.timer - [log.py:127] - Time cost: 215.849s | Init data Done
+C:\Users\60585\PycharmProjects\qibMacV2\module\model_adapter.py:206: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\mlflow\tracking\_tracking_service\utils.py:140: FutureWarning: Filesystem tracking backend (e.g., './mlruns') is deprecated. Please switch to a database backend (e.g., 'sqlite:///mlflow.db'). For feedback, see: https://github.com/mlflow/mlflow/issues/18534
+  return FileStore(store_uri, store_uri)
+[6296:MainThread](2026-06-27 02:25:38,272) WARNING - qlib.workflow - [expm.py:231] - No valid experiment found. Create a new experiment with name Official_Alignment_RST_MoE_loss-mse_d64_l2_ff128_ctx8_embft_time1_decay1_film1_fgs1.0_fsh0.2_rSum1_rModelearned_featSel0_mseNorm0_macro1_mDrop0.1_pool0.7_msmarket_state_csi300_settingproxy_h-20260627-001.
+[6296:MainThread](2026-06-27 02:25:38,430) INFO - qlib.workflow - [exp.py:258] - Experiment 122023448644060828 starts running ...
+[6296:MainThread](2026-06-27 02:25:39,385) INFO - qlib.workflow - [recorder.py:345] - Recorder 6c802a116aff46438d261a50c376640c starts running under Experiment 122023448644060828 ...
+warning: in the working copy of '.agents/skills/qlibQuantExp-skills/shared/ledger.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'module/dataloader/sampler.py', LF will be replaced by CRLF the next time Git touches it
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\torch\autograd\graph.py:825: UserWarning: Memory Efficient attention defaults to a non-deterministic algorithm. To explicitly enable determinism call torch.use_deterministic_algorithms(True, warn_only=False). (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\builder\windows\pytorch\aten\src\ATen\native\transformers\cuda\attention_backward.cu:657.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+>>> [qlib.init] kernels=1 (serial data loading; QIB_QLIB_KERNELS to override)
+>>> [Config:env] Applied experiment overrides
+>>> [Config:env] run_setting=proxy_h-20260627-001
+>>> [Config] Clip backtest window (dataset.test segment): 2020-07-01~2022-12-31 -> 2020-07-01~2021-06-30
+>>> [Config:planned] model: loss=mse, d_model=64, layers=2, heads=4, context_len=8, num_alphas=158, val_emb=feature_tokenizer, time_emb=on, factor_gate=on, router=learned, feat_sel=off, alibi=off, macro=external(market_state_csi300.pkl, dim=auto, shift=0, strict=True), macro_drop=0.1
+>>> [Config:planned] trainer: lr=5e-05, epochs=8, batch=300, accum=1, early_stop=0, warmup=on(ratio=0.05), precision=amp_fp16, seed=42, checkpoint=valid_rank_ic:max, train_stop=off, min_epochs=3, k=999999
+>>> [Phase 1] Training Model...
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+>>> [Schema] Packed-label detected on train segment: total_dim=159, feature_dim=158, label_dim=1. Adapter will treat the last 1 channel(s) at the final time step as label.
+
+================================================================================
+MODEL ARCHITECTURE SUMMARY
+================================================================================
+QuantMoEModel(
+  (feature_tokenizer): FeatureTokenizer()
+  (factor_id_emb): Embedding(158, 64)
+  (emb_dropout): Dropout(p=0.1, inplace=False)
+  (time_embedding): RegimeAdaptiveTimeEmbedding(
+    (tau_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (tau_fc1): Linear(in_features=64, out_features=32, bias=True)
+    (tau_fc2): Linear(in_features=32, out_features=1, bias=True)
+  )
+  (factor_gate): RegimeAdaptiveFactorGate(
+    (regime_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (factor_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (proj_gamma): Linear(in_features=64, out_features=64, bias=False)
+    (proj_beta): Linear(in_features=64, out_features=64, bias=False)
+  )
+  (regime_encoder): RegimeContextEncoder(
+    (encoder): Sequential(
+      (0): Linear(in_features=102, out_features=128, bias=True)
+      (1): Tanh()
+      (2): Dropout(p=0.1, inplace=False)
+      (3): Linear(in_features=128, out_features=64, bias=True)
+      (4): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (layers): ModuleList(
+    (0-1): 2 x RegimeAdaptiveMoEBlock(
+      (layer_summary_proj): Linear(in_features=128, out_features=64, bias=False)
+      (router): Sequential(
+        (0): Linear(in_features=128, out_features=32, bias=True)
+        (1): GELU(approximate='none')
+        (2): Linear(in_features=32, out_features=2, bias=True)
+      )
+      (time_expert): ParallelAttention(
+        (mha): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+        )
+      )
+      (factor_expert): ParallelAttention(
+        (mha): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+        )
+      )
+      (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+      (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+      (ffn): Sequential(
+        (0): Linear(in_features=64, out_features=128, bias=True)
+        (1): GELU(approximate='none')
+        (2): Dropout(p=0.1, inplace=False)
+        (3): Linear(in_features=128, out_features=64, bias=True)
+        (4): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (final_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+  (factor_pooling): AdaptivePooling(
+    (attention_pool): AttentionPooling(
+      (mha): MultiheadAttention(
+        (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+      )
+      (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (head): Linear(in_features=64, out_features=1, bias=True)
+)
+
+--------------------------------------------------------------------------------
+PARAMETER STATISTICS BY MODULE
+--------------------------------------------------------------------------------
+Module                    Params          Trainable       %Total    
+-----------------------------------------------------------------
+layers                    123,972         123,972         60.8      %
+regime_encoder            21,568          21,568          10.6      %
+feature_tokenizer         20,224          20,224          9.9       %
+factor_pooling            16,576          16,576          8.1       %
+factor_id_emb             10,112          10,112          5.0       %
+factor_gate               8,448           8,448           4.1       %
+time_embedding            2,754           2,754           1.4       %
+final_norm                128             128             0.1       %
+head                      65              65              0.0       %
+-----------------------------------------------------------------
+TOTAL                     203,847         203,847         100.0     %
+
+--------------------------------------------------------------------------------
+DETAILED LAYER BREAKDOWN
+--------------------------------------------------------------------------------
+Layer Name                                         Shape                     Params      
+---------------------------------------------------------------------------------------
+feature_tokenizer.weight                           [158, 64]                 10,112      
+feature_tokenizer.bias                             [158, 64]                 10,112      
+factor_id_emb.weight                               [158, 64]                 10,112      
+time_embedding.pos                                 [8, 64]                   512         
+time_embedding.tau_base                            []                        1           
+time_embedding.tau_norm.weight                     [64]                      64          
+time_embedding.tau_norm.bias                       [64]                      64          
+time_embedding.tau_fc1.weight                      [32, 64]                  2,048       
+time_embedding.tau_fc1.bias                        [32]                      32          
+time_embedding.tau_fc2.weight                      [1, 32]                   32          
+time_embedding.tau_fc2.bias                        [1]                       1           
+factor_gate.regime_norm.weight                     [64]                      64          
+factor_gate.regime_norm.bias                       [64]                      64          
+factor_gate.factor_norm.weight                     [64]                      64          
+factor_gate.factor_norm.bias                       [64]                      64          
+factor_gate.proj_gamma.weight                      [64, 64]                  4,096       
+factor_gate.proj_beta.weight                       [64, 64]                  4,096       
+regime_encoder.encoder.0.weight                    [128, 102]                13,056      
+regime_encoder.encoder.0.bias                      [128]                     128         
+regime_encoder.encoder.3.weight                    [64, 128]                 8,192       
+regime_encoder.encoder.3.bias                      [64]                      64          
+regime_encoder.encoder.4.weight                    [64]                      64          
+regime_encoder.encoder.4.bias                      [64]                      64          
+layers.0.layer_summary_proj.weight                 [64, 128]                 8,192       
+layers.0.router.0.weight                           [32, 128]                 4,096       
+layers.0.router.0.bias                             [32]                      32          
+layers.0.router.2.weight                           [2, 32]                   64          
+layers.0.router.2.bias                             [2]                       2           
+layers.0.time_expert.mha.in_proj_weight            [192, 64]                 12,288      
+layers.0.time_expert.mha.out_proj.weight           [64, 64]                  4,096       
+layers.0.factor_expert.mha.in_proj_weight          [192, 64]                 12,288      
+layers.0.factor_expert.mha.out_proj.weight         [64, 64]                  4,096       
+layers.0.norm1.weight                              [64]                      64          
+layers.0.norm1.bias                                [64]                      64          
+layers.0.norm2.weight                              [64]                      64          
+layers.0.norm2.bias                                [64]                      64          
+layers.0.ffn.0.weight                              [128, 64]                 8,192       
+layers.0.ffn.0.bias                                [128]                     128         
+layers.0.ffn.3.weight                              [64, 128]                 8,192       
+layers.0.ffn.3.bias                                [64]                      64          
+layers.1.layer_summary_proj.weight                 [64, 128]                 8,192       
+layers.1.router.0.weight                           [32, 128]                 4,096       
+layers.1.router.0.bias                             [32]                      32          
+layers.1.router.2.weight                           [2, 32]                   64          
+layers.1.router.2.bias                             [2]                       2           
+layers.1.time_expert.mha.in_proj_weight            [192, 64]                 12,288      
+layers.1.time_expert.mha.out_proj.weight           [64, 64]                  4,096       
+layers.1.factor_expert.mha.in_proj_weight          [192, 64]                 12,288      
+layers.1.factor_expert.mha.out_proj.weight         [64, 64]                  4,096       
+layers.1.norm1.weight                              [64]                      64          
+layers.1.norm1.bias                                [64]                      64          
+layers.1.norm2.weight                              [64]                      64          
+layers.1.norm2.bias                                [64]                      64          
+layers.1.ffn.0.weight                              [128, 64]                 8,192       
+layers.1.ffn.0.bias                                [128]                     128         
+layers.1.ffn.3.weight                              [64, 128]                 8,192       
+layers.1.ffn.3.bias                                [64]                      64          
+final_norm.weight                                  [64]                      64          
+final_norm.bias                                    [64]                      64          
+factor_pooling.attention_pool.query                [1, 1, 64]                64          
+factor_pooling.attention_pool.mha.in_proj_weight   [192, 64]                 12,288      
+factor_pooling.attention_pool.mha.out_proj.weight  [64, 64]                  4,096       
+factor_pooling.attention_pool.norm.weight          [64]                      64          
+factor_pooling.attention_pool.norm.bias            [64]                      64          
+head.weight                                        [1, 64]                   64          
+head.bias                                          [1]                       1           
+================================================================================
+
+>>> [Sanity] loss=2.483623 grad_norm=1.108e+02 score_std=4.070e-02 label_std=1.364e+00 x_last_std=1.028e+00
+
+================================================================================
+COMPLETE MODEL CONFIGURATION (Resolved)
+================================================================================
+
+--- Architecture ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+d_model                             64                             Hidden dimension         
+n_heads                             4                              Attention heads          
+n_layers                            2                              Number of layers         
+d_ff                                128                            FFN dimension            
+num_alphas                          158                            Number of factors (N)    
+context_len                         8                              Sequence length (T)      
+dropout                             0.1                            Dropout rate             
+initializer_range                   0.02                           Weight init std          
+
+--- Value Embedding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+value_embedding_type                feature_tokenizer              Value embedding type     
+feature_tokenizer_bias              [+] ON                         FT bias                  
+feature_tokenizer_add_factor_id     [-] OFF                        FT add factor ID         
+feature_tokenizer_init_std          0.02                           FT init std              
+
+--- Loss & Training ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+main_loss                           mse                            Primary loss function    
+loss_weights                        {'listmle': 1.0, 'mse': 1.0, 'ic': 1.0} Loss weight dict         
+listmle_tau                         0.8                            ListMLE temperature      
+rank_topk                           5                              RankNet top-k            
+huber_delta                         1                              Huber delta              
+mse_normalize                       [-] OFF                        MSE normalize flag       
+
+--- Regime-Adaptive Time Embedding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_regime_time_embedding           [+] ON                         Enable time embedding    
+time_tau_min                        0.5                            Min tau (short memory)   
+time_tau_max                        50                             Max tau (long memory)    
+time_tau_init                       5                              Initial tau              
+time_emb_init_std                   0.02                           Time emb init std        
+time_decay_normalize                [+] ON                         Normalize decay weights  
+
+--- Regime-Adaptive Factor Gate ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_regime_factor_gate              [+] ON                         Enable factor gate (FiLM)
+factor_gate_scale                   1                              Gate scale (gamma range) 
+factor_gate_shift_scale             0.2                            Gate shift scale (beta)  
+
+--- MoE Router ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+router_mode                         learned                        Router mode              
+router_noise                        0.01                           Logit noise std          
+router_temperature                  1                              Softmax temperature      
+router_z_loss_coef                  0.01                           Z-loss coefficient       
+router_use_layer_summary            [+] ON                         Use layer summary token  
+
+--- Feature Selection ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_feature_selection               [-] OFF                        Enable feature selection 
+selection_reg_lambda                1e-05                          Sparsity regularization  
+selection_temperature               0.1                            Gumbel temperature       
+selection_noise_std                 0.5                            Selection noise std      
+
+--- Positional Encoding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_alibi                           [-] OFF                        Use ALiBi bias           
+
+--- Regime Context Encoder ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_external_macro                  [+] ON                         Use external macro features
+d_macro_input                       102                            Macro input dimension    
+regime_macro_dropout                0.1                            Macro dropout            
+regime_internal_mode                long                           Internal mode (short/long)
+regime_internal_lag                 5                              Internal lag steps       
+regime_internal_use_batch_stats     [-] OFF                        Use batch statistics     
+regime_internal_tail_threshold      2                              Tail threshold           
+
+--- Pooling ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+pooling_alpha                       0.7                            Attention vs mean weight 
+
+--- Trainer Configuration ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+lr                                  5e-05                          Learning rate            
+epochs                              8                              Number of epochs         
+batch_size                          300                            Batch size (stocks/day)  
+grad_accum_steps                    1                              Accumulate K days/step   
+early_stop                          0                              Early stop patience      
+train_stop_key                      loss_main                      Train stop metric key    
+train_stop_threshold                None                           Train stop threshold     
+min_epochs                          3                              Min epochs before stop   
+consecutive_k                       999999                         Consecutive epochs to stop
+use_warmup                          [+] ON                         Enable LR warmup         
+warmup_config                       413/8264 steps                 Warmup steps/ratio       
+total_steps                         8264                           Total training steps     
+random_seed                         42                             Random seed              
+num_workers                         0                              DataLoader workers       
+label_dim                           1                              Label dimension          
+market_state_path                   market_state_csi300.pkl        Market state file        
+market_state_shift                  0                              Market state shift       
+market_state_strict                 [+] ON                         Strict market state      
+================================================================================
+
+>>> [Train] epochs=8, stop=train_threshold(off, min_epochs=3, k=999999)
+>>> [Warn] non-finite gradients detected (tensors=14, values=1348); optimizer step skipped and excluded from grad_norm metrics.
+| Train 01 | time_embedding_norm:0.160316 | time_embedding_to_value_norm_ratio:1.244221 | time_tau:4.996020 | time_half_life:3.462977 | time_tau_std:0.001693 | time_tau_p10:4.994382 | time_tau_p90:4.997678 | time_tau_range_util:0.000067 | film_gamma_strength:0.001561 | film_beta_strength:0.000272 | factor_gate_mean:0.999975 | factor_gate_std:0.000309 | factor_gate_entropy:0.944319 | factor_gate_topk_mass_5:0.096867 | factor_gate_topk_mass_10:0.175308 | router_layer_0_time_ratio:0.513232 | router_layer_0_factor_ratio:0.486768 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.998157 | router_layer_0_logit_margin:0.059614 | expert_layer_0_time_expert_norm:3.896274 | expert_layer_0_factor_expert_norm:5.302337 | expert_layer_0_time_contrib_norm:2.001236 | expert_layer_0_factor_contrib_norm:2.580987 | expert_layer_0_contrib_norm_ratio:0.788643 | expert_layer_0_expert_cosine:-0.019980 | expert_layer_0_time_winner_ratio:0.117586 | router_layer_1_time_ratio:0.510927 | router_layer_1_factor_ratio:0.489073 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.998734 | router_layer_1_logit_margin:0.053675 | expert_layer_1_time_expert_norm:4.005372 | expert_layer_1_factor_expert_norm:4.971376 | expert_layer_1_time_contrib_norm:2.048942 | expert_layer_1_factor_contrib_norm:2.431693 | expert_layer_1_contrib_norm_ratio:0.855544 | expert_layer_1_expert_cosine:-0.002722 | expert_layer_1_time_winner_ratio:0.192188 | loss_total:1.467316 | loss_main:1.471128 | loss_listmle:4.713390 | loss_mse:1.471128 | loss_ic:-0.041256 | loss_aux:0.002475 | loss_sparsity:0.000000 | valid_ratio:1.000000 | loss_ir:-0.234564 | ir_book_return:0.062417 | ir_ema_vol:0.344864 | ir_lambda_eff:0.020680 | score_std:0.040703 | label_std:1.192742 | score_label_std_ratio:0.034409 | ic_pearson_batch:0.041256 | ic_raw:0.041256 | rank_ic_batch:0.040816 | rank_ic:0.040816 | gate_entropy:0.692070 | time_ratio:0.512079 | grad_nonfinite_tensors:6.500000 | grad_nonfinite_values:406.750000 | grad_norm:13.636545 | grad_norm_other:6.465973 | grad_norm_time_embedding:6.963684 | grad_norm_factor_film:0.010496 | grad_norm_regime_encoder:0.031359 | grad_norm_router:0.090124 | grad_norm_time_expert:1.120481 | grad_norm_factor_expert:3.409737 | grad_norm_pooling_head:8.888345 | optimizer_steps:1029.000000 | grad_attempt_steps:1033.000000 | grad_skipped_steps:4.000000 | grad_nonfinite_steps:4.000000 | grad_skipped_rate:0.003872 | grad_nonfinite_rate:0.003872 | lr:0.000049 | sampler_epoch:0.000000 | sampler_num_days:1033.000000 | sampler_num_batches:1033.000000 | sampler_batch_size:300.000000 | sampler_total_source_samples:298662.000000 | sampler_total_draws:309900.000000 | sampler_unique_samples:204258.000000 | sampler_coverage_ratio:0.683910 | sampler_coverage_gap_vs_full:0.316090 | sampler_duplicate_draws:105642.000000 | sampler_duplicate_rate:0.340891 | sampler_downsample_days:0.000000 | sampler_upsample_days:931.000000 | sampler_exact_days:102.000000 | sampler_downsample_day_ratio:0.000000 | sampler_upsample_day_ratio:0.901258
+| Valid 01 | time_embedding_norm:0.159442 | time_embedding_to_value_norm_ratio:1.118315 | time_tau:4.993110 | time_half_life:3.460960 | time_tau_std:0.000000 | time_tau_p10:4.993110 | time_tau_p90:4.993110 | time_tau_range_util:0.000000 | film_gamma_strength:0.003729 | film_beta_strength:0.000736 | factor_gate_mean:0.999909 | factor_gate_std:0.000724 | factor_gate_entropy:0.946013 | factor_gate_topk_mass_5:0.097275 | factor_gate_topk_mass_10:0.175599 | router_layer_0_time_ratio:0.556364 | router_layer_0_factor_ratio:0.443636 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.990598 | router_layer_0_logit_margin:0.226486 | expert_layer_0_time_expert_norm:4.262158 | expert_layer_0_factor_expert_norm:5.398291 | expert_layer_0_time_contrib_norm:2.371018 | expert_layer_0_factor_contrib_norm:2.394645 | expert_layer_0_contrib_norm_ratio:1.003986 | expert_layer_0_expert_cosine:-0.011702 | expert_layer_0_time_winner_ratio:0.433571 | router_layer_1_time_ratio:0.521181 | router_layer_1_factor_ratio:0.478819 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.997029 | router_layer_1_logit_margin:0.105743 | expert_layer_1_time_expert_norm:4.510236 | expert_layer_1_factor_expert_norm:5.171939 | expert_layer_1_time_contrib_norm:2.350220 | expert_layer_1_factor_contrib_norm:2.475911 | expert_layer_1_contrib_norm_ratio:0.964655 | expert_layer_1_expert_cosine:0.001951 | expert_layer_1_time_winner_ratio:0.365406 | loss_total:0.007524 | loss_main:0.007512 | loss_listmle:4.709284 | loss_mse:0.007512 | loss_ic:-0.019309 | loss_aux:0.000011 | loss_sparsity:0.000000 | valid_ratio:1.000000 | loss_ir:-0.004119 | ir_book_return:0.000915 | ir_ema_vol:0.222231 | ir_lambda_eff:0.000000 | score_std:0.044975 | label_std:0.046814 | score_label_std_ratio:0.992810 | gate_entropy:0.688859 | time_ratio:0.538773 | ic_pearson_daily:0.019322 | rank_ic_daily:0.039647 | ic_raw:0.019322 | rank_ic:0.039647
+| Train 02 | time_embedding_norm:0.157702 | time_embedding_to_value_norm_ratio:1.182398 | time_tau:4.995680 | time_half_life:3.462742 | time_tau_std:0.001634 | time_tau_p10:4.994113 | time_tau_p90:4.997248 | time_tau_range_util:0.000063 | film_gamma_strength:0.008870 | film_beta_strength:0.001832 | factor_gate_mean:0.999876 | factor_gate_std:0.001802 | factor_gate_entropy:0.944909 | factor_gate_topk_mass_5:0.092890 | factor_gate_topk_mass_10:0.170902 | router_layer_0_time_ratio:0.600326 | router_layer_0_factor_ratio:0.399674 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.966960 | router_layer_0_logit_margin:0.409083 | expert_layer_0_time_expert_norm:4.619378 | expert_layer_0_factor_expert_norm:5.161239 | expert_layer_0_time_contrib_norm:2.779056 | expert_layer_0_factor_contrib_norm:2.064081 | expert_layer_0_contrib_norm_ratio:1.387268 | expert_layer_0_expert_cosine:-0.013769 | expert_layer_0_time_winner_ratio:0.866515 | router_layer_1_time_ratio:0.548061 | router_layer_1_factor_ratio:0.451939 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.988152 | router_layer_1_logit_margin:0.204202 | expert_layer_1_time_expert_norm:6.035792 | expert_layer_1_factor_expert_norm:4.663601 | expert_layer_1_time_contrib_norm:3.316817 | expert_layer_1_factor_contrib_norm:2.108115 | expert_layer_1_contrib_norm_ratio:1.624205 | expert_layer_1_expert_cosine:0.008300 | expert_layer_1_time_winner_ratio:0.918351 | loss_total:1.422538 | loss_main:1.453302 | loss_listmle:4.710786 | loss_mse:1.453302 | loss_ic:-0.081778 | loss_aux:0.000019 | loss_sparsity:0.000000 | valid_ratio:1.000000 | loss_ir:-0.493817 | ir_book_return:0.124703 | ir_ema_vol:0.252959 | ir_lambda_eff:0.061914 | score_std:0.071191 | label_std:1.194868 | score_label_std_ratio:0.059960 | ic_pearson_batch:0.081778 | ic_raw:0.081778 | rank_ic_batch:0.082815 | rank_ic:0.082815 | gate_entropy:0.677590 | time_ratio:0.574193 | grad_norm:8.183509 | grad_norm_other:3.517176 | grad_norm_time_embedding:4.600881 | grad_norm_factor_film:0.039057 | grad_norm_regime_encoder:0.093298 | grad_norm_router:0.272645 | grad_norm_time_expert:1.010465 | grad_norm_factor_expert:1.433675 | grad_norm_pooling_head:5.343723 | optimizer_steps:1033.000000 | grad_attempt_steps:1033.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000045 | sampler_epoch:1.000000 | sampler_num_days:1033.000000 | sampler_num_batches:1033.000000 | sampler_batch_size:300.000000 | sampler_total_source_samples:298662.000000 | sampler_total_draws:309900.000000 | sampler_unique_samples:204033.000000 | sampler_coverage_ratio:0.683157 | sampler_coverage_gap_vs_full:0.316843 | sampler_duplicate_draws:105867.000000 | sampler_duplicate_rate:0.341617 | sampler_downsample_days:0.000000 | sampler_upsample_days:931.000000 | sampler_exact_days:102.000000 | sampler_downsample_day_ratio:0.000000 | sampler_upsample_day_ratio:0.901258
+| Valid 02 | time_embedding_norm:0.156218 | time_embedding_to_value_norm_ratio:1.068196 | time_tau:4.997733 | time_half_life:3.464165 | time_tau_std:0.000000 | time_tau_p10:4.997733 | time_tau_p90:4.997733 | time_tau_range_util:0.000000 | film_gamma_strength:0.014788 | film_beta_strength:0.003072 | factor_gate_mean:0.999931 | factor_gate_std:0.002977 | factor_gate_entropy:0.945659 | factor_gate_topk_mass_5:0.092693 | factor_gate_topk_mass_10:0.170676 | router_layer_0_time_ratio:0.619584 | router_layer_0_factor_ratio:0.380416 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.955062 | router_layer_0_logit_margin:0.490073 | expert_layer_0_time_expert_norm:5.239404 | expert_layer_0_factor_expert_norm:5.395670 | expert_layer_0_time_contrib_norm:3.245172 | expert_layer_0_factor_contrib_norm:2.052408 | expert_layer_0_contrib_norm_ratio:1.617753 | expert_layer_0_expert_cosine:-0.007166 | expert_layer_0_time_winner_ratio:0.996167 | router_layer_1_time_ratio:0.578043 | router_layer_1_factor_ratio:0.421957 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.973278 | router_layer_1_logit_margin:0.328151 | expert_layer_1_time_expert_norm:8.234442 | expert_layer_1_factor_expert_norm:4.958035 | expert_layer_1_time_contrib_norm:4.755265 | expert_layer_1_factor_contrib_norm:2.086669 | expert_layer_1_contrib_norm_ratio:2.338672 | expert_layer_1_expert_cosine:0.023360 | expert_layer_1_time_winner_ratio:1.000000 | loss_total:0.043062 | loss_main:0.043041 | loss_listmle:4.715863 | loss_mse:0.043041 | loss_ic:-0.056671 | loss_aux:0.000021 | loss_sparsity:0.000000 | valid_ratio:1.000000 | loss_ir:-0.012282 | ir_book_return:0.003246 | ir_ema_vol:0.264302 | ir_lambda_eff:0.000000 | score_std:0.072755 | label_std:0.046814 | score_label_std_ratio:1.618140 | gate_entropy:0.668312 | time_ratio:0.598814 | ic_pearson_daily:0.056686 | rank_ic_daily:0.055453 | ic_raw:0.056686 | rank_ic:0.055453

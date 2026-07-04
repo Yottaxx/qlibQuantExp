@@ -1,0 +1,40 @@
+[00:22:00] qlib.init (SMOKE=False RUN_B=True)
+[23720:MainThread](2026-06-27 00:22:00,859) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[23720:MainThread](2026-06-27 00:22:01,478) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[23720:MainThread](2026-06-27 00:22:01,478) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[00:22:01] building Alpha158 handler (expression eval; first build is the slow step)...
+[23720:MainThread](2026-06-27 00:25:50,320) INFO - qlib.timer - [log.py:127] - Time cost: 228.842s | Loading data Done
+[23720:MainThread](2026-06-27 00:25:56,289) INFO - qlib.timer - [log.py:127] - Time cost: 5.575s | RobustZScoreNorm Done
+[23720:MainThread](2026-06-27 00:25:57,509) INFO - qlib.timer - [log.py:127] - Time cost: 1.219s | Fillna Done
+[23720:MainThread](2026-06-27 00:25:58,142) INFO - qlib.timer - [log.py:127] - Time cost: 0.237s | DropnaLabel Done
+[23720:MainThread](2026-06-27 00:26:06,911) INFO - qlib.timer - [log.py:127] - Time cost: 8.769s | CSZScoreNorm Done
+[23720:MainThread](2026-06-27 00:26:06,928) INFO - qlib.timer - [log.py:127] - Time cost: 16.602s | fit & process data Done
+[23720:MainThread](2026-06-27 00:26:06,928) INFO - qlib.timer - [log.py:127] - Time cost: 245.450s | Init data Done
+[00:26:06] handler built in 246.1s
+[00:26:07] DK_I feat (1094405, 158) DK_L feat (1056888, 158) yi_raw (1094405,) yl_z (1056888,)
+[00:26:07] n_features F=158
+[00:26:08] VARIANT A (snapshot, F=158)
+[00:26:41]   [A] ridge alpha=1 int_eval=0.04893 test_rank_ic=0.04445
+[00:26:50]   [A] lgbm n=100 int_eval_rank_ic=0.05689
+[00:27:06]   [A] lgbm n=300 int_eval_rank_ic=0.06040
+[00:27:34]   [A] lgbm n=600 int_eval_rank_ic=0.06134
+[00:28:16]   [A] lgbm n=1000 int_eval_rank_ic=0.06330
+[00:29:06]   [A] lgbm seed=0 n=1000 test_rank_ic=0.05331
+[00:29:53]   [A] lgbm seed=1 n=1000 test_rank_ic=0.05258
+[00:30:40]   [A] lgbm seed=2 n=1000 test_rank_ic=0.05446
+[00:30:40]   [A] lgbm mean=0.05345+/-0.00077  CEILING=0.05345
+[00:30:40] VARIANT B (8-step window, F=158 -> 1264)
+[00:30:47] window matrix (1088821, 1264)
+C:\Users\60585\miniconda3\envs\quantEnv\lib\site-packages\sklearn\linear_model\_ridge.py:213: LinAlgWarning: Ill-conditioned matrix (rcond=5.3593e-09): result may not be accurate.
+  return linalg.solve(A, Xy, assume_a="pos", overwrite_a=True).T
+[00:34:49]   [B] ridge alpha=10000 int_eval=0.05532 test_rank_ic=0.04931
+[00:35:50]   [B] lgbm n=100 int_eval_rank_ic=0.06142
+[00:37:29]   [B] lgbm n=300 int_eval_rank_ic=0.06732
+[00:40:19]   [B] lgbm n=600 int_eval_rank_ic=0.06786
+[00:44:34]   [B] lgbm n=1000 int_eval_rank_ic=0.06803
+[00:49:30]   [B] lgbm seed=0 n=1000 test_rank_ic=0.05817
+[00:54:03]   [B] lgbm seed=1 n=1000 test_rank_ic=0.05913
+[00:58:37]   [B] lgbm seed=2 n=1000 test_rank_ic=0.06036
+[00:58:37]   [B] lgbm mean=0.05922+/-0.00089  CEILING=0.05922
+[00:58:38] DONE in 2197.9s -> DATA_SIGNAL_CEILING__redirect_to_portfolio_IR
+[00:58:38] results: {"max_ceiling": 0.05921856224041098, "model_ref": 0.0786, "delta": -0.019381437759589025, "zone": "DATA_SIGNAL_CEILING__redirect_to_portfolio_IR"}

@@ -1,0 +1,32 @@
+=== seed42 LOAD forensic retry Sat, Jun  6, 2026 12:34:15 PM ===
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[299260:MainThread](2026-06-06 12:34:18,884) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[299260:MainThread](2026-06-06 12:34:18,890) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[299260:MainThread](2026-06-06 12:34:18,890) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=42 smoke=False out=analysis\pool_readout_forensics\seed42
+[299260:MainThread](2026-06-06 12:35:04,409) INFO - qlib.timer - [log.py:127] - Time cost: 45.517s | Loading data Done
+[299260:MainThread](2026-06-06 12:35:08,641) INFO - qlib.timer - [log.py:127] - Time cost: 3.923s | RobustZScoreNorm Done
+[299260:MainThread](2026-06-06 12:35:09,440) INFO - qlib.timer - [log.py:127] - Time cost: 0.799s | Fillna Done
+[299260:MainThread](2026-06-06 12:35:09,918) INFO - qlib.timer - [log.py:127] - Time cost: 0.151s | DropnaLabel Done
+[299260:MainThread](2026-06-06 12:35:14,750) INFO - qlib.timer - [log.py:127] - Time cost: 4.832s | CSZScoreNorm Done
+[299260:MainThread](2026-06-06 12:35:14,767) INFO - qlib.timer - [log.py:127] - Time cost: 10.358s | fit & process data Done
+[299260:MainThread](2026-06-06 12:35:14,768) INFO - qlib.timer - [log.py:127] - Time cost: 55.875s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/26e088e3282a4170a59a53f0fa8c8319/artifacts/model in 2.8s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0099
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.080201 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=1.00000 cur_logit_std=0.0005013 s1/common=2.4915 peakability_ent[std1,std3]=[0.9074,0.5428] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=535
+[probe] Arm B (158 slot ridges) fit done
+[probe] Arm A fit done: weight_entropy_norm=0.9484 top10_mass=0.2193
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.070869 armA=0.065399 gap=-0.005469 decile_ratio=1.33 cov_effrank=5.43 -> can_help=False
+[done] wrote analysis\pool_readout_forensics\seed42\results.json
+LOAD42_EXIT=0
+=== done Sat, Jun  6, 2026 12:41:08 PM ===

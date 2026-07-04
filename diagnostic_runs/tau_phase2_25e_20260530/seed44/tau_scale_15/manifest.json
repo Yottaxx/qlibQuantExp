@@ -1,0 +1,46 @@
+{
+  "setting": "tau_scale_15",
+  "cmd": [
+    "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+    "-u",
+    "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+  ],
+  "model_overrides": {
+    "use_regime_time_embedding": true,
+    "use_regime_factor_gate": true,
+    "router_use_layer_summary": true,
+    "router_mode": "learned",
+    "time_tau_mlp_out_scale": 1.5
+  },
+  "trainer_overrides": {
+    "seed": 44,
+    "train_stop_threshold": null,
+    "n_epochs": 25,
+    "min_epochs": 25,
+    "early_stop": 0,
+    "consecutive_k": 999999,
+    "min_delta": 0.001,
+    "batch_size": 300,
+    "lr": 5e-05,
+    "precision": "amp_fp16",
+    "use_warmup": true,
+    "warmup_ratio": 0.05,
+    "train_sampler_mode": "sampled_daily",
+    "deterministic_mode": "warn",
+    "seed_workers": true,
+    "market_state_path": "data/market_state_csi300.pkl",
+    "market_state_shift": 0,
+    "market_state_strict": true,
+    "checkpoint_metric": "valid_rank_ic",
+    "checkpoint_mode": "max",
+    "checkpoint_min_delta": 0.0,
+    "use_tqdm": false,
+    "strict_valid_data_key": true
+  },
+  "data_overrides": {},
+  "port_overrides": {},
+  "stdout": "diagnostic_runs\\tau_phase2_25e_20260530\\seed44\\tau_scale_15\\stdout.log",
+  "stderr": "diagnostic_runs\\tau_phase2_25e_20260530\\seed44\\tau_scale_15\\stderr.log",
+  "returncode": 0,
+  "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\690786402904200180\\ae609d00fdbc4a5eadfeb98760616bec\\diagnostic_matrix.csv"
+}

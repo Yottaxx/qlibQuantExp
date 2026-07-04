@@ -1,0 +1,22 @@
+=== Step-B smoke3 (temporal-before-pool, 1ep 30b) Sat, Jun  6, 2026 11:53:26 PM ===
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[153272:MainThread](2026-06-06 23:53:29,515) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[153272:MainThread](2026-06-06 23:53:29,519) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[153272:MainThread](2026-06-06 23:53:29,519) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] arm=d3cid seed=42 out=analysis\readout_redesign\stepB_smoke\d3cid_seed42
+[153272:MainThread](2026-06-06 23:54:14,644) INFO - qlib.timer - [log.py:127] - Time cost: 45.121s | Loading data Done
+[153272:MainThread](2026-06-06 23:54:18,760) INFO - qlib.timer - [log.py:127] - Time cost: 3.803s | RobustZScoreNorm Done
+[153272:MainThread](2026-06-06 23:54:19,543) INFO - qlib.timer - [log.py:127] - Time cost: 0.784s | Fillna Done
+[153272:MainThread](2026-06-06 23:54:20,028) INFO - qlib.timer - [log.py:127] - Time cost: 0.167s | DropnaLabel Done
+[153272:MainThread](2026-06-06 23:54:24,775) INFO - qlib.timer - [log.py:127] - Time cost: 4.747s | CSZScoreNorm Done
+[153272:MainThread](2026-06-06 23:54:24,792) INFO - qlib.timer - [log.py:127] - Time cost: 10.148s | fit & process data Done
+[153272:MainThread](2026-06-06 23:54:24,793) INFO - qlib.timer - [log.py:127] - Time cost: 55.270s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[wire] arm=d3cid trainable params=79267 (last block + final_norm + factor_pool + head + tr_A)
+[baseline] step0 valid rank_ic = 0.081062 (loaded model; d3cid step0 ~ model via one-hot-last)
+[ep 1] valid_rank_ic=0.078199 (batches=30 skip=0) best=0.081062@0 [70s]
+[done] arm=d3cid base=0.08106 best=0.08106@0 bonus=+0.00000 -> analysis\readout_redesign\stepB_smoke\d3cid_seed42\results.json
+EXIT=0

@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.DS_Store
+
+# Local agent mirrors (canonical copy under .agents/)
+.claude/
+
+# Heavy runtime artifacts (reproducible from code + env scripts)
+mlruns/
+data/
+outputs/
+tmp_run/
+
+# Scratch / one-off probes at repo root
+/_f*.py
+/scratch_search.py

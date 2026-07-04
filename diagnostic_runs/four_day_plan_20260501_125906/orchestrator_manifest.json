@@ -1,0 +1,16 @@
+{
+  "started_at": "2026-05-01 12:59:06",
+  "python": "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+  "workflow": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py",
+  "out_dir": "diagnostic_runs\\four_day_plan_20260501_125906",
+  "current_out_dir": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105",
+  "protocol": {
+    "n_epochs": 40,
+    "early_stop": 0,
+    "train_stop_threshold": null,
+    "checkpoint_metric": "valid_rank_ic",
+    "seed_matrix": 42
+  },
+  "finished_at": "2026-05-10 22:41:13",
+  "returncode": 0
+}
