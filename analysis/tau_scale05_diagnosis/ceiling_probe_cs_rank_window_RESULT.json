@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "smoke": false,
+    "model_ref": 0.0786,
+    "raw_window_ceiling": 0.0592,
+    "F": 158,
+    "WIN": 8
+  },
+  "arms": {
+    "RW": {
+      "ceiling": 0.05922,
+      "note": "reused from prior run log (LGBM 0.05817/0.05913/0.06036); reproduces L-1 variant-B 0.0592 exactly"
+    },
+    "RW+CSR": {
+      "ridge": {
+        "rank_ic": 0.05068582712284007,
+        "n_days": 611,
+        "alpha": 10000.0,
+        "int_eval_rank_ic": 0.06487382841452198
+      },
+      "lgbm": {
+        "seed_rank_ics": [
+          0.06185867804282246,
+          0.06245596614250713,
+          0.0631380084383663
+        ],
+        "rank_ic_mean": 0.06248421754123196,
+        "rank_ic_std": 0.0005226663508000868,
+        "best_n": 600,
+        "int_eval_rank_ic": 0.08235490478571272
+      },
+      "ceiling": 0.06248421754123196
+    }
+  },
+  "verdict": {
+    "RW_ceiling": 0.05922,
+    "RWplusCSR_ceiling": 0.06248421754123196,
+    "windowed_lift": 0.003264217541231955,
+    "model_ref": 0.0786,
+    "zone": "MODAL__marginal"
+  }
+}

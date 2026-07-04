@@ -1,0 +1,25 @@
+{
+  "setting": "fixed_router_05",
+  "cmd": [
+    "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+    "-u",
+    "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+  ],
+  "model_overrides": {
+    "use_regime_time_embedding": true,
+    "use_regime_factor_gate": true,
+    "router_use_layer_summary": true,
+    "router_mode": "fixed_05"
+  },
+  "trainer_overrides": {
+    "seed": 42,
+    "train_stop_threshold": 1.35,
+    "use_tqdm": false
+  },
+  "data_overrides": {},
+  "port_overrides": {},
+  "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\fixed_router_05\\stdout.log",
+  "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\fixed_router_05\\stderr.log",
+  "returncode": 0,
+  "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\868729932898585167\\df53e63552ad4502a5b42c92d00d6733\\diagnostic_matrix.csv"
+}

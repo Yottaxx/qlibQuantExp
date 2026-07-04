@@ -1,0 +1,8 @@
+﻿{
+    "pid":  31384,
+    "out_dir":  "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\four_day_plan_20260501_125906",
+    "python":  "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+    "started":  "2026-05-01T12:59:06",
+    "current_matrix":  "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105",
+    "plan":  "wait current matrix -\u003e matrix 40epoch seed42 -\u003e capacity stage1/stage2/stage3 gate"
+}

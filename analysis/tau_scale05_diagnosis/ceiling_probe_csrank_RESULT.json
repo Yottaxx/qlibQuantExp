@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "smoke": false,
+    "model_ref": 0.0786,
+    "F_base": 158
+  },
+  "variants": {
+    "BASE_global": {
+      "ridge": 0.04445,
+      "lgbm_mean": 0.05345,
+      "lgbm_seeds": [
+        0.05331,
+        0.05258,
+        0.05446
+      ],
+      "best_n": 1000,
+      "ceiling": 0.05345
+    },
+    "GLOBAL_plus_CSRANK": {
+      "ridge": 0.04574,
+      "lgbm_mean": 0.06298,
+      "lgbm_seeds": [
+        0.06336,
+        0.06226,
+        0.06333
+      ],
+      "best_n": 300,
+      "ceiling": 0.06298
+    }
+  },
+  "verdict": {
+    "base_ceiling": 0.05345,
+    "csrank_ceiling": 0.06298,
+    "lift": 0.00953,
+    "csrank_vs_model": -0.01562,
+    "zone": "IC_REOPENS_MODAL (CS-rank lifts the classic ceiling >=+0.005 -> L-4 worth a GPU n=6)"
+  }
+}

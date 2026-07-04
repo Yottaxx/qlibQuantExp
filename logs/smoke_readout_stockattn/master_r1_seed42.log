@@ -1,0 +1,5 @@
+==== SMOKE readout ARM=r1 (qknorm=true) seed 42 start Fri, Jun 19, 2026 10:25:55 PM ====
+#### attempt 1/1 start Fri, Jun 19, 2026 10:25:55 PM ####
+attempt1_EXIT=0 Sat, Jun 20, 2026  1:41:57 PM
+FINAL_EXIT=0 Sat, Jun 20, 2026  1:41:57 PM
+==== done Sat, Jun 20, 2026  1:41:57 PM; read: readout_stock_attn_entropy_norm(<0.999?), readout_stock_attn_norm(O(1)?), rank_ic ====

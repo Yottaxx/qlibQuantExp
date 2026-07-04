@@ -1,0 +1,6 @@
+﻿{
+    "out_dir":  "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\full135_deterministic_20260524_20260524_162953",
+    "pid":  12780,
+    "command":  "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe scripts/run_diagnostic_experiments.py --settings full_135 --python C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe --out-dir diagnostic_runs/full135_deterministic_20260524_20260524_162953 --trainer-json {\"seed\":42,\"device\":\"auto\",\"deterministic_mode\":\"warn\",\"seed_workers\":true,\"train_sampler_mode\":\"sampled_daily\",\"sampler_diag\":true,\"use_tqdm\":false} --continue-on-error",
+    "started_at":  "2026-05-24T16:29:53"
+}

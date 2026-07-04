@@ -1,0 +1,4 @@
+{
+  "run_stage3": true,
+  "reason": "high-capacity Stage1 configs show no clear overfit: cap06_d96_h4_l2_ff384_do020"
+}

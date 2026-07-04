@@ -1,0 +1,32 @@
+
+=== Running full_135 ===
+C:\Users\60585\miniconda3\envs\quantEnv\python.exe -u C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py
+logs: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\full_135
+completed full_135
+
+=== Running base ===
+C:\Users\60585\miniconda3\envs\quantEnv\python.exe -u C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py
+logs: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\base
+completed base
+
+=== Running time_only ===
+C:\Users\60585\miniconda3\envs\quantEnv\python.exe -u C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py
+logs: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\time_only
+completed time_only
+
+=== Running film_only ===
+C:\Users\60585\miniconda3\envs\quantEnv\python.exe -u C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py
+logs: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\film_only
+completed film_only
+
+=== Running no_layer_summary ===
+C:\Users\60585\miniconda3\envs\quantEnv\python.exe -u C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py
+logs: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\no_layer_summary
+completed no_layer_summary
+
+=== Running fixed_router_05 ===
+C:\Users\60585\miniconda3\envs\quantEnv\python.exe -u C:\Users\60585\PycharmProjects\qibMacV2\work_flow.py
+logs: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\fixed_router_05
+completed fixed_router_05
+
+Suite manifest: diagnostic_runs\seed42_matrix_gradfix_20260430_2105\suite_manifest.json

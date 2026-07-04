@@ -1,0 +1,5 @@
+==== SMOKE h2_warmq seed 46 start Mon, Jun 22, 2026  3:04:07 AM ====
+#### attempt 1/3 start Mon, Jun 22, 2026  3:04:07 AM ####
+attempt1_EXIT=0 Mon, Jun 22, 2026 10:08:01 AM
+FINAL_EXIT=0 Mon, Jun 22, 2026 10:08:01 AM
+==== done Mon, Jun 22, 2026 10:08:01 AM; watch stock_attn_entropy_norm (warm?), stock_expert_norm (stable?), rank_ic ====

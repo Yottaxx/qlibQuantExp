@@ -1,0 +1,38 @@
+=== seed42 augmented-arms test Sat, Jun  6, 2026  2:41:07 PM ===
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[162896:MainThread](2026-06-06 14:41:10,628) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[162896:MainThread](2026-06-06 14:41:10,632) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[162896:MainThread](2026-06-06 14:41:10,633) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=42 smoke=False out=analysis\pool_readout_forensics\_armtest\seed42
+[162896:MainThread](2026-06-06 14:41:56,074) INFO - qlib.timer - [log.py:127] - Time cost: 45.438s | Loading data Done
+[162896:MainThread](2026-06-06 14:42:00,185) INFO - qlib.timer - [log.py:127] - Time cost: 3.790s | RobustZScoreNorm Done
+[162896:MainThread](2026-06-06 14:42:00,968) INFO - qlib.timer - [log.py:127] - Time cost: 0.782s | Fillna Done
+[162896:MainThread](2026-06-06 14:42:01,443) INFO - qlib.timer - [log.py:127] - Time cost: 0.151s | DropnaLabel Done
+[162896:MainThread](2026-06-06 14:42:06,310) INFO - qlib.timer - [log.py:127] - Time cost: 4.867s | CSZScoreNorm Done
+[162896:MainThread](2026-06-06 14:42:06,326) INFO - qlib.timer - [log.py:127] - Time cost: 10.253s | fit & process data Done
+[162896:MainThread](2026-06-06 14:42:06,326) INFO - qlib.timer - [log.py:127] - Time cost: 55.691s | Init data Done
+[load] loaded backbone from mlruns/325032212672679181/26e088e3282a4170a59a53f0fa8c8319/artifacts/model in 3.0s (device=cuda)
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[pool] D=64 n_pool_heads=1 d_head=64 scale=0.12500 alpha=0.7 ||q_proj||=0.0099
+[pass] valid sanity + KEY-SVD-GATE ...
+[sanity] model valid daily_rank_ic=0.080201 over 611 days (promoted anchor ~0.0768)
+[KEY-SVD] cur_ent=1.00000 cur_logit_std=0.0005013 s1/common=2.4915 peakability_ent[std1,std3]=[0.9074,0.5428] -> verdict=operator_state_collapse
+[pass] train cache for PROBE-CEILING ...
+[probe] train cache: 53496 samples over 186 days (~2.16 GB fp32 on device)
+[probe] Arm0 (mean-pool ridge) lambda=535
+[probe] Arm B (158 slot ridges) fit done
+C:\Users\60585\PycharmProjects\qibMacV2\scripts\pool_readout_forensics.py:498: UserWarning: std(): degrees of freedom is <= 0. Correction should be strictly less than the reduction factor (input numel divided by output numel). (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\builder\windows\pytorch\aten\src\ATen\native\ReduceOps.cpp:1823.)
+  sd_ = v.std(dim=1, keepdim=True).clamp_min(1e-6)
+[probe] ArmA static: final_entropy=0.9484 top10=0.2193 hold_ric=nan
+C:\Users\60585\PycharmProjects\qibMacV2\scripts\pool_readout_forensics.py:638: UserWarning: std(): degrees of freedom is <= 0. Correction should be strictly less than the reduction factor (input numel divided by output numel). (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\builder\windows\pytorch\aten\src\ATen\native\ReduceOps.cpp:1823.)
+  cs_std = float(torch.softmax(lg, dim=2)[:, 0, :].std(dim=0).mean().item())
+[probe] ArmA-prime(k1) hold_ric=nan cross_stock_wstd=nan | ArmC(k4) hold_ric=nan
+[probe] Arm-ASP (2nd-moment) fit done
+[pass] eval probe arms on valid ...
+[PROBE] arm0=0.07087 | ArmA(static hold)=0.07087 gap=-0.00000 | ArmA'(cond k1)=0.07087 gap=-0.00000 | ArmC(k4)=0.07087 gap=-0.00000 | ASP std-contrib=-0.00272 | any_helps=False
+[done] wrote analysis\pool_readout_forensics\_armtest\seed42\results.json
+ARMTEST_EXIT=0
+=== done Sat, Jun  6, 2026  2:48:27 PM ===

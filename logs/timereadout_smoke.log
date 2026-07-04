@@ -1,0 +1,31 @@
+=== time-readout Step-A smoke seed42 scale05 Sat, Jun  6, 2026 11:34:32 PM ===
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[5016:MainThread](2026-06-06 23:34:35,978) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[5016:MainThread](2026-06-06 23:34:35,986) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[5016:MainThread](2026-06-06 23:34:35,986) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[setup] seed=42 out=analysis\readout_redesign\stepA\seed42
+[5016:MainThread](2026-06-06 23:35:21,961) INFO - qlib.timer - [log.py:127] - Time cost: 45.971s | Loading data Done
+[5016:MainThread](2026-06-06 23:35:26,200) INFO - qlib.timer - [log.py:127] - Time cost: 3.920s | RobustZScoreNorm Done
+[5016:MainThread](2026-06-06 23:35:26,980) INFO - qlib.timer - [log.py:127] - Time cost: 0.780s | Fillna Done
+[5016:MainThread](2026-06-06 23:35:27,454) INFO - qlib.timer - [log.py:127] - Time cost: 0.157s | DropnaLabel Done
+[5016:MainThread](2026-06-06 23:35:32,427) INFO - qlib.timer - [log.py:127] - Time cost: 4.973s | CSZScoreNorm Done
+[5016:MainThread](2026-06-06 23:35:32,444) INFO - qlib.timer - [log.py:127] - Time cost: 10.483s | fit & process data Done
+[5016:MainThread](2026-06-06 23:35:32,444) INFO - qlib.timer - [log.py:127] - Time cost: 56.454s | Init data Done
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+[load] backbone (frozen) T=8 D=64 device=cuda
+[cache] valid ...
+[sanity] model valid daily_rank_ic=0.081062 (611 days)
+[cache] train ...
+[cache] train 106991 samples / 372 days ; valid 183300
+[train] designs (8ep, frozen reps) ...
+  baseline  valid_ric=0.07503 hold=0.15599 bonus=+0.00000 {} (1s)
+  d1pma     valid_ric=0.07483 hold=0.14903 bonus=-0.00020 {'gate_g': 0.48529255390167236, 'attn_over_T': [0.115, 0.128, 0.121, 0.112, 0.129, 0.118, 0.134, 0.142]} (1s)
+  duala     valid_ric=0.07092 hold=0.15588 bonus=-0.00411 {'head_zT_norm': 0.41135919094085693, 'head_zF_norm': 0.03670363500714302} (1s)
+  dualb     valid_ric=0.07324 hold=0.16046 bonus=-0.00179 {'head_zT_norm': 0.4271566569805145, 'head_zF_norm': 0.08144737780094147} (1s)
+  d3cid     valid_ric=0.08038 hold=0.15991 bonus=+0.00536 {} (1s)
+[done] baseline=0.07503 model=0.08106 any_pass=True -> analysis\readout_redesign\stepA\seed42\results.json
+SMOKE_EXIT=0
+=== done Sat, Jun  6, 2026 11:37:47 PM ===

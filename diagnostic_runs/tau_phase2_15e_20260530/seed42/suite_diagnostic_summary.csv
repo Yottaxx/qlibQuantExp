@@ -1,0 +1,7 @@
+setting,returncode,diagnostic_matrix,performance/daily_rank_ic_mean,performance/rank_icir,performance/daily_ic_mean,performance/icir,portfolio/annualized_return_with_cost,portfolio/information_ratio_with_cost,portfolio/max_drawdown_with_cost,portfolio/turnover,optimization/post_peak_decay,optimization/train_grad_norm_last,optimization/train_grad_nonfinite_rate_last,optimization/train_grad_skipped_rate_last,optimization/train_optimizer_steps_last,regime/pc1_tail_2x2_rank_ic_spread,router/time_ratio_mean,time_embedding/tau_range_utilization,factor_film/film_pool_top10_overlap,attention_pooling/factor_entropy_norm_mean
+full_135,,,,,,,,,,,,,,,,,,,,
+tau_scale_05,,,,,,,,,,,,,,,,,,,,
+tau_scale_08,,,,,,,,,,,,,,,,,,,,
+tau_scale_10,,,,,,,,,,,,,,,,,,,,
+tau_scale_15,,,,,,,,,,,,,,,,,,,,
+tau_scale_20,,,,,,,,,,,,,,,,,,,,

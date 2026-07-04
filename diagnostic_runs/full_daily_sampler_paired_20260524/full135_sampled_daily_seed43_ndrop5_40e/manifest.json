@@ -1,0 +1,36 @@
+{
+  "setting": "full135_sampled_daily_seed43_ndrop5_40e",
+  "seed": 43,
+  "sampler_mode": "sampled_daily",
+  "model_overrides": {
+    "use_regime_time_embedding": true,
+    "use_regime_factor_gate": true,
+    "router_use_layer_summary": true,
+    "router_mode": "learned"
+  },
+  "trainer_overrides": {
+    "seed": 43,
+    "device": "auto",
+    "deterministic_mode": "warn",
+    "seed_workers": true,
+    "train_sampler_mode": "sampled_daily",
+    "sampler_diag": true,
+    "use_tqdm": false,
+    "n_epochs": 40,
+    "early_stop": 0,
+    "train_stop_threshold": null,
+    "min_epochs": 40,
+    "consecutive_k": 999999
+  },
+  "port_overrides": {
+    "strategy": {
+      "kwargs": {
+        "n_drop": 5
+      }
+    }
+  },
+  "stdout": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\full_daily_sampler_paired_20260524\\full135_sampled_daily_seed43_ndrop5_40e\\stdout.log",
+  "stderr": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\full_daily_sampler_paired_20260524\\full135_sampled_daily_seed43_ndrop5_40e\\stderr.log",
+  "returncode": null,
+  "started_at": "2026-05-25 15:34:16"
+}

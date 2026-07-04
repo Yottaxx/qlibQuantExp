@@ -1,0 +1,44 @@
+[
+  {
+    "setting": "cap02_d80_h4_l2_ff320_do015",
+    "seeds": "42,43,44",
+    "n_runs": 3,
+    "avg_rankic": 0.07707667050071569,
+    "avg_rankicir": 0.5416376202377737,
+    "avg_grad_nonfinite_rate": 0.00022378874342620565,
+    "avg_grad_skipped_rate": 0.00022378874342620565,
+    "baseline_avg_rankic": 0.07625916357311115,
+    "rankic_minus_baseline": 0.0008175069276045444,
+    "seeds_above_baseline_avg": 2,
+    "pass_stage2_rules": false,
+    "selected_top2_after_stage1": true
+  },
+  {
+    "setting": "cap00_d64_h4_l2_ff128_do010",
+    "seeds": "42,43,44",
+    "n_runs": 3,
+    "avg_rankic": 0.07625916357311115,
+    "avg_rankicir": 0.5597860545750672,
+    "avg_grad_nonfinite_rate": 0.0004475774868524113,
+    "avg_grad_skipped_rate": 0.0004475774868524113,
+    "baseline_avg_rankic": 0.07625916357311115,
+    "rankic_minus_baseline": 0.0,
+    "seeds_above_baseline_avg": "",
+    "pass_stage2_rules": "",
+    "selected_top2_after_stage1": false
+  },
+  {
+    "setting": "cap01_d64_h4_l2_ff256_do015",
+    "seeds": "42,43,44",
+    "n_runs": 3,
+    "avg_rankic": 0.07567685059383693,
+    "avg_rankicir": 0.5372935319391309,
+    "avg_grad_nonfinite_rate": 0.00022378874342620565,
+    "avg_grad_skipped_rate": 0.00022378874342620565,
+    "baseline_avg_rankic": 0.07625916357311115,
+    "rankic_minus_baseline": -0.0005823129792742188,
+    "seeds_above_baseline_avg": 1,
+    "pass_stage2_rules": false,
+    "selected_top2_after_stage1": true
+  }
+]

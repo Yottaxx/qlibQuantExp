@@ -1,0 +1,946 @@
+>>> [Config:env] Applied experiment overrides
+>>> [Config:env] run_setting=cap01_d64_h4_l2_ff256_do015_seed44
+>>> [Config:planned] model: loss=mse, d_model=64, layers=2, heads=4, context_len=8, num_alphas=158, val_emb=feature_tokenizer, time_emb=on, factor_gate=on, router=learned, feat_sel=off, alibi=off, macro=external(market_state_csi300.pkl, dim=auto, shift=0, strict=True), macro_drop=0.1
+>>> [Config:planned] trainer: lr=5e-05, epochs=40, batch=300, accum=1, early_stop=0, warmup=on(ratio=0.05), precision=amp_fp16, seed=44, checkpoint=valid_rank_ic:max, train_stop=off, min_epochs=40, k=999999
+>>> [Phase 1] Training Model...
+>>> [MarketState] loaded data/market_state_csi300.pkl (dates=3710, dim=102), shift=0, strict=True
+>>> [Schema] Packed-label detected on train segment: total_dim=159, feature_dim=158, label_dim=1. Adapter will treat the last 1 channel(s) at the final time step as label.
+
+================================================================================
+MODEL ARCHITECTURE SUMMARY
+================================================================================
+QuantMoEModel(
+  (feature_tokenizer): FeatureTokenizer()
+  (factor_id_emb): Embedding(158, 64)
+  (emb_dropout): Dropout(p=0.15, inplace=False)
+  (time_embedding): RegimeAdaptiveTimeEmbedding(
+    (tau_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (tau_fc1): Linear(in_features=64, out_features=32, bias=True)
+    (tau_fc2): Linear(in_features=32, out_features=1, bias=True)
+  )
+  (factor_gate): RegimeAdaptiveFactorGate(
+    (regime_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (factor_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (proj_gamma): Linear(in_features=64, out_features=64, bias=False)
+    (proj_beta): Linear(in_features=64, out_features=64, bias=False)
+  )
+  (regime_encoder): RegimeContextEncoder(
+    (encoder): Sequential(
+      (0): Linear(in_features=102, out_features=128, bias=True)
+      (1): Tanh()
+      (2): Dropout(p=0.1, inplace=False)
+      (3): Linear(in_features=128, out_features=64, bias=True)
+      (4): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (layers): ModuleList(
+    (0-1): 2 x RegimeAdaptiveMoEBlock(
+      (layer_summary_proj): Linear(in_features=128, out_features=64, bias=False)
+      (router): Sequential(
+        (0): Linear(in_features=128, out_features=32, bias=True)
+        (1): GELU(approximate='none')
+        (2): Linear(in_features=32, out_features=2, bias=True)
+      )
+      (time_expert): ParallelAttention(
+        (mha): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+        )
+      )
+      (factor_expert): ParallelAttention(
+        (mha): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+        )
+      )
+      (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+      (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+      (ffn): Sequential(
+        (0): Linear(in_features=64, out_features=256, bias=True)
+        (1): GELU(approximate='none')
+        (2): Dropout(p=0.15, inplace=False)
+        (3): Linear(in_features=256, out_features=64, bias=True)
+        (4): Dropout(p=0.15, inplace=False)
+      )
+    )
+  )
+  (final_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+  (factor_pooling): AdaptivePooling(
+    (attention_pool): AttentionPooling(
+      (mha): MultiheadAttention(
+        (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=False)
+      )
+      (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (head): Linear(in_features=64, out_features=1, bias=True)
+)
+
+--------------------------------------------------------------------------------
+PARAMETER STATISTICS BY MODULE
+--------------------------------------------------------------------------------
+Module                    Params          Trainable       %Total    
+-----------------------------------------------------------------
+layers                    156,996         156,996         66.3      %
+regime_encoder            21,568          21,568          9.1       %
+feature_tokenizer         20,224          20,224          8.5       %
+factor_pooling            16,576          16,576          7.0       %
+factor_id_emb             10,112          10,112          4.3       %
+factor_gate               8,448           8,448           3.6       %
+time_embedding            2,754           2,754           1.2       %
+final_norm                128             128             0.1       %
+head                      65              65              0.0       %
+-----------------------------------------------------------------
+TOTAL                     236,871         236,871         100.0     %
+
+--------------------------------------------------------------------------------
+DETAILED LAYER BREAKDOWN
+--------------------------------------------------------------------------------
+Layer Name                                         Shape                     Params      
+---------------------------------------------------------------------------------------
+feature_tokenizer.weight                           [158, 64]                 10,112      
+feature_tokenizer.bias                             [158, 64]                 10,112      
+factor_id_emb.weight                               [158, 64]                 10,112      
+time_embedding.pos                                 [8, 64]                   512         
+time_embedding.tau_base                            []                        1           
+time_embedding.tau_norm.weight                     [64]                      64          
+time_embedding.tau_norm.bias                       [64]                      64          
+time_embedding.tau_fc1.weight                      [32, 64]                  2,048       
+time_embedding.tau_fc1.bias                        [32]                      32          
+time_embedding.tau_fc2.weight                      [1, 32]                   32          
+time_embedding.tau_fc2.bias                        [1]                       1           
+factor_gate.regime_norm.weight                     [64]                      64          
+factor_gate.regime_norm.bias                       [64]                      64          
+factor_gate.factor_norm.weight                     [64]                      64          
+factor_gate.factor_norm.bias                       [64]                      64          
+factor_gate.proj_gamma.weight                      [64, 64]                  4,096       
+factor_gate.proj_beta.weight                       [64, 64]                  4,096       
+regime_encoder.encoder.0.weight                    [128, 102]                13,056      
+regime_encoder.encoder.0.bias                      [128]                     128         
+regime_encoder.encoder.3.weight                    [64, 128]                 8,192       
+regime_encoder.encoder.3.bias                      [64]                      64          
+regime_encoder.encoder.4.weight                    [64]                      64          
+regime_encoder.encoder.4.bias                      [64]                      64          
+layers.0.layer_summary_proj.weight                 [64, 128]                 8,192       
+layers.0.router.0.weight                           [32, 128]                 4,096       
+layers.0.router.0.bias                             [32]                      32          
+layers.0.router.2.weight                           [2, 32]                   64          
+layers.0.router.2.bias                             [2]                       2           
+layers.0.time_expert.mha.in_proj_weight            [192, 64]                 12,288      
+layers.0.time_expert.mha.out_proj.weight           [64, 64]                  4,096       
+layers.0.factor_expert.mha.in_proj_weight          [192, 64]                 12,288      
+layers.0.factor_expert.mha.out_proj.weight         [64, 64]                  4,096       
+layers.0.norm1.weight                              [64]                      64          
+layers.0.norm1.bias                                [64]                      64          
+layers.0.norm2.weight                              [64]                      64          
+layers.0.norm2.bias                                [64]                      64          
+layers.0.ffn.0.weight                              [256, 64]                 16,384      
+layers.0.ffn.0.bias                                [256]                     256         
+layers.0.ffn.3.weight                              [64, 256]                 16,384      
+layers.0.ffn.3.bias                                [64]                      64          
+layers.1.layer_summary_proj.weight                 [64, 128]                 8,192       
+layers.1.router.0.weight                           [32, 128]                 4,096       
+layers.1.router.0.bias                             [32]                      32          
+layers.1.router.2.weight                           [2, 32]                   64          
+layers.1.router.2.bias                             [2]                       2           
+layers.1.time_expert.mha.in_proj_weight            [192, 64]                 12,288      
+layers.1.time_expert.mha.out_proj.weight           [64, 64]                  4,096       
+layers.1.factor_expert.mha.in_proj_weight          [192, 64]                 12,288      
+layers.1.factor_expert.mha.out_proj.weight         [64, 64]                  4,096       
+layers.1.norm1.weight                              [64]                      64          
+layers.1.norm1.bias                                [64]                      64          
+layers.1.norm2.weight                              [64]                      64          
+layers.1.norm2.bias                                [64]                      64          
+layers.1.ffn.0.weight                              [256, 64]                 16,384      
+layers.1.ffn.0.bias                                [256]                     256         
+layers.1.ffn.3.weight                              [64, 256]                 16,384      
+layers.1.ffn.3.bias                                [64]                      64          
+final_norm.weight                                  [64]                      64          
+final_norm.bias                                    [64]                      64          
+factor_pooling.attention_pool.query                [1, 1, 64]                64          
+factor_pooling.attention_pool.mha.in_proj_weight   [192, 64]                 12,288      
+factor_pooling.attention_pool.mha.out_proj.weight  [64, 64]                  4,096       
+factor_pooling.attention_pool.norm.weight          [64]                      64          
+factor_pooling.attention_pool.norm.bias            [64]                      64          
+head.weight                                        [1, 64]                   64          
+head.bias                                          [1]                       1           
+================================================================================
+
+>>> [Sanity] loss=1.319897 grad_norm=7.208e+01 score_std=5.173e-02 label_std=1.046e+00 x_last_std=9.299e-01
+
+================================================================================
+COMPLETE MODEL CONFIGURATION (Resolved)
+================================================================================
+
+--- Architecture ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+d_model                             64                             Hidden dimension         
+n_heads                             4                              Attention heads          
+n_layers                            2                              Number of layers         
+d_ff                                256                            FFN dimension            
+num_alphas                          158                            Number of factors (N)    
+context_len                         8                              Sequence length (T)      
+dropout                             0.15                           Dropout rate             
+initializer_range                   0.02                           Weight init std          
+
+--- Value Embedding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+value_embedding_type                feature_tokenizer              Value embedding type     
+feature_tokenizer_bias              [+] ON                         FT bias                  
+feature_tokenizer_add_factor_id     [-] OFF                        FT add factor ID         
+feature_tokenizer_init_std          0.02                           FT init std              
+
+--- Loss & Training ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+main_loss                           mse                            Primary loss function    
+loss_weights                        {'listmle': 1.0, 'mse': 1.0, 'ic': 1.0} Loss weight dict         
+listmle_tau                         0.8                            ListMLE temperature      
+rank_topk                           5                              RankNet top-k            
+huber_delta                         1                              Huber delta              
+mse_normalize                       [-] OFF                        MSE normalize flag       
+
+--- Regime-Adaptive Time Embedding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_regime_time_embedding           [+] ON                         Enable time embedding    
+time_tau_min                        0.5                            Min tau (short memory)   
+time_tau_max                        50                             Max tau (long memory)    
+time_tau_init                       5                              Initial tau              
+time_emb_init_std                   0.02                           Time emb init std        
+time_decay_normalize                [+] ON                         Normalize decay weights  
+
+--- Regime-Adaptive Factor Gate ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_regime_factor_gate              [+] ON                         Enable factor gate (FiLM)
+factor_gate_scale                   1                              Gate scale (gamma range) 
+factor_gate_shift_scale             0.2                            Gate shift scale (beta)  
+
+--- MoE Router ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+router_mode                         learned                        Router mode              
+router_noise                        0.01                           Logit noise std          
+router_temperature                  1                              Softmax temperature      
+router_z_loss_coef                  0.01                           Z-loss coefficient       
+router_use_layer_summary            [+] ON                         Use layer summary token  
+
+--- Feature Selection ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_feature_selection               [-] OFF                        Enable feature selection 
+selection_reg_lambda                1e-05                          Sparsity regularization  
+selection_temperature               0.1                            Gumbel temperature       
+selection_noise_std                 0.5                            Selection noise std      
+
+--- Positional Encoding ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_alibi                           [-] OFF                        Use ALiBi bias           
+
+--- Regime Context Encoder ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+use_external_macro                  [+] ON                         Use external macro features
+d_macro_input                       102                            Macro input dimension    
+regime_macro_dropout                0.1                            Macro dropout            
+regime_internal_mode                long                           Internal mode (short/long)
+regime_internal_lag                 5                              Internal lag steps       
+regime_internal_use_batch_stats     [-] OFF                        Use batch statistics     
+regime_internal_tail_threshold      2                              Tail threshold           
+
+--- Pooling ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+pooling_alpha                       0.7                            Attention vs mean weight 
+
+--- Trainer Configuration ---
+Parameter                           Value                          Description              
+------------------------------------------------------------------------------------------
+lr                                  5e-05                          Learning rate            
+epochs                              40                             Number of epochs         
+batch_size                          300                            Batch size (stocks/day)  
+grad_accum_steps                    1                              Accumulate K days/step   
+early_stop                          0                              Early stop patience      
+train_stop_key                      loss_main                      Train stop metric key    
+train_stop_threshold                None                           Train stop threshold     
+min_epochs                          40                             Min epochs before stop   
+consecutive_k                       999999                         Consecutive epochs to stop
+use_warmup                          [+] ON                         Enable LR warmup         
+warmup_config                       5958/119160 steps              Warmup steps/ratio       
+total_steps                         119160                         Total training steps     
+random_seed                         44                             Random seed              
+num_workers                         0                              DataLoader workers       
+label_dim                           1                              Label dimension          
+market_state_path                   market_state_csi300.pkl        Market state file        
+market_state_shift                  0                              Market state shift       
+market_state_strict                 [+] ON                         Strict market state      
+================================================================================
+
+>>> [Train] epochs=40, stop=train_threshold(off, min_epochs=40, k=999999)
+>>> [Warn] non-finite gradients detected (tensors=5, values=333); optimizer step skipped and excluded from grad_norm metrics.
+| Train 01 | time_tau:4.999458 | time_half_life:3.465360 | time_tau_std:0.000000 | time_tau_p10:4.999458 | time_tau_p90:4.999458 | time_tau_range_util:0.000000 | film_gamma_strength:0.000612 | film_beta_strength:0.000182 | factor_gate_mean:0.999986 | factor_gate_std:0.000133 | factor_gate_entropy:0.943004 | factor_gate_topk_mass_5:0.096894 | factor_gate_topk_mass_10:0.175668 | router_layer_0_time_ratio:0.506702 | router_layer_0_factor_ratio:0.493298 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.999201 | router_layer_0_logit_margin:0.036816 | router_layer_1_time_ratio:0.503625 | router_layer_1_factor_ratio:0.496375 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.999592 | router_layer_1_logit_margin:0.027682 | loss_total:1.395803 | loss_main:1.392716 | loss_listmle:4.713283 | loss_mse:1.392716 | loss_ic:-0.026469 | loss_aux:0.003087 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.037713 | label_std:1.165994 | score_label_std_ratio:0.032598 | ic_pearson_batch:0.026470 | ic_raw:0.026470 | rank_ic_batch:0.028594 | rank_ic:0.028594 | gate_entropy:0.692729 | time_ratio:0.505164 | grad_nonfinite_tensors:3.750000 | grad_nonfinite_values:97.000000 | grad_norm:13.454674 | grad_norm_other:5.695373 | grad_norm_time_embedding:5.010769 | grad_norm_factor_film:0.007294 | grad_norm_regime_encoder:0.032417 | grad_norm_router:0.072717 | grad_norm_time_expert:0.833417 | grad_norm_factor_expert:2.511462 | grad_norm_pooling_head:10.739127 | optimizer_steps:2975.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:4.000000 | grad_nonfinite_steps:4.000000 | grad_skipped_rate:0.001343 | grad_nonfinite_rate:0.001343 | lr:0.000025
+| Valid 01 | time_tau:4.999458 | time_half_life:3.465360 | time_tau_std:0.000000 | time_tau_p10:4.999458 | time_tau_p90:4.999458 | time_tau_range_util:0.000000 | film_gamma_strength:0.002727 | film_beta_strength:0.000946 | factor_gate_mean:0.999798 | factor_gate_std:0.000603 | factor_gate_entropy:0.945967 | factor_gate_topk_mass_5:0.092264 | factor_gate_topk_mass_10:0.168118 | router_layer_0_time_ratio:0.546196 | router_layer_0_factor_ratio:0.453804 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.991529 | router_layer_0_logit_margin:0.192326 | router_layer_1_time_ratio:0.532710 | router_layer_1_factor_ratio:0.467290 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.995784 | router_layer_1_logit_margin:0.135230 | loss_total:0.014805 | loss_main:0.014733 | loss_listmle:4.711770 | loss_mse:0.014733 | loss_ic:-0.033532 | loss_aux:0.000072 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.024845 | label_std:0.045755 | score_label_std_ratio:0.561689 | gate_entropy:0.688750 | time_ratio:0.539453 | ic_pearson_daily:0.033566 | rank_ic_daily:0.036848 | ic_raw:0.033566 | rank_ic:0.036848
+| Train 02 | time_tau:4.996382 | time_half_life:3.463228 | time_tau_std:0.000000 | time_tau_p10:4.996382 | time_tau_p90:4.996382 | time_tau_range_util:0.000000 | film_gamma_strength:0.009077 | film_beta_strength:0.002151 | factor_gate_mean:0.999615 | factor_gate_std:0.001786 | factor_gate_entropy:0.946625 | factor_gate_topk_mass_5:0.091604 | factor_gate_topk_mass_10:0.168062 | router_layer_0_time_ratio:0.566378 | router_layer_0_factor_ratio:0.433622 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.977682 | router_layer_0_logit_margin:0.293609 | router_layer_1_time_ratio:0.553579 | router_layer_1_factor_ratio:0.446421 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.983843 | router_layer_1_logit_margin:0.245473 | loss_total:1.389074 | loss_main:1.389057 | loss_listmle:4.711089 | loss_mse:1.389057 | loss_ic:-0.068908 | loss_aux:0.000016 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.051852 | label_std:1.166295 | score_label_std_ratio:0.044877 | ic_pearson_batch:0.068910 | ic_raw:0.068910 | rank_ic_batch:0.070995 | rank_ic:0.070995 | gate_entropy:0.679813 | time_ratio:0.559978 | grad_norm:7.852776 | grad_norm_other:2.512851 | grad_norm_time_embedding:3.232207 | grad_norm_factor_film:0.016029 | grad_norm_regime_encoder:0.178856 | grad_norm_router:0.450890 | grad_norm_time_expert:0.620519 | grad_norm_factor_expert:1.131604 | grad_norm_pooling_head:6.513687 | grad_nonfinite_tensors:2.000000 | grad_nonfinite_values:4.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000050
+| Valid 02 | time_tau:4.995596 | time_half_life:3.462683 | time_tau_std:0.000000 | time_tau_p10:4.995596 | time_tau_p90:4.995596 | time_tau_range_util:0.000000 | film_gamma_strength:0.017332 | film_beta_strength:0.003411 | factor_gate_mean:0.998886 | factor_gate_std:0.003315 | factor_gate_entropy:0.948950 | factor_gate_topk_mass_5:0.090715 | factor_gate_topk_mass_10:0.165376 | router_layer_0_time_ratio:0.625042 | router_layer_0_factor_ratio:0.374958 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.941909 | router_layer_0_logit_margin:0.526354 | router_layer_1_time_ratio:0.616452 | router_layer_1_factor_ratio:0.383548 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.948085 | router_layer_1_logit_margin:0.493204 | loss_total:0.032079 | loss_main:0.032045 | loss_listmle:4.716435 | loss_mse:0.032045 | loss_ic:-0.039515 | loss_aux:0.000034 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.106902 | label_std:0.045755 | score_label_std_ratio:2.419647 | gate_entropy:0.655022 | time_ratio:0.620747 | ic_pearson_daily:0.039525 | rank_ic_daily:0.042264 | ic_raw:0.039525 | rank_ic:0.042264
+| Train 03 | time_tau:4.995168 | time_half_life:3.462387 | time_tau_std:0.000000 | time_tau_p10:4.995168 | time_tau_p90:4.995168 | time_tau_range_util:0.000000 | film_gamma_strength:0.024207 | film_beta_strength:0.003110 | factor_gate_mean:0.999425 | factor_gate_std:0.004855 | factor_gate_entropy:0.944519 | factor_gate_topk_mass_5:0.097464 | factor_gate_topk_mass_10:0.177335 | router_layer_0_time_ratio:0.607339 | router_layer_0_factor_ratio:0.392661 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.951203 | router_layer_0_logit_margin:0.457392 | router_layer_1_time_ratio:0.597076 | router_layer_1_factor_ratio:0.402924 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.953546 | router_layer_1_logit_margin:0.436685 | loss_total:1.381206 | loss_main:1.381196 | loss_listmle:4.709291 | loss_mse:1.381196 | loss_ic:-0.094101 | loss_aux:0.000010 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.087352 | label_std:1.165592 | score_label_std_ratio:0.075620 | ic_pearson_batch:0.094102 | ic_raw:0.094102 | rank_ic_batch:0.096431 | rank_ic:0.096431 | gate_entropy:0.660136 | time_ratio:0.602208 | grad_norm:6.106282 | grad_norm_other:1.662191 | grad_norm_time_embedding:3.531066 | grad_norm_factor_film:0.028635 | grad_norm_regime_encoder:0.224658 | grad_norm_router:0.458894 | grad_norm_time_expert:0.633226 | grad_norm_factor_expert:0.797814 | grad_norm_pooling_head:4.500173 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000050
+| Valid 03 | time_tau:4.991733 | time_half_life:3.460006 | time_tau_std:0.000000 | time_tau_p10:4.991733 | time_tau_p90:4.991733 | time_tau_range_util:0.000000 | film_gamma_strength:0.031173 | film_beta_strength:0.003959 | factor_gate_mean:0.999220 | factor_gate_std:0.006459 | factor_gate_entropy:0.941031 | factor_gate_topk_mass_5:0.096716 | factor_gate_topk_mass_10:0.178120 | router_layer_0_time_ratio:0.669829 | router_layer_0_factor_ratio:0.330171 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.903501 | router_layer_0_logit_margin:0.718977 | router_layer_1_time_ratio:0.682643 | router_layer_1_factor_ratio:0.317357 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.878977 | router_layer_1_logit_margin:0.798084 | loss_total:0.019106 | loss_main:0.019084 | loss_listmle:4.718781 | loss_mse:0.019084 | loss_ic:-0.037618 | loss_aux:0.000022 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.107258 | label_std:0.045755 | score_label_std_ratio:2.424389 | gate_entropy:0.617760 | time_ratio:0.676236 | ic_pearson_daily:0.037627 | rank_ic_daily:0.036549 | ic_raw:0.037627 | rank_ic:0.036549
+| Train 04 | time_tau:4.991724 | time_half_life:3.459999 | time_tau_std:0.000000 | time_tau_p10:4.991724 | time_tau_p90:4.991724 | time_tau_range_util:0.000000 | film_gamma_strength:0.033973 | film_beta_strength:0.003609 | factor_gate_mean:0.999497 | factor_gate_std:0.007552 | factor_gate_entropy:0.941646 | factor_gate_topk_mass_5:0.098446 | factor_gate_topk_mass_10:0.181601 | router_layer_0_time_ratio:0.624598 | router_layer_0_factor_ratio:0.375402 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.940688 | router_layer_0_logit_margin:0.523796 | router_layer_1_time_ratio:0.639779 | router_layer_1_factor_ratio:0.360221 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.914936 | router_layer_1_logit_margin:0.620905 | loss_total:1.375270 | loss_main:1.375258 | loss_listmle:4.708497 | loss_mse:1.375258 | loss_ic:-0.103036 | loss_aux:0.000013 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.100702 | label_std:1.164835 | score_label_std_ratio:0.087276 | ic_pearson_batch:0.103037 | ic_raw:0.103037 | rank_ic_batch:0.104416 | rank_ic:0.104416 | gate_entropy:0.643110 | time_ratio:0.632188 | grad_norm:5.032450 | grad_norm_other:1.313224 | grad_norm_time_embedding:3.116049 | grad_norm_factor_film:0.038057 | grad_norm_regime_encoder:0.256512 | grad_norm_router:0.445682 | grad_norm_time_expert:0.587029 | grad_norm_factor_expert:0.564674 | grad_norm_pooling_head:3.534113 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000050
+| Valid 04 | time_tau:4.991733 | time_half_life:3.460006 | time_tau_std:0.000000 | time_tau_p10:4.991733 | time_tau_p90:4.991733 | time_tau_range_util:0.000000 | film_gamma_strength:0.037567 | film_beta_strength:0.004374 | factor_gate_mean:0.999116 | factor_gate_std:0.008538 | factor_gate_entropy:0.940369 | factor_gate_topk_mass_5:0.101767 | factor_gate_topk_mass_10:0.186373 | router_layer_0_time_ratio:0.663373 | router_layer_0_factor_ratio:0.336627 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.914245 | router_layer_0_logit_margin:0.685452 | router_layer_1_time_ratio:0.726882 | router_layer_1_factor_ratio:0.273118 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.824336 | router_layer_1_logit_margin:1.010756 | loss_total:0.057753 | loss_main:0.057723 | loss_listmle:4.717051 | loss_mse:0.057723 | loss_ic:-0.049184 | loss_aux:0.000031 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.126014 | label_std:0.045755 | score_label_std_ratio:2.848319 | gate_entropy:0.602546 | time_ratio:0.695127 | ic_pearson_daily:0.049193 | rank_ic_daily:0.052876 | ic_raw:0.049193 | rank_ic:0.052876
+| Train 05 | time_tau:4.988582 | time_half_life:3.457821 | time_tau_std:0.000015 | time_tau_p10:4.988573 | time_tau_p90:4.988593 | time_tau_range_util:0.000000 | film_gamma_strength:0.043356 | film_beta_strength:0.004874 | factor_gate_mean:0.999582 | factor_gate_std:0.010027 | factor_gate_entropy:0.940934 | factor_gate_topk_mass_5:0.103320 | factor_gate_topk_mass_10:0.187140 | router_layer_0_time_ratio:0.619859 | router_layer_0_factor_ratio:0.380141 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.947571 | router_layer_0_logit_margin:0.499188 | router_layer_1_time_ratio:0.676636 | router_layer_1_factor_ratio:0.323364 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.873577 | router_layer_1_logit_margin:0.790890 | loss_total:1.370519 | loss_main:1.370498 | loss_listmle:4.706690 | loss_mse:1.370498 | loss_ic:-0.113170 | loss_aux:0.000021 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.115172 | label_std:1.164347 | score_label_std_ratio:0.099930 | ic_pearson_batch:0.113171 | ic_raw:0.113171 | rank_ic_batch:0.114901 | rank_ic:0.114901 | gate_entropy:0.631162 | time_ratio:0.648247 | grad_norm:4.930747 | grad_norm_other:1.329030 | grad_norm_time_embedding:3.290205 | grad_norm_factor_film:0.048358 | grad_norm_regime_encoder:0.305363 | grad_norm_router:0.450773 | grad_norm_time_expert:0.615198 | grad_norm_factor_expert:0.552944 | grad_norm_pooling_head:3.187985 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000049
+| Valid 05 | time_tau:4.987896 | time_half_life:3.457346 | time_tau_std:0.000000 | time_tau_p10:4.987896 | time_tau_p90:4.987896 | time_tau_range_util:0.000000 | film_gamma_strength:0.045908 | film_beta_strength:0.005189 | factor_gate_mean:0.999077 | factor_gate_std:0.010825 | factor_gate_entropy:0.942657 | factor_gate_topk_mass_5:0.102639 | factor_gate_topk_mass_10:0.184766 | router_layer_0_time_ratio:0.674301 | router_layer_0_factor_ratio:0.325699 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.905295 | router_layer_0_logit_margin:0.732728 | router_layer_1_time_ratio:0.729525 | router_layer_1_factor_ratio:0.270475 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.813981 | router_layer_1_logit_margin:1.037801 | loss_total:0.019966 | loss_main:0.019915 | loss_listmle:4.716642 | loss_mse:0.019915 | loss_ic:-0.053240 | loss_aux:0.000051 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.117463 | label_std:0.045755 | score_label_std_ratio:2.660408 | gate_entropy:0.595856 | time_ratio:0.701913 | ic_pearson_daily:0.053250 | rank_ic_daily:0.054708 | ic_raw:0.053250 | rank_ic:0.054708
+| Train 06 | time_tau:4.988233 | time_half_life:3.457579 | time_tau_std:0.000221 | time_tau_p10:4.988055 | time_tau_p90:4.988396 | time_tau_range_util:0.000007 | film_gamma_strength:0.052989 | film_beta_strength:0.005883 | factor_gate_mean:0.999586 | factor_gate_std:0.012625 | factor_gate_entropy:0.942321 | factor_gate_topk_mass_5:0.103451 | factor_gate_topk_mass_10:0.185318 | router_layer_0_time_ratio:0.613126 | router_layer_0_factor_ratio:0.386874 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.953464 | router_layer_0_logit_margin:0.470488 | router_layer_1_time_ratio:0.723495 | router_layer_1_factor_ratio:0.276505 | router_layer_1_collapse_ratio:0.006200 | router_layer_1_entropy_norm:0.806576 | router_layer_1_logit_margin:1.040678 | loss_total:1.373228 | loss_main:1.373187 | loss_listmle:4.705809 | loss_mse:1.373187 | loss_ic:-0.120858 | loss_aux:0.000041 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.126973 | label_std:1.166796 | score_label_std_ratio:0.109924 | ic_pearson_batch:0.120859 | ic_raw:0.120859 | rank_ic_batch:0.122324 | rank_ic:0.122324 | gate_entropy:0.609983 | time_ratio:0.668311 | grad_norm:4.489559 | grad_norm_other:1.319241 | grad_norm_time_embedding:2.901344 | grad_norm_factor_film:0.055121 | grad_norm_regime_encoder:0.339716 | grad_norm_router:0.392272 | grad_norm_time_expert:0.568370 | grad_norm_factor_expert:0.465262 | grad_norm_pooling_head:2.904320 | grad_nonfinite_tensors:1.500000 | grad_nonfinite_values:3.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000049
+| Valid 06 | time_tau:4.988427 | time_half_life:3.457714 | time_tau_std:0.000000 | time_tau_p10:4.988427 | time_tau_p90:4.988427 | time_tau_range_util:0.000000 | film_gamma_strength:0.057017 | film_beta_strength:0.005857 | factor_gate_mean:0.998944 | factor_gate_std:0.014240 | factor_gate_entropy:0.941370 | factor_gate_topk_mass_5:0.105329 | factor_gate_topk_mass_10:0.188232 | router_layer_0_time_ratio:0.654282 | router_layer_0_factor_ratio:0.345718 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.925403 | router_layer_0_logit_margin:0.642093 | router_layer_1_time_ratio:0.750095 | router_layer_1_factor_ratio:0.249905 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.780680 | router_layer_1_logit_margin:1.152717 | loss_total:0.023386 | loss_main:0.023301 | loss_listmle:4.718676 | loss_mse:0.023301 | loss_ic:-0.056593 | loss_aux:0.000085 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.127338 | label_std:0.045755 | score_label_std_ratio:2.886874 | gate_entropy:0.591283 | time_ratio:0.702189 | ic_pearson_daily:0.056604 | rank_ic_daily:0.058474 | ic_raw:0.056604 | rank_ic:0.058474
+| Train 07 | time_tau:4.985921 | time_half_life:3.455977 | time_tau_std:0.000198 | time_tau_p10:4.985776 | time_tau_p90:4.986078 | time_tau_range_util:0.000006 | film_gamma_strength:0.059813 | film_beta_strength:0.006909 | factor_gate_mean:0.999729 | factor_gate_std:0.014557 | factor_gate_entropy:0.942432 | factor_gate_topk_mass_5:0.104522 | factor_gate_topk_mass_10:0.184437 | router_layer_0_time_ratio:0.601405 | router_layer_0_factor_ratio:0.398595 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.958057 | router_layer_0_logit_margin:0.434993 | router_layer_1_time_ratio:0.738319 | router_layer_1_factor_ratio:0.261681 | router_layer_1_collapse_ratio:0.007922 | router_layer_1_entropy_norm:0.791036 | router_layer_1_logit_margin:1.109577 | loss_total:1.362707 | loss_main:1.362640 | loss_listmle:4.705679 | loss_mse:1.362640 | loss_ic:-0.123968 | loss_aux:0.000067 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.130722 | label_std:1.163519 | score_label_std_ratio:0.113498 | ic_pearson_batch:0.123969 | ic_raw:0.123969 | rank_ic_batch:0.124509 | rank_ic:0.124509 | gate_entropy:0.606189 | time_ratio:0.669862 | grad_norm:3.890211 | grad_norm_other:1.226169 | grad_norm_time_embedding:2.271865 | grad_norm_factor_film:0.056453 | grad_norm_regime_encoder:0.360605 | grad_norm_router:0.414854 | grad_norm_time_expert:0.479521 | grad_norm_factor_expert:0.378319 | grad_norm_pooling_head:2.646945 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000048
+| Valid 07 | time_tau:4.984527 | time_half_life:3.455011 | time_tau_std:0.000000 | time_tau_p10:4.984527 | time_tau_p90:4.984527 | time_tau_range_util:0.000000 | film_gamma_strength:0.061574 | film_beta_strength:0.006656 | factor_gate_mean:0.998838 | factor_gate_std:0.015200 | factor_gate_entropy:0.943807 | factor_gate_topk_mass_5:0.102808 | factor_gate_topk_mass_10:0.180518 | router_layer_0_time_ratio:0.650789 | router_layer_0_factor_ratio:0.349211 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.926005 | router_layer_0_logit_margin:0.632098 | router_layer_1_time_ratio:0.810944 | router_layer_1_factor_ratio:0.189056 | router_layer_1_collapse_ratio:0.009820 | router_layer_1_entropy_norm:0.683897 | router_layer_1_logit_margin:1.497713 | loss_total:0.028282 | loss_main:0.028255 | loss_listmle:4.721914 | loss_mse:0.028255 | loss_ic:-0.055613 | loss_aux:0.000028 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.151848 | label_std:0.045755 | score_label_std_ratio:3.443883 | gate_entropy:0.557950 | time_ratio:0.730866 | ic_pearson_daily:0.055622 | rank_ic_daily:0.059035 | ic_raw:0.055622 | rank_ic:0.059035
+| Train 08 | time_tau:4.984249 | time_half_life:3.454818 | time_tau_std:0.000181 | time_tau_p10:4.984108 | time_tau_p90:4.984399 | time_tau_range_util:0.000006 | film_gamma_strength:0.068411 | film_beta_strength:0.007780 | factor_gate_mean:0.999715 | factor_gate_std:0.016578 | factor_gate_entropy:0.944804 | factor_gate_topk_mass_5:0.102961 | factor_gate_topk_mass_10:0.181799 | router_layer_0_time_ratio:0.594582 | router_layer_0_factor_ratio:0.405418 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.959267 | router_layer_0_logit_margin:0.424549 | router_layer_1_time_ratio:0.741533 | router_layer_1_factor_ratio:0.258467 | router_layer_1_collapse_ratio:0.020477 | router_layer_1_entropy_norm:0.785139 | router_layer_1_logit_margin:1.131383 | loss_total:1.363920 | loss_main:1.363833 | loss_listmle:4.705378 | loss_mse:1.363833 | loss_ic:-0.126767 | loss_aux:0.000087 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.141124 | label_std:1.165289 | score_label_std_ratio:0.122290 | ic_pearson_batch:0.126768 | ic_raw:0.126768 | rank_ic_batch:0.126576 | rank_ic:0.126576 | gate_entropy:0.604565 | time_ratio:0.668057 | grad_norm:3.742388 | grad_norm_other:1.250832 | grad_norm_time_embedding:2.157069 | grad_norm_factor_film:0.061319 | grad_norm_regime_encoder:0.394631 | grad_norm_router:0.467736 | grad_norm_time_expert:0.460203 | grad_norm_factor_expert:0.391826 | grad_norm_pooling_head:2.469749 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000047
+| Valid 08 | time_tau:4.980696 | time_half_life:3.452356 | time_tau_std:0.000000 | time_tau_p10:4.980696 | time_tau_p90:4.980696 | time_tau_range_util:0.000000 | film_gamma_strength:0.066196 | film_beta_strength:0.007437 | factor_gate_mean:0.999221 | factor_gate_std:0.015860 | factor_gate_entropy:0.944606 | factor_gate_topk_mass_5:0.100652 | factor_gate_topk_mass_10:0.178903 | router_layer_0_time_ratio:0.641824 | router_layer_0_factor_ratio:0.358176 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.928556 | router_layer_0_logit_margin:0.609775 | router_layer_1_time_ratio:0.757645 | router_layer_1_factor_ratio:0.242355 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.778787 | router_layer_1_logit_margin:1.177636 | loss_total:0.042574 | loss_main:0.042516 | loss_listmle:4.724712 | loss_mse:0.042516 | loss_ic:-0.057290 | loss_aux:0.000058 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.191021 | label_std:0.045755 | score_label_std_ratio:4.306452 | gate_entropy:0.591720 | time_ratio:0.699735 | ic_pearson_daily:0.057298 | rank_ic_daily:0.062365 | ic_raw:0.057298 | rank_ic:0.062365
+| Train 09 | time_tau:4.979769 | time_half_life:3.451713 | time_tau_std:0.000182 | time_tau_p10:4.979633 | time_tau_p90:4.979912 | time_tau_range_util:0.000006 | film_gamma_strength:0.075084 | film_beta_strength:0.008782 | factor_gate_mean:0.999685 | factor_gate_std:0.018006 | factor_gate_entropy:0.944881 | factor_gate_topk_mass_5:0.100680 | factor_gate_topk_mass_10:0.179444 | router_layer_0_time_ratio:0.588248 | router_layer_0_factor_ratio:0.411752 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.961535 | router_layer_0_logit_margin:0.409999 | router_layer_1_time_ratio:0.731496 | router_layer_1_factor_ratio:0.268504 | router_layer_1_collapse_ratio:0.008983 | router_layer_1_entropy_norm:0.809238 | router_layer_1_logit_margin:1.057182 | loss_total:1.361625 | loss_main:1.361526 | loss_listmle:4.704689 | loss_mse:1.361526 | loss_ic:-0.134813 | loss_aux:0.000099 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.149028 | label_std:1.165436 | score_label_std_ratio:0.129133 | ic_pearson_batch:0.134814 | ic_raw:0.134814 | rank_ic_batch:0.134511 | rank_ic:0.134511 | gate_entropy:0.613703 | time_ratio:0.659872 | grad_norm:3.576231 | grad_norm_other:1.196803 | grad_norm_time_embedding:1.947986 | grad_norm_factor_film:0.064244 | grad_norm_regime_encoder:0.435861 | grad_norm_router:0.544475 | grad_norm_time_expert:0.442569 | grad_norm_factor_expert:0.401234 | grad_norm_pooling_head:2.387723 | grad_nonfinite_tensors:1.500000 | grad_nonfinite_values:2.500000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000046
+| Valid 09 | time_tau:4.976569 | time_half_life:3.449495 | time_tau_std:0.000000 | time_tau_p10:4.976569 | time_tau_p90:4.976569 | time_tau_range_util:0.000000 | film_gamma_strength:0.072579 | film_beta_strength:0.008284 | factor_gate_mean:0.998918 | factor_gate_std:0.017881 | factor_gate_entropy:0.943168 | factor_gate_topk_mass_5:0.100456 | factor_gate_topk_mass_10:0.179698 | router_layer_0_time_ratio:0.651398 | router_layer_0_factor_ratio:0.348602 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.920602 | router_layer_0_logit_margin:0.650496 | router_layer_1_time_ratio:0.717082 | router_layer_1_factor_ratio:0.282918 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.846915 | router_layer_1_logit_margin:0.948999 | loss_total:0.031299 | loss_main:0.031186 | loss_listmle:4.728081 | loss_mse:0.031186 | loss_ic:-0.054444 | loss_aux:0.000113 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.160132 | label_std:0.045755 | score_label_std_ratio:3.641554 | gate_entropy:0.612574 | time_ratio:0.684240 | ic_pearson_daily:0.054451 | rank_ic_daily:0.053395 | ic_raw:0.054451 | rank_ic:0.053395
+| Train 10 | time_tau:4.976348 | time_half_life:3.449341 | time_tau_std:0.000182 | time_tau_p10:4.976208 | time_tau_p90:4.976501 | time_tau_range_util:0.000006 | film_gamma_strength:0.081299 | film_beta_strength:0.009398 | factor_gate_mean:0.999598 | factor_gate_std:0.019859 | factor_gate_entropy:0.942940 | factor_gate_topk_mass_5:0.101935 | factor_gate_topk_mass_10:0.181793 | router_layer_0_time_ratio:0.589828 | router_layer_0_factor_ratio:0.410172 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.955171 | router_layer_0_logit_margin:0.441700 | router_layer_1_time_ratio:0.735452 | router_layer_1_factor_ratio:0.264548 | router_layer_1_collapse_ratio:0.012138 | router_layer_1_entropy_norm:0.802466 | router_layer_1_logit_margin:1.081215 | loss_total:1.357364 | loss_main:1.357258 | loss_listmle:4.705565 | loss_mse:1.357258 | loss_ic:-0.135808 | loss_aux:0.000106 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.152127 | label_std:1.164301 | score_label_std_ratio:0.131944 | ic_pearson_batch:0.135810 | ic_raw:0.135810 | rank_ic_batch:0.134719 | rank_ic:0.134719 | gate_entropy:0.609151 | time_ratio:0.662640 | grad_norm:3.616904 | grad_norm_other:1.201152 | grad_norm_time_embedding:2.022211 | grad_norm_factor_film:0.067196 | grad_norm_regime_encoder:0.471556 | grad_norm_router:0.598919 | grad_norm_time_expert:0.432118 | grad_norm_factor_expert:0.436541 | grad_norm_pooling_head:2.293741 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000045
+| Valid 10 | time_tau:4.972537 | time_half_life:3.446700 | time_tau_std:0.000000 | time_tau_p10:4.972537 | time_tau_p90:4.972537 | time_tau_range_util:0.000000 | film_gamma_strength:0.078907 | film_beta_strength:0.008726 | factor_gate_mean:0.998989 | factor_gate_std:0.019731 | factor_gate_entropy:0.941646 | factor_gate_topk_mass_5:0.101265 | factor_gate_topk_mass_10:0.181036 | router_layer_0_time_ratio:0.665221 | router_layer_0_factor_ratio:0.334779 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.906953 | router_layer_0_logit_margin:0.713505 | router_layer_1_time_ratio:0.797327 | router_layer_1_factor_ratio:0.202673 | router_layer_1_collapse_ratio:0.004910 | router_layer_1_entropy_norm:0.712750 | router_layer_1_logit_margin:1.403488 | loss_total:0.030592 | loss_main:0.030566 | loss_listmle:4.716631 | loss_mse:0.030566 | loss_ic:-0.063263 | loss_aux:0.000025 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.159142 | label_std:0.045755 | score_label_std_ratio:3.606987 | gate_entropy:0.561346 | time_ratio:0.731274 | ic_pearson_daily:0.063274 | rank_ic_daily:0.072252 | ic_raw:0.063274 | rank_ic:0.072252
+| Train 11 | time_tau:4.972794 | time_half_life:3.446878 | time_tau_std:0.000194 | time_tau_p10:4.972652 | time_tau_p90:4.972956 | time_tau_range_util:0.000006 | film_gamma_strength:0.085227 | film_beta_strength:0.009964 | factor_gate_mean:0.999794 | factor_gate_std:0.021123 | factor_gate_entropy:0.941604 | factor_gate_topk_mass_5:0.101825 | factor_gate_topk_mass_10:0.181456 | router_layer_0_time_ratio:0.587363 | router_layer_0_factor_ratio:0.412637 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.954088 | router_layer_0_logit_margin:0.449795 | router_layer_1_time_ratio:0.742371 | router_layer_1_factor_ratio:0.257629 | router_layer_1_collapse_ratio:0.013139 | router_layer_1_entropy_norm:0.791199 | router_layer_1_logit_margin:1.123110 | loss_total:1.357551 | loss_main:1.357440 | loss_listmle:4.704414 | loss_mse:1.357440 | loss_ic:-0.139281 | loss_aux:0.000111 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.158260 | label_std:1.164467 | score_label_std_ratio:0.137304 | ic_pearson_batch:0.139281 | ic_raw:0.139281 | rank_ic_batch:0.139390 | rank_ic:0.139390 | gate_entropy:0.604870 | time_ratio:0.664867 | grad_norm:3.696981 | grad_norm_other:1.202375 | grad_norm_time_embedding:2.111365 | grad_norm_factor_film:0.068942 | grad_norm_regime_encoder:0.500720 | grad_norm_router:0.625721 | grad_norm_time_expert:0.433693 | grad_norm_factor_expert:0.459114 | grad_norm_pooling_head:2.226735 | grad_nonfinite_tensors:2.000000 | grad_nonfinite_values:8.500000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000043
+| Valid 11 | time_tau:4.968732 | time_half_life:3.444062 | time_tau_std:0.000000 | time_tau_p10:4.968732 | time_tau_p90:4.968732 | time_tau_range_util:0.000000 | film_gamma_strength:0.082827 | film_beta_strength:0.009621 | factor_gate_mean:0.998934 | factor_gate_std:0.021150 | factor_gate_entropy:0.941584 | factor_gate_topk_mass_5:0.101109 | factor_gate_topk_mass_10:0.180001 | router_layer_0_time_ratio:0.659717 | router_layer_0_factor_ratio:0.340283 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.910582 | router_layer_0_logit_margin:0.695574 | router_layer_1_time_ratio:0.811151 | router_layer_1_factor_ratio:0.188849 | router_layer_1_collapse_ratio:0.016367 | router_layer_1_entropy_norm:0.689369 | router_layer_1_logit_margin:1.485009 | loss_total:0.052611 | loss_main:0.052584 | loss_listmle:4.726774 | loss_mse:0.052584 | loss_ic:-0.057456 | loss_aux:0.000027 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.185402 | label_std:0.045755 | score_label_std_ratio:4.197087 | gate_entropy:0.554501 | time_ratio:0.735434 | ic_pearson_daily:0.057463 | rank_ic_daily:0.060613 | ic_raw:0.057463 | rank_ic:0.060613
+| Train 12 | time_tau:4.968853 | time_half_life:3.444146 | time_tau_std:0.000188 | time_tau_p10:4.968713 | time_tau_p90:4.968997 | time_tau_range_util:0.000006 | film_gamma_strength:0.089126 | film_beta_strength:0.010532 | factor_gate_mean:0.999725 | factor_gate_std:0.022274 | factor_gate_entropy:0.942271 | factor_gate_topk_mass_5:0.101178 | factor_gate_topk_mass_10:0.180002 | router_layer_0_time_ratio:0.584541 | router_layer_0_factor_ratio:0.415459 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.955993 | router_layer_0_logit_margin:0.437168 | router_layer_1_time_ratio:0.757592 | router_layer_1_factor_ratio:0.242408 | router_layer_1_collapse_ratio:0.022351 | router_layer_1_entropy_norm:0.770008 | router_layer_1_logit_margin:1.201938 | loss_total:1.354147 | loss_main:1.354069 | loss_listmle:4.704041 | loss_mse:1.354069 | loss_ic:-0.142855 | loss_aux:0.000078 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.163098 | label_std:1.164483 | score_label_std_ratio:0.141460 | ic_pearson_batch:0.142855 | ic_raw:0.142855 | rank_ic_batch:0.142371 | rank_ic:0.142371 | gate_entropy:0.598187 | time_ratio:0.671067 | grad_norm:3.435176 | grad_norm_other:1.210677 | grad_norm_time_embedding:1.845047 | grad_norm_factor_film:0.068703 | grad_norm_regime_encoder:0.512859 | grad_norm_router:0.665154 | grad_norm_time_expert:0.430562 | grad_norm_factor_expert:0.409345 | grad_norm_pooling_head:2.156069 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000042
+| Valid 12 | time_tau:4.964826 | time_half_life:3.441355 | time_tau_std:0.000000 | time_tau_p10:4.964826 | time_tau_p90:4.964826 | time_tau_range_util:0.000000 | film_gamma_strength:0.084502 | film_beta_strength:0.010059 | factor_gate_mean:0.998673 | factor_gate_std:0.021445 | factor_gate_entropy:0.942619 | factor_gate_topk_mass_5:0.100573 | factor_gate_topk_mass_10:0.178401 | router_layer_0_time_ratio:0.661458 | router_layer_0_factor_ratio:0.338542 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.908105 | router_layer_0_logit_margin:0.708027 | router_layer_1_time_ratio:0.800401 | router_layer_1_factor_ratio:0.199599 | router_layer_1_collapse_ratio:0.006547 | router_layer_1_entropy_norm:0.711257 | router_layer_1_logit_margin:1.414680 | loss_total:0.032657 | loss_main:0.032634 | loss_listmle:4.722483 | loss_mse:0.032634 | loss_ic:-0.058053 | loss_aux:0.000023 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.165165 | label_std:0.045755 | score_label_std_ratio:3.751987 | gate_entropy:0.561228 | time_ratio:0.730929 | ic_pearson_daily:0.058060 | rank_ic_daily:0.063630 | ic_raw:0.058060 | rank_ic:0.063630
+| Train 13 | time_tau:4.964963 | time_half_life:3.441450 | time_tau_std:0.000232 | time_tau_p10:4.964777 | time_tau_p90:4.965155 | time_tau_range_util:0.000008 | film_gamma_strength:0.092716 | film_beta_strength:0.010962 | factor_gate_mean:0.999653 | factor_gate_std:0.023612 | factor_gate_entropy:0.943499 | factor_gate_topk_mass_5:0.100296 | factor_gate_topk_mass_10:0.178451 | router_layer_0_time_ratio:0.578776 | router_layer_0_factor_ratio:0.421224 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.955302 | router_layer_0_logit_margin:0.440495 | router_layer_1_time_ratio:0.760912 | router_layer_1_factor_ratio:0.239088 | router_layer_1_collapse_ratio:0.030188 | router_layer_1_entropy_norm:0.762652 | router_layer_1_logit_margin:1.226225 | loss_total:1.358313 | loss_main:1.358221 | loss_listmle:4.704013 | loss_mse:1.358221 | loss_ic:-0.147464 | loss_aux:0.000093 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.170212 | label_std:1.166914 | score_label_std_ratio:0.147355 | ic_pearson_batch:0.147465 | ic_raw:0.147465 | rank_ic_batch:0.145902 | rank_ic:0.145902 | gate_entropy:0.595398 | time_ratio:0.669844 | grad_norm:3.634169 | grad_norm_other:1.273553 | grad_norm_time_embedding:2.061762 | grad_norm_factor_film:0.073652 | grad_norm_regime_encoder:0.574089 | grad_norm_router:0.733210 | grad_norm_time_expert:0.455121 | grad_norm_factor_expert:0.462249 | grad_norm_pooling_head:2.135355 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000040
+| Valid 13 | time_tau:4.960934 | time_half_life:3.438657 | time_tau_std:0.000000 | time_tau_p10:4.960934 | time_tau_p90:4.960934 | time_tau_range_util:0.000000 | film_gamma_strength:0.087556 | film_beta_strength:0.010348 | factor_gate_mean:0.998701 | factor_gate_std:0.022209 | factor_gate_entropy:0.943711 | factor_gate_topk_mass_5:0.099026 | factor_gate_topk_mass_10:0.176908 | router_layer_0_time_ratio:0.667354 | router_layer_0_factor_ratio:0.332646 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.901121 | router_layer_0_logit_margin:0.733928 | router_layer_1_time_ratio:0.730690 | router_layer_1_factor_ratio:0.269310 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.827315 | router_layer_1_logit_margin:1.022008 | loss_total:0.037319 | loss_main:0.037229 | loss_listmle:4.719582 | loss_mse:0.037229 | loss_ic:-0.064289 | loss_aux:0.000091 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.173925 | label_std:0.045755 | score_label_std_ratio:3.958068 | gate_entropy:0.599031 | time_ratio:0.699022 | ic_pearson_daily:0.064297 | rank_ic_daily:0.073996 | ic_raw:0.064297 | rank_ic:0.073996
+| Train 14 | time_tau:4.960167 | time_half_life:3.438126 | time_tau_std:0.000255 | time_tau_p10:4.959974 | time_tau_p90:4.960374 | time_tau_range_util:0.000008 | film_gamma_strength:0.095923 | film_beta_strength:0.011441 | factor_gate_mean:0.999684 | factor_gate_std:0.024278 | factor_gate_entropy:0.944244 | factor_gate_topk_mass_5:0.098134 | factor_gate_topk_mass_10:0.175563 | router_layer_0_time_ratio:0.578121 | router_layer_0_factor_ratio:0.421879 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.955244 | router_layer_0_logit_margin:0.439602 | router_layer_1_time_ratio:0.765996 | router_layer_1_factor_ratio:0.234004 | router_layer_1_collapse_ratio:0.022786 | router_layer_1_entropy_norm:0.757414 | router_layer_1_logit_margin:1.247242 | loss_total:1.352941 | loss_main:1.352864 | loss_listmle:4.703703 | loss_mse:1.352864 | loss_ic:-0.148032 | loss_aux:0.000076 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.167170 | label_std:1.165114 | score_label_std_ratio:0.144803 | ic_pearson_batch:0.148033 | ic_raw:0.148033 | rank_ic_batch:0.147265 | rank_ic:0.147265 | gate_entropy:0.593562 | time_ratio:0.672058 | grad_norm:3.487118 | grad_norm_other:1.240942 | grad_norm_time_embedding:1.910354 | grad_norm_factor_film:0.071695 | grad_norm_regime_encoder:0.567634 | grad_norm_router:0.737026 | grad_norm_time_expert:0.443389 | grad_norm_factor_expert:0.436179 | grad_norm_pooling_head:2.077170 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000039
+| Valid 14 | time_tau:4.956965 | time_half_life:3.435906 | time_tau_std:0.000000 | time_tau_p10:4.956965 | time_tau_p90:4.956965 | time_tau_range_util:0.000000 | film_gamma_strength:0.090018 | film_beta_strength:0.010995 | factor_gate_mean:0.998889 | factor_gate_std:0.023318 | factor_gate_entropy:0.945434 | factor_gate_topk_mass_5:0.096865 | factor_gate_topk_mass_10:0.172790 | router_layer_0_time_ratio:0.674208 | router_layer_0_factor_ratio:0.325792 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.892169 | router_layer_0_logit_margin:0.772970 | router_layer_1_time_ratio:0.756203 | router_layer_1_factor_ratio:0.243797 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.789109 | router_layer_1_logit_margin:1.155164 | loss_total:0.040249 | loss_main:0.040197 | loss_listmle:4.720360 | loss_mse:0.040197 | loss_ic:-0.063167 | loss_aux:0.000052 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.189514 | label_std:0.045755 | score_label_std_ratio:4.304252 | gate_entropy:0.582687 | time_ratio:0.715206 | ic_pearson_daily:0.063174 | rank_ic_daily:0.074071 | ic_raw:0.063174 | rank_ic:0.074071
+| Train 15 | time_tau:4.958097 | time_half_life:3.436691 | time_tau_std:0.000329 | time_tau_p10:4.957845 | time_tau_p90:4.958369 | time_tau_range_util:0.000011 | film_gamma_strength:0.098426 | film_beta_strength:0.011847 | factor_gate_mean:0.999699 | factor_gate_std:0.025244 | factor_gate_entropy:0.945538 | factor_gate_topk_mass_5:0.096801 | factor_gate_topk_mass_10:0.173516 | router_layer_0_time_ratio:0.580459 | router_layer_0_factor_ratio:0.419541 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.950595 | router_layer_0_logit_margin:0.464911 | router_layer_1_time_ratio:0.741462 | router_layer_1_factor_ratio:0.258538 | router_layer_1_collapse_ratio:0.011940 | router_layer_1_entropy_norm:0.795571 | router_layer_1_logit_margin:1.112342 | loss_total:1.352437 | loss_main:1.352339 | loss_listmle:4.703063 | loss_mse:1.352339 | loss_ic:-0.151393 | loss_aux:0.000098 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.171421 | label_std:1.165418 | score_label_std_ratio:0.148556 | ic_pearson_batch:0.151395 | ic_raw:0.151395 | rank_ic_batch:0.151084 | rank_ic:0.151084 | gate_entropy:0.605175 | time_ratio:0.660961 | grad_norm:3.709799 | grad_norm_other:1.319476 | grad_norm_time_embedding:2.170646 | grad_norm_factor_film:0.076410 | grad_norm_regime_encoder:0.613766 | grad_norm_router:0.780885 | grad_norm_time_expert:0.482622 | grad_norm_factor_expert:0.486744 | grad_norm_pooling_head:2.059090 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000037
+| Valid 15 | time_tau:4.956814 | time_half_life:3.435801 | time_tau_std:0.000000 | time_tau_p10:4.956814 | time_tau_p90:4.956814 | time_tau_range_util:0.000000 | film_gamma_strength:0.095926 | film_beta_strength:0.011575 | factor_gate_mean:0.998909 | factor_gate_std:0.024720 | factor_gate_entropy:0.946365 | factor_gate_topk_mass_5:0.095300 | factor_gate_topk_mass_10:0.171702 | router_layer_0_time_ratio:0.664915 | router_layer_0_factor_ratio:0.335085 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.902614 | router_layer_0_logit_margin:0.729417 | router_layer_1_time_ratio:0.769417 | router_layer_1_factor_ratio:0.230583 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.767612 | router_layer_1_logit_margin:1.227721 | loss_total:0.042421 | loss_main:0.042394 | loss_listmle:4.723159 | loss_mse:0.042394 | loss_ic:-0.066922 | loss_aux:0.000027 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.189275 | label_std:0.045755 | score_label_std_ratio:4.299622 | gate_entropy:0.578856 | time_ratio:0.717166 | ic_pearson_daily:0.066930 | rank_ic_daily:0.074674 | ic_raw:0.066930 | rank_ic:0.074674
+| Train 16 | time_tau:4.955550 | time_half_life:3.434925 | time_tau_std:0.000395 | time_tau_p10:4.955252 | time_tau_p90:4.955853 | time_tau_range_util:0.000012 | film_gamma_strength:0.103118 | film_beta_strength:0.012573 | factor_gate_mean:0.999811 | factor_gate_std:0.026525 | factor_gate_entropy:0.946490 | factor_gate_topk_mass_5:0.095338 | factor_gate_topk_mass_10:0.171925 | router_layer_0_time_ratio:0.581748 | router_layer_0_factor_ratio:0.418252 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.950129 | router_layer_0_logit_margin:0.469686 | router_layer_1_time_ratio:0.743647 | router_layer_1_factor_ratio:0.256353 | router_layer_1_collapse_ratio:0.015119 | router_layer_1_entropy_norm:0.793862 | router_layer_1_logit_margin:1.121036 | loss_total:1.349531 | loss_main:1.349452 | loss_listmle:4.702221 | loss_mse:1.349452 | loss_ic:-0.155051 | loss_aux:0.000080 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.179578 | label_std:1.165209 | score_label_std_ratio:0.155643 | ic_pearson_batch:0.155052 | ic_raw:0.155052 | rank_ic_batch:0.154250 | rank_ic:0.154250 | gate_entropy:0.604421 | time_ratio:0.662697 | grad_norm:3.733146 | grad_norm_other:1.375519 | grad_norm_time_embedding:2.179501 | grad_norm_factor_film:0.078543 | grad_norm_regime_encoder:0.638355 | grad_norm_router:0.802831 | grad_norm_time_expert:0.494256 | grad_norm_factor_expert:0.475252 | grad_norm_pooling_head:2.051497 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000035
+| Valid 16 | time_tau:4.952915 | time_half_life:3.433099 | time_tau_std:0.000000 | time_tau_p10:4.952915 | time_tau_p90:4.952915 | time_tau_range_util:0.000000 | film_gamma_strength:0.102339 | film_beta_strength:0.012379 | factor_gate_mean:0.999132 | factor_gate_std:0.026865 | factor_gate_entropy:0.947627 | factor_gate_topk_mass_5:0.093811 | factor_gate_topk_mass_10:0.169284 | router_layer_0_time_ratio:0.664188 | router_layer_0_factor_ratio:0.335812 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.900587 | router_layer_0_logit_margin:0.733652 | router_layer_1_time_ratio:0.806828 | router_layer_1_factor_ratio:0.193172 | router_layer_1_collapse_ratio:0.006547 | router_layer_1_entropy_norm:0.693625 | router_layer_1_logit_margin:1.464648 | loss_total:0.049172 | loss_main:0.049137 | loss_listmle:4.725814 | loss_mse:0.049137 | loss_ic:-0.066043 | loss_aux:0.000036 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.204653 | label_std:0.045755 | score_label_std_ratio:4.654937 | gate_entropy:0.552512 | time_ratio:0.735508 | ic_pearson_daily:0.066051 | rank_ic_daily:0.074637 | ic_raw:0.066051 | rank_ic:0.074637
+| Train 17 | time_tau:4.951807 | time_half_life:3.432331 | time_tau_std:0.000462 | time_tau_p10:4.951445 | time_tau_p90:4.952160 | time_tau_range_util:0.000014 | film_gamma_strength:0.107194 | film_beta_strength:0.013353 | factor_gate_mean:0.999749 | factor_gate_std:0.027794 | factor_gate_entropy:0.946832 | factor_gate_topk_mass_5:0.094280 | factor_gate_topk_mass_10:0.170671 | router_layer_0_time_ratio:0.579341 | router_layer_0_factor_ratio:0.420659 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.952448 | router_layer_0_logit_margin:0.453135 | router_layer_1_time_ratio:0.761620 | router_layer_1_factor_ratio:0.238380 | router_layer_1_collapse_ratio:0.018651 | router_layer_1_entropy_norm:0.765413 | router_layer_1_logit_margin:1.220458 | loss_total:1.347213 | loss_main:1.347140 | loss_listmle:4.702195 | loss_mse:1.347140 | loss_ic:-0.157126 | loss_aux:0.000073 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.178936 | label_std:1.164365 | score_label_std_ratio:0.155281 | ic_pearson_batch:0.157127 | ic_raw:0.157127 | rank_ic_batch:0.155416 | rank_ic:0.155416 | gate_entropy:0.595365 | time_ratio:0.670481 | grad_norm:3.828704 | grad_norm_other:1.406828 | grad_norm_time_embedding:2.305977 | grad_norm_factor_film:0.080014 | grad_norm_regime_encoder:0.660958 | grad_norm_router:0.832735 | grad_norm_time_expert:0.511823 | grad_norm_factor_expert:0.493519 | grad_norm_pooling_head:2.049410 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000033
+| Valid 17 | time_tau:4.948820 | time_half_life:3.430261 | time_tau_std:0.000000 | time_tau_p10:4.948820 | time_tau_p90:4.948820 | time_tau_range_util:0.000000 | film_gamma_strength:0.104872 | film_beta_strength:0.013034 | factor_gate_mean:0.998887 | factor_gate_std:0.027586 | factor_gate_entropy:0.947012 | factor_gate_topk_mass_5:0.094039 | factor_gate_topk_mass_10:0.169777 | router_layer_0_time_ratio:0.670358 | router_layer_0_factor_ratio:0.329642 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.894043 | router_layer_0_logit_margin:0.761648 | router_layer_1_time_ratio:0.782357 | router_layer_1_factor_ratio:0.217643 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.744911 | router_layer_1_logit_margin:1.302360 | loss_total:0.042639 | loss_main:0.042610 | loss_listmle:4.724046 | loss_mse:0.042610 | loss_ic:-0.065211 | loss_aux:0.000029 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.190690 | label_std:0.045755 | score_label_std_ratio:4.333263 | gate_entropy:0.568018 | time_ratio:0.726358 | ic_pearson_daily:0.065219 | rank_ic_daily:0.074655 | ic_raw:0.065219 | rank_ic:0.074655
+| Train 18 | time_tau:4.948728 | time_half_life:3.430197 | time_tau_std:0.000569 | time_tau_p10:4.948315 | time_tau_p90:4.949184 | time_tau_range_util:0.000018 | film_gamma_strength:0.107644 | film_beta_strength:0.013660 | factor_gate_mean:0.999635 | factor_gate_std:0.027918 | factor_gate_entropy:0.946396 | factor_gate_topk_mass_5:0.094812 | factor_gate_topk_mass_10:0.171741 | router_layer_0_time_ratio:0.582286 | router_layer_0_factor_ratio:0.417714 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.951122 | router_layer_0_logit_margin:0.460398 | router_layer_1_time_ratio:0.731615 | router_layer_1_factor_ratio:0.268385 | router_layer_1_collapse_ratio:0.008944 | router_layer_1_entropy_norm:0.811369 | router_layer_1_logit_margin:1.056942 | loss_total:1.346935 | loss_main:1.346841 | loss_listmle:4.701499 | loss_mse:1.346841 | loss_ic:-0.160881 | loss_aux:0.000094 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.184611 | label_std:1.165008 | score_label_std_ratio:0.160045 | ic_pearson_batch:0.160882 | ic_raw:0.160882 | rank_ic_batch:0.159438 | rank_ic:0.159438 | gate_entropy:0.610833 | time_ratio:0.656951 | grad_norm:4.040356 | grad_norm_other:1.484076 | grad_norm_time_embedding:2.523676 | grad_norm_factor_film:0.083291 | grad_norm_regime_encoder:0.683601 | grad_norm_router:0.855101 | grad_norm_time_expert:0.548360 | grad_norm_factor_expert:0.527689 | grad_norm_pooling_head:2.052903 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.500000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000031
+| Valid 18 | time_tau:4.944827 | time_half_life:3.427493 | time_tau_std:0.000000 | time_tau_p10:4.944827 | time_tau_p90:4.944827 | time_tau_range_util:0.000000 | film_gamma_strength:0.105305 | film_beta_strength:0.013151 | factor_gate_mean:0.999326 | factor_gate_std:0.027928 | factor_gate_entropy:0.946905 | factor_gate_topk_mass_5:0.094387 | factor_gate_topk_mass_10:0.170404 | router_layer_0_time_ratio:0.669349 | router_layer_0_factor_ratio:0.330651 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.895650 | router_layer_0_logit_margin:0.754112 | router_layer_1_time_ratio:0.753263 | router_layer_1_factor_ratio:0.246737 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.789312 | router_layer_1_logit_margin:1.151146 | loss_total:0.054908 | loss_main:0.054858 | loss_listmle:4.721393 | loss_mse:0.054858 | loss_ic:-0.064472 | loss_aux:0.000050 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.205379 | label_std:0.045755 | score_label_std_ratio:4.669883 | gate_entropy:0.583963 | time_ratio:0.711306 | ic_pearson_daily:0.064480 | rank_ic_daily:0.076801 | ic_raw:0.064480 | rank_ic:0.076801
+| Train 19 | time_tau:4.945692 | time_half_life:3.428092 | time_tau_std:0.000686 | time_tau_p10:4.945164 | time_tau_p90:4.946236 | time_tau_range_util:0.000022 | film_gamma_strength:0.109914 | film_beta_strength:0.014090 | factor_gate_mean:0.999617 | factor_gate_std:0.028384 | factor_gate_entropy:0.946168 | factor_gate_topk_mass_5:0.095403 | factor_gate_topk_mass_10:0.172550 | router_layer_0_time_ratio:0.583243 | router_layer_0_factor_ratio:0.416757 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.950080 | router_layer_0_logit_margin:0.465854 | router_layer_1_time_ratio:0.747394 | router_layer_1_factor_ratio:0.252606 | router_layer_1_collapse_ratio:0.012305 | router_layer_1_entropy_norm:0.784422 | router_layer_1_logit_margin:1.147779 | loss_total:1.346855 | loss_main:1.346767 | loss_listmle:4.701436 | loss_mse:1.346767 | loss_ic:-0.163663 | loss_aux:0.000088 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.186677 | label_std:1.165785 | score_label_std_ratio:0.161651 | ic_pearson_batch:0.163664 | ic_raw:0.163664 | rank_ic_batch:0.162240 | rank_ic:0.162240 | gate_entropy:0.601133 | time_ratio:0.665318 | grad_norm:4.121978 | grad_norm_other:1.539055 | grad_norm_time_embedding:2.602096 | grad_norm_factor_film:0.085149 | grad_norm_regime_encoder:0.709939 | grad_norm_router:0.927590 | grad_norm_time_expert:0.565671 | grad_norm_factor_expert:0.538782 | grad_norm_pooling_head:2.051458 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000029
+| Valid 19 | time_tau:4.940758 | time_half_life:3.424673 | time_tau_std:0.000000 | time_tau_p10:4.940758 | time_tau_p90:4.940758 | time_tau_range_util:0.000000 | film_gamma_strength:0.108239 | film_beta_strength:0.013757 | factor_gate_mean:0.999521 | factor_gate_std:0.028372 | factor_gate_entropy:0.946269 | factor_gate_topk_mass_5:0.094942 | factor_gate_topk_mass_10:0.171804 | router_layer_0_time_ratio:0.664152 | router_layer_0_factor_ratio:0.335848 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.898406 | router_layer_0_logit_margin:0.740199 | router_layer_1_time_ratio:0.708663 | router_layer_1_factor_ratio:0.291337 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.852790 | router_layer_1_logit_margin:0.925293 | loss_total:0.056230 | loss_main:0.056122 | loss_listmle:4.726388 | loss_mse:0.056122 | loss_ic:-0.065116 | loss_aux:0.000108 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.203204 | label_std:0.045755 | score_label_std_ratio:4.609754 | gate_entropy:0.606918 | time_ratio:0.686408 | ic_pearson_daily:0.065123 | rank_ic_daily:0.072361 | ic_raw:0.065123 | rank_ic:0.072361
+| Train 20 | time_tau:4.942784 | time_half_life:3.426077 | time_tau_std:0.000780 | time_tau_p10:4.942176 | time_tau_p90:4.943432 | time_tau_range_util:0.000025 | film_gamma_strength:0.112123 | film_beta_strength:0.014441 | factor_gate_mean:0.999667 | factor_gate_std:0.028748 | factor_gate_entropy:0.945594 | factor_gate_topk_mass_5:0.095901 | factor_gate_topk_mass_10:0.173571 | router_layer_0_time_ratio:0.579560 | router_layer_0_factor_ratio:0.420440 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.951570 | router_layer_0_logit_margin:0.457693 | router_layer_1_time_ratio:0.748736 | router_layer_1_factor_ratio:0.251264 | router_layer_1_collapse_ratio:0.013618 | router_layer_1_entropy_norm:0.785158 | router_layer_1_logit_margin:1.150599 | loss_total:1.345475 | loss_main:1.345392 | loss_listmle:4.700756 | loss_mse:1.345392 | loss_ic:-0.167729 | loss_aux:0.000083 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.190796 | label_std:1.165908 | score_label_std_ratio:0.165345 | ic_pearson_batch:0.167730 | ic_raw:0.167730 | rank_ic_batch:0.165204 | rank_ic:0.165204 | gate_entropy:0.601904 | time_ratio:0.664148 | grad_norm:4.306567 | grad_norm_other:1.581927 | grad_norm_time_embedding:2.802061 | grad_norm_factor_film:0.086984 | grad_norm_regime_encoder:0.749446 | grad_norm_router:0.990474 | grad_norm_time_expert:0.588595 | grad_norm_factor_expert:0.584023 | grad_norm_pooling_head:2.013342 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.500000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000027
+| Valid 20 | time_tau:4.936506 | time_half_life:3.421726 | time_tau_std:0.000000 | time_tau_p10:4.936506 | time_tau_p90:4.936506 | time_tau_range_util:0.000000 | film_gamma_strength:0.109441 | film_beta_strength:0.014038 | factor_gate_mean:0.999524 | factor_gate_std:0.028773 | factor_gate_entropy:0.946368 | factor_gate_topk_mass_5:0.095043 | factor_gate_topk_mass_10:0.171583 | router_layer_0_time_ratio:0.685870 | router_layer_0_factor_ratio:0.314130 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.879224 | router_layer_0_logit_margin:0.819433 | router_layer_1_time_ratio:0.749310 | router_layer_1_factor_ratio:0.250690 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.802790 | router_layer_1_logit_margin:1.110860 | loss_total:0.057747 | loss_main:0.057698 | loss_listmle:4.725094 | loss_mse:0.057698 | loss_ic:-0.062444 | loss_aux:0.000048 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.222738 | label_std:0.045755 | score_label_std_ratio:5.083157 | gate_entropy:0.582942 | time_ratio:0.717590 | ic_pearson_daily:0.062450 | rank_ic_daily:0.076328 | ic_raw:0.062450 | rank_ic:0.076328
+| Train 21 | time_tau:4.940063 | time_half_life:3.424191 | time_tau_std:0.000895 | time_tau_p10:4.939359 | time_tau_p90:4.940806 | time_tau_range_util:0.000029 | film_gamma_strength:0.114000 | film_beta_strength:0.014753 | factor_gate_mean:0.999582 | factor_gate_std:0.029264 | factor_gate_entropy:0.945613 | factor_gate_topk_mass_5:0.095518 | factor_gate_topk_mass_10:0.172750 | router_layer_0_time_ratio:0.583187 | router_layer_0_factor_ratio:0.416813 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.951943 | router_layer_0_logit_margin:0.456554 | router_layer_1_time_ratio:0.749879 | router_layer_1_factor_ratio:0.250121 | router_layer_1_collapse_ratio:0.013882 | router_layer_1_entropy_norm:0.788414 | router_layer_1_logit_margin:1.144943 | loss_total:1.339376 | loss_main:1.339306 | loss_listmle:4.700715 | loss_mse:1.339306 | loss_ic:-0.167079 | loss_aux:0.000070 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.192006 | label_std:1.163333 | score_label_std_ratio:0.166606 | ic_pearson_batch:0.167080 | ic_raw:0.167080 | rank_ic_batch:0.165672 | rank_ic:0.165672 | gate_entropy:0.603162 | time_ratio:0.666533 | grad_norm:4.255072 | grad_norm_other:1.589213 | grad_norm_time_embedding:2.745707 | grad_norm_factor_film:0.087037 | grad_norm_regime_encoder:0.759413 | grad_norm_router:0.982050 | grad_norm_time_expert:0.598986 | grad_norm_factor_expert:0.571215 | grad_norm_pooling_head:1.998190 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000025
+| Valid 21 | time_tau:4.936361 | time_half_life:3.421625 | time_tau_std:0.000000 | time_tau_p10:4.936361 | time_tau_p90:4.936361 | time_tau_range_util:0.000000 | film_gamma_strength:0.110278 | film_beta_strength:0.014410 | factor_gate_mean:0.999763 | factor_gate_std:0.028722 | factor_gate_entropy:0.946269 | factor_gate_topk_mass_5:0.094838 | factor_gate_topk_mass_10:0.171396 | router_layer_0_time_ratio:0.678594 | router_layer_0_factor_ratio:0.321406 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.881582 | router_layer_0_logit_margin:0.805063 | router_layer_1_time_ratio:0.762226 | router_layer_1_factor_ratio:0.237774 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.781049 | router_layer_1_logit_margin:1.184334 | loss_total:0.059011 | loss_main:0.058975 | loss_listmle:4.724130 | loss_mse:0.058975 | loss_ic:-0.063762 | loss_aux:0.000036 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.214128 | label_std:0.045755 | score_label_std_ratio:4.882681 | gate_entropy:0.576224 | time_ratio:0.720410 | ic_pearson_daily:0.063767 | rank_ic_daily:0.077288 | ic_raw:0.063767 | rank_ic:0.077288
+| Train 22 | time_tau:4.938595 | time_half_life:3.423173 | time_tau_std:0.000958 | time_tau_p10:4.937842 | time_tau_p90:4.939411 | time_tau_range_util:0.000032 | film_gamma_strength:0.115955 | film_beta_strength:0.015064 | factor_gate_mean:0.999590 | factor_gate_std:0.029652 | factor_gate_entropy:0.945605 | factor_gate_topk_mass_5:0.095207 | factor_gate_topk_mass_10:0.172484 | router_layer_0_time_ratio:0.582718 | router_layer_0_factor_ratio:0.417282 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.947938 | router_layer_0_logit_margin:0.476039 | router_layer_1_time_ratio:0.736712 | router_layer_1_factor_ratio:0.263288 | router_layer_1_collapse_ratio:0.010184 | router_layer_1_entropy_norm:0.807456 | router_layer_1_logit_margin:1.075912 | loss_total:1.342795 | loss_main:1.342712 | loss_listmle:4.701528 | loss_mse:1.342712 | loss_ic:-0.167183 | loss_aux:0.000083 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.194294 | label_std:1.164803 | score_label_std_ratio:0.168397 | ic_pearson_batch:0.167185 | ic_raw:0.167185 | rank_ic_batch:0.164952 | rank_ic:0.164952 | gate_entropy:0.608373 | time_ratio:0.659715 | grad_norm:4.626989 | grad_norm_other:1.701282 | grad_norm_time_embedding:3.115212 | grad_norm_factor_film:0.092594 | grad_norm_regime_encoder:0.820868 | grad_norm_router:1.041741 | grad_norm_time_expert:0.633934 | grad_norm_factor_expert:0.629882 | grad_norm_pooling_head:2.033525 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000023
+| Valid 22 | time_tau:4.932325 | time_half_life:3.418827 | time_tau_std:0.000000 | time_tau_p10:4.932325 | time_tau_p90:4.932325 | time_tau_range_util:0.000000 | film_gamma_strength:0.112123 | film_beta_strength:0.014700 | factor_gate_mean:0.999813 | factor_gate_std:0.029058 | factor_gate_entropy:0.945771 | factor_gate_topk_mass_5:0.095025 | factor_gate_topk_mass_10:0.171723 | router_layer_0_time_ratio:0.678954 | router_layer_0_factor_ratio:0.321046 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.884358 | router_layer_0_logit_margin:0.798828 | router_layer_1_time_ratio:0.767981 | router_layer_1_factor_ratio:0.232019 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.770089 | router_layer_1_logit_margin:1.219390 | loss_total:0.061304 | loss_main:0.061266 | loss_listmle:4.724705 | loss_mse:0.061266 | loss_ic:-0.063637 | loss_aux:0.000037 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.218413 | label_std:0.045755 | score_label_std_ratio:4.973158 | gate_entropy:0.573388 | time_ratio:0.723468 | ic_pearson_daily:0.063645 | rank_ic_daily:0.076417 | ic_raw:0.063645 | rank_ic:0.076417
+| Train 23 | time_tau:4.936605 | time_half_life:3.421794 | time_tau_std:0.001047 | time_tau_p10:4.935749 | time_tau_p90:4.937458 | time_tau_range_util:0.000035 | film_gamma_strength:0.117698 | film_beta_strength:0.015392 | factor_gate_mean:0.999541 | factor_gate_std:0.029958 | factor_gate_entropy:0.945382 | factor_gate_topk_mass_5:0.095392 | factor_gate_topk_mass_10:0.172817 | router_layer_0_time_ratio:0.582443 | router_layer_0_factor_ratio:0.417557 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.948631 | router_layer_0_logit_margin:0.476439 | router_layer_1_time_ratio:0.731635 | router_layer_1_factor_ratio:0.268365 | router_layer_1_collapse_ratio:0.008560 | router_layer_1_entropy_norm:0.816812 | router_layer_1_logit_margin:1.044372 | loss_total:1.342087 | loss_main:1.342011 | loss_listmle:4.700324 | loss_mse:1.342011 | loss_ic:-0.171545 | loss_aux:0.000076 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.197843 | label_std:1.165605 | score_label_std_ratio:0.171344 | ic_pearson_batch:0.171546 | ic_raw:0.171546 | rank_ic_batch:0.168746 | rank_ic:0.168746 | gate_entropy:0.611856 | time_ratio:0.657039 | grad_norm:4.654513 | grad_norm_other:1.745408 | grad_norm_time_embedding:3.170322 | grad_norm_factor_film:0.094304 | grad_norm_regime_encoder:0.829218 | grad_norm_router:1.036096 | grad_norm_time_expert:0.645959 | grad_norm_factor_expert:0.634201 | grad_norm_pooling_head:2.004327 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.500000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000021
+| Valid 23 | time_tau:4.928086 | time_half_life:3.415889 | time_tau_std:0.000000 | time_tau_p10:4.928086 | time_tau_p90:4.928086 | time_tau_range_util:0.000000 | film_gamma_strength:0.113996 | film_beta_strength:0.014965 | factor_gate_mean:0.999514 | factor_gate_std:0.029837 | factor_gate_entropy:0.946238 | factor_gate_topk_mass_5:0.094928 | factor_gate_topk_mass_10:0.171317 | router_layer_0_time_ratio:0.670458 | router_layer_0_factor_ratio:0.329542 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.894849 | router_layer_0_logit_margin:0.755874 | router_layer_1_time_ratio:0.764866 | router_layer_1_factor_ratio:0.235134 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.776072 | router_layer_1_logit_margin:1.201048 | loss_total:0.055356 | loss_main:0.055321 | loss_listmle:4.725466 | loss_mse:0.055321 | loss_ic:-0.063385 | loss_aux:0.000035 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.205909 | label_std:0.045755 | score_label_std_ratio:4.682677 | gate_entropy:0.579097 | time_ratio:0.717662 | ic_pearson_daily:0.063391 | rank_ic_daily:0.073703 | ic_raw:0.063391 | rank_ic:0.073703
+| Train 24 | time_tau:4.933064 | time_half_life:3.419339 | time_tau_std:0.001120 | time_tau_p10:4.932130 | time_tau_p90:4.934023 | time_tau_range_util:0.000038 | film_gamma_strength:0.118450 | film_beta_strength:0.015555 | factor_gate_mean:0.999581 | factor_gate_std:0.030192 | factor_gate_entropy:0.945214 | factor_gate_topk_mass_5:0.095533 | factor_gate_topk_mass_10:0.172948 | router_layer_0_time_ratio:0.582681 | router_layer_0_factor_ratio:0.417319 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.950049 | router_layer_0_logit_margin:0.467162 | router_layer_1_time_ratio:0.727235 | router_layer_1_factor_ratio:0.272765 | router_layer_1_collapse_ratio:0.008291 | router_layer_1_entropy_norm:0.823011 | router_layer_1_logit_margin:1.021469 | loss_total:1.340796 | loss_main:1.340719 | loss_listmle:4.700301 | loss_mse:1.340719 | loss_ic:-0.172577 | loss_aux:0.000077 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.199303 | label_std:1.165140 | score_label_std_ratio:0.172764 | ic_pearson_batch:0.172578 | ic_raw:0.172578 | rank_ic_batch:0.170609 | rank_ic:0.170609 | gate_entropy:0.614496 | time_ratio:0.654958 | grad_norm:4.797608 | grad_norm_other:1.783646 | grad_norm_time_embedding:3.308295 | grad_norm_factor_film:0.095389 | grad_norm_regime_encoder:0.831908 | grad_norm_router:1.082083 | grad_norm_time_expert:0.669382 | grad_norm_factor_expert:0.661579 | grad_norm_pooling_head:2.027848 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000019
+| Valid 24 | time_tau:4.927764 | time_half_life:3.415666 | time_tau_std:0.000000 | time_tau_p10:4.927764 | time_tau_p90:4.927764 | time_tau_range_util:0.000000 | film_gamma_strength:0.113897 | film_beta_strength:0.015027 | factor_gate_mean:0.999904 | factor_gate_std:0.029618 | factor_gate_entropy:0.945562 | factor_gate_topk_mass_5:0.095101 | factor_gate_topk_mass_10:0.171740 | router_layer_0_time_ratio:0.673647 | router_layer_0_factor_ratio:0.326353 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.888284 | router_layer_0_logit_margin:0.780002 | router_layer_1_time_ratio:0.750977 | router_layer_1_factor_ratio:0.249023 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.798815 | router_layer_1_logit_margin:1.126230 | loss_total:0.059259 | loss_main:0.059215 | loss_listmle:4.727965 | loss_mse:0.059215 | loss_ic:-0.063610 | loss_aux:0.000044 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.213468 | label_std:0.045755 | score_label_std_ratio:4.848525 | gate_entropy:0.584704 | time_ratio:0.712312 | ic_pearson_daily:0.063618 | rank_ic_daily:0.073843 | ic_raw:0.063618 | rank_ic:0.073843
+| Train 25 | time_tau:4.930951 | time_half_life:3.417874 | time_tau_std:0.001187 | time_tau_p10:4.929914 | time_tau_p90:4.931966 | time_tau_range_util:0.000041 | film_gamma_strength:0.118962 | film_beta_strength:0.015743 | factor_gate_mean:0.999587 | factor_gate_std:0.030292 | factor_gate_entropy:0.945230 | factor_gate_topk_mass_5:0.095133 | factor_gate_topk_mass_10:0.172579 | router_layer_0_time_ratio:0.582559 | router_layer_0_factor_ratio:0.417441 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.949516 | router_layer_0_logit_margin:0.468265 | router_layer_1_time_ratio:0.729218 | router_layer_1_factor_ratio:0.270782 | router_layer_1_collapse_ratio:0.007642 | router_layer_1_entropy_norm:0.822673 | router_layer_1_logit_margin:1.027680 | loss_total:1.343727 | loss_main:1.343653 | loss_listmle:4.700410 | loss_mse:1.343653 | loss_ic:-0.175417 | loss_aux:0.000074 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.199859 | label_std:1.167096 | score_label_std_ratio:0.173059 | ic_pearson_batch:0.175418 | ic_raw:0.175418 | rank_ic_batch:0.173057 | rank_ic:0.173057 | gate_entropy:0.614194 | time_ratio:0.655888 | grad_norm:4.968906 | grad_norm_other:1.863622 | grad_norm_time_embedding:3.484241 | grad_norm_factor_film:0.098710 | grad_norm_regime_encoder:0.867045 | grad_norm_router:1.106199 | grad_norm_time_expert:0.700545 | grad_norm_factor_expert:0.685775 | grad_norm_pooling_head:2.016362 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000017
+| Valid 25 | time_tau:4.924208 | time_half_life:3.413201 | time_tau_std:0.000000 | time_tau_p10:4.924207 | time_tau_p90:4.924207 | time_tau_range_util:0.000000 | film_gamma_strength:0.114878 | film_beta_strength:0.015339 | factor_gate_mean:1.000253 | factor_gate_std:0.029556 | factor_gate_entropy:0.945266 | factor_gate_topk_mass_5:0.095262 | factor_gate_topk_mass_10:0.172136 | router_layer_0_time_ratio:0.670278 | router_layer_0_factor_ratio:0.329722 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.892296 | router_layer_0_logit_margin:0.762162 | router_layer_1_time_ratio:0.683835 | router_layer_1_factor_ratio:0.316165 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.889162 | router_layer_1_logit_margin:0.794745 | loss_total:0.091210 | loss_main:0.091079 | loss_listmle:4.734914 | loss_mse:0.091079 | loss_ic:-0.062507 | loss_aux:0.000132 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.282905 | label_std:0.045755 | score_label_std_ratio:6.421948 | gate_entropy:0.617406 | time_ratio:0.677057 | ic_pearson_daily:0.062511 | rank_ic_daily:0.078120 | ic_raw:0.062511 | rank_ic:0.078120
+| Train 26 | time_tau:4.929852 | time_half_life:3.417113 | time_tau_std:0.001227 | time_tau_p10:4.928791 | time_tau_p90:4.930929 | time_tau_range_util:0.000043 | film_gamma_strength:0.120345 | film_beta_strength:0.016006 | factor_gate_mean:0.999573 | factor_gate_std:0.030612 | factor_gate_entropy:0.945383 | factor_gate_topk_mass_5:0.094907 | factor_gate_topk_mass_10:0.172203 | router_layer_0_time_ratio:0.579796 | router_layer_0_factor_ratio:0.420204 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.951553 | router_layer_0_logit_margin:0.456666 | router_layer_1_time_ratio:0.722759 | router_layer_1_factor_ratio:0.277241 | router_layer_1_collapse_ratio:0.006950 | router_layer_1_entropy_norm:0.832537 | router_layer_1_logit_margin:0.992282 | loss_total:1.340966 | loss_main:1.340889 | loss_listmle:4.699686 | loss_mse:1.340889 | loss_ic:-0.177208 | loss_aux:0.000077 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.204402 | label_std:1.166452 | score_label_std_ratio:0.176965 | ic_pearson_batch:0.177208 | ic_raw:0.177208 | rank_ic_batch:0.174928 | rank_ic:0.174928 | gate_entropy:0.618319 | time_ratio:0.651278 | grad_norm:5.201634 | grad_norm_other:1.926564 | grad_norm_time_embedding:3.745352 | grad_norm_factor_film:0.101006 | grad_norm_regime_encoder:0.892540 | grad_norm_router:1.126117 | grad_norm_time_expert:0.736814 | grad_norm_factor_expert:0.724732 | grad_norm_pooling_head:2.009817 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000015
+| Valid 26 | time_tau:4.924069 | time_half_life:3.413104 | time_tau_std:0.000000 | time_tau_p10:4.924069 | time_tau_p90:4.924069 | time_tau_range_util:0.000000 | film_gamma_strength:0.115656 | film_beta_strength:0.015479 | factor_gate_mean:1.000293 | factor_gate_std:0.029876 | factor_gate_entropy:0.945594 | factor_gate_topk_mass_5:0.094729 | factor_gate_topk_mass_10:0.171387 | router_layer_0_time_ratio:0.669075 | router_layer_0_factor_ratio:0.330925 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.891920 | router_layer_0_logit_margin:0.763621 | router_layer_1_time_ratio:0.744426 | router_layer_1_factor_ratio:0.255574 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.809485 | router_layer_1_logit_margin:1.090370 | loss_total:0.070636 | loss_main:0.070593 | loss_listmle:4.730695 | loss_mse:0.070593 | loss_ic:-0.063680 | loss_aux:0.000043 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.236267 | label_std:0.045755 | score_label_std_ratio:5.371129 | gate_entropy:0.589662 | time_ratio:0.706750 | ic_pearson_daily:0.063686 | rank_ic_daily:0.075909 | ic_raw:0.063686 | rank_ic:0.075909
+| Train 27 | time_tau:4.928351 | time_half_life:3.416073 | time_tau_std:0.001274 | time_tau_p10:4.927261 | time_tau_p90:4.929465 | time_tau_range_util:0.000045 | film_gamma_strength:0.121263 | film_beta_strength:0.016180 | factor_gate_mean:0.999545 | factor_gate_std:0.030780 | factor_gate_entropy:0.945358 | factor_gate_topk_mass_5:0.094824 | factor_gate_topk_mass_10:0.172178 | router_layer_0_time_ratio:0.583365 | router_layer_0_factor_ratio:0.416635 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.947887 | router_layer_0_logit_margin:0.475193 | router_layer_1_time_ratio:0.719720 | router_layer_1_factor_ratio:0.280280 | router_layer_1_collapse_ratio:0.004604 | router_layer_1_entropy_norm:0.836512 | router_layer_1_logit_margin:0.976536 | loss_total:1.340568 | loss_main:1.340493 | loss_listmle:4.699686 | loss_mse:1.340493 | loss_ic:-0.178991 | loss_aux:0.000075 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.204827 | label_std:1.166736 | score_label_std_ratio:0.177201 | ic_pearson_batch:0.178993 | ic_raw:0.178993 | rank_ic_batch:0.177289 | rank_ic:0.177289 | gate_entropy:0.618426 | time_ratio:0.651542 | grad_norm:5.370152 | grad_norm_other:1.982467 | grad_norm_time_embedding:3.891929 | grad_norm_factor_film:0.103360 | grad_norm_regime_encoder:0.926219 | grad_norm_router:1.184716 | grad_norm_time_expert:0.763786 | grad_norm_factor_expert:0.756350 | grad_norm_pooling_head:2.036348 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000013
+| Valid 27 | time_tau:4.919950 | time_half_life:3.410250 | time_tau_std:0.000000 | time_tau_p10:4.919950 | time_tau_p90:4.919950 | time_tau_range_util:0.000000 | film_gamma_strength:0.117556 | film_beta_strength:0.015650 | factor_gate_mean:1.000089 | factor_gate_std:0.030603 | factor_gate_entropy:0.945610 | factor_gate_topk_mass_5:0.094978 | factor_gate_topk_mass_10:0.171590 | router_layer_0_time_ratio:0.667067 | router_layer_0_factor_ratio:0.332933 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.893387 | router_layer_0_logit_margin:0.756349 | router_layer_1_time_ratio:0.744977 | router_layer_1_factor_ratio:0.255023 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.808903 | router_layer_1_logit_margin:1.092656 | loss_total:0.070598 | loss_main:0.070554 | loss_listmle:4.734588 | loss_mse:0.070554 | loss_ic:-0.063091 | loss_aux:0.000044 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.233721 | label_std:0.045755 | score_label_std_ratio:5.307516 | gate_entropy:0.589969 | time_ratio:0.706022 | ic_pearson_daily:0.063098 | rank_ic_daily:0.072392 | ic_raw:0.063098 | rank_ic:0.072392
+| Train 28 | time_tau:4.926104 | time_half_life:3.414515 | time_tau_std:0.001325 | time_tau_p10:4.924927 | time_tau_p90:4.927320 | time_tau_range_util:0.000048 | film_gamma_strength:0.122480 | film_beta_strength:0.016381 | factor_gate_mean:0.999589 | factor_gate_std:0.031175 | factor_gate_entropy:0.945407 | factor_gate_topk_mass_5:0.094847 | factor_gate_topk_mass_10:0.172157 | router_layer_0_time_ratio:0.582677 | router_layer_0_factor_ratio:0.417323 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946559 | router_layer_0_logit_margin:0.481279 | router_layer_1_time_ratio:0.725889 | router_layer_1_factor_ratio:0.274111 | router_layer_1_collapse_ratio:0.004429 | router_layer_1_entropy_norm:0.829408 | router_layer_1_logit_margin:1.004625 | loss_total:1.333106 | loss_main:1.333037 | loss_listmle:4.699651 | loss_mse:1.333037 | loss_ic:-0.180419 | loss_aux:0.000069 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.208810 | label_std:1.163764 | score_label_std_ratio:0.181230 | ic_pearson_batch:0.180420 | ic_raw:0.180420 | rank_ic_batch:0.178216 | rank_ic:0.178216 | gate_entropy:0.615503 | time_ratio:0.654283 | grad_norm:5.512343 | grad_norm_other:2.051570 | grad_norm_time_embedding:4.026569 | grad_norm_factor_film:0.105573 | grad_norm_regime_encoder:0.936866 | grad_norm_router:1.200791 | grad_norm_time_expert:0.785937 | grad_norm_factor_expert:0.769672 | grad_norm_pooling_head:2.057113 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000011
+| Valid 28 | time_tau:4.919514 | time_half_life:3.409948 | time_tau_std:0.000000 | time_tau_p10:4.919514 | time_tau_p90:4.919514 | time_tau_range_util:0.000000 | film_gamma_strength:0.119914 | film_beta_strength:0.015838 | factor_gate_mean:1.000030 | factor_gate_std:0.031128 | factor_gate_entropy:0.945386 | factor_gate_topk_mass_5:0.095171 | factor_gate_topk_mass_10:0.171832 | router_layer_0_time_ratio:0.677431 | router_layer_0_factor_ratio:0.322569 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.883150 | router_layer_0_logit_margin:0.799008 | router_layer_1_time_ratio:0.732365 | router_layer_1_factor_ratio:0.267635 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.828858 | router_layer_1_logit_margin:1.023848 | loss_total:0.070719 | loss_main:0.070669 | loss_listmle:4.733439 | loss_mse:0.070669 | loss_ic:-0.063737 | loss_aux:0.000050 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.245865 | label_std:0.045755 | score_label_std_ratio:5.599201 | gate_entropy:0.593337 | time_ratio:0.704898 | ic_pearson_daily:0.063744 | rank_ic_daily:0.077155 | ic_raw:0.063744 | rank_ic:0.077155
+| Train 29 | time_tau:4.926169 | time_half_life:3.414560 | time_tau_std:0.001364 | time_tau_p10:4.924939 | time_tau_p90:4.927426 | time_tau_range_util:0.000050 | film_gamma_strength:0.123903 | film_beta_strength:0.016484 | factor_gate_mean:0.999524 | factor_gate_std:0.031482 | factor_gate_entropy:0.945386 | factor_gate_topk_mass_5:0.094770 | factor_gate_topk_mass_10:0.172113 | router_layer_0_time_ratio:0.585077 | router_layer_0_factor_ratio:0.414923 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946892 | router_layer_0_logit_margin:0.481888 | router_layer_1_time_ratio:0.718691 | router_layer_1_factor_ratio:0.281309 | router_layer_1_collapse_ratio:0.004806 | router_layer_1_entropy_norm:0.838883 | router_layer_1_logit_margin:0.969884 | loss_total:1.334675 | loss_main:1.334600 | loss_listmle:4.699088 | loss_mse:1.334600 | loss_ic:-0.182405 | loss_aux:0.000074 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.209276 | label_std:1.164749 | score_label_std_ratio:0.181438 | ic_pearson_batch:0.182406 | ic_raw:0.182406 | rank_ic_batch:0.179936 | rank_ic:0.179936 | gate_entropy:0.618902 | time_ratio:0.651884 | grad_norm:5.681013 | grad_norm_other:2.092927 | grad_norm_time_embedding:4.225874 | grad_norm_factor_film:0.106375 | grad_norm_regime_encoder:0.944250 | grad_norm_router:1.211093 | grad_norm_time_expert:0.805685 | grad_norm_factor_expert:0.803405 | grad_norm_pooling_head:2.031050 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000010
+| Valid 29 | time_tau:4.919527 | time_half_life:3.409956 | time_tau_std:0.000000 | time_tau_p10:4.919527 | time_tau_p90:4.919527 | time_tau_range_util:0.000000 | film_gamma_strength:0.119788 | film_beta_strength:0.015992 | factor_gate_mean:1.000224 | factor_gate_std:0.030992 | factor_gate_entropy:0.945226 | factor_gate_topk_mass_5:0.095135 | factor_gate_topk_mass_10:0.172015 | router_layer_0_time_ratio:0.667320 | router_layer_0_factor_ratio:0.332680 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.894232 | router_layer_0_logit_margin:0.751971 | router_layer_1_time_ratio:0.735134 | router_layer_1_factor_ratio:0.264866 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.823105 | router_layer_1_logit_margin:1.042186 | loss_total:0.065168 | loss_main:0.065120 | loss_listmle:4.731430 | loss_mse:0.065120 | loss_ic:-0.062828 | loss_aux:0.000048 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.230069 | label_std:0.045755 | score_label_std_ratio:5.227259 | gate_entropy:0.595184 | time_ratio:0.701227 | ic_pearson_daily:0.062834 | rank_ic_daily:0.072786 | ic_raw:0.062834 | rank_ic:0.072786
+| Train 30 | time_tau:4.925526 | time_half_life:3.414114 | time_tau_std:0.001406 | time_tau_p10:4.924260 | time_tau_p90:4.926835 | time_tau_range_util:0.000052 | film_gamma_strength:0.124287 | film_beta_strength:0.016579 | factor_gate_mean:0.999529 | factor_gate_std:0.031565 | factor_gate_entropy:0.945473 | factor_gate_topk_mass_5:0.094671 | factor_gate_topk_mass_10:0.171992 | router_layer_0_time_ratio:0.586759 | router_layer_0_factor_ratio:0.413241 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946373 | router_layer_0_logit_margin:0.484049 | router_layer_1_time_ratio:0.729654 | router_layer_1_factor_ratio:0.270346 | router_layer_1_collapse_ratio:0.005096 | router_layer_1_entropy_norm:0.824846 | router_layer_1_logit_margin:1.022418 | loss_total:1.336133 | loss_main:1.336068 | loss_listmle:4.698864 | loss_mse:1.336068 | loss_ic:-0.183766 | loss_aux:0.000065 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.211666 | label_std:1.166166 | score_label_std_ratio:0.183188 | ic_pearson_batch:0.183768 | ic_raw:0.183768 | rank_ic_batch:0.181703 | rank_ic:0.181703 | gate_entropy:0.613858 | time_ratio:0.658206 | grad_norm:5.784617 | grad_norm_other:2.176880 | grad_norm_time_embedding:4.293084 | grad_norm_factor_film:0.110236 | grad_norm_regime_encoder:0.969944 | grad_norm_router:1.249488 | grad_norm_time_expert:0.838092 | grad_norm_factor_expert:0.817764 | grad_norm_pooling_head:2.045061 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000008
+| Valid 30 | time_tau:4.915605 | time_half_life:3.407238 | time_tau_std:0.000000 | time_tau_p10:4.915605 | time_tau_p90:4.915605 | time_tau_range_util:0.000000 | film_gamma_strength:0.120795 | film_beta_strength:0.016132 | factor_gate_mean:1.000331 | factor_gate_std:0.031270 | factor_gate_entropy:0.945386 | factor_gate_topk_mass_5:0.095023 | factor_gate_topk_mass_10:0.171848 | router_layer_0_time_ratio:0.674546 | router_layer_0_factor_ratio:0.325454 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.886597 | router_layer_0_logit_margin:0.784139 | router_layer_1_time_ratio:0.757271 | router_layer_1_factor_ratio:0.242729 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.790924 | router_layer_1_logit_margin:1.154031 | loss_total:0.077338 | loss_main:0.077300 | loss_listmle:4.736956 | loss_mse:0.077300 | loss_ic:-0.063117 | loss_aux:0.000038 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.255563 | label_std:0.045755 | score_label_std_ratio:5.817529 | gate_entropy:0.581385 | time_ratio:0.715908 | ic_pearson_daily:0.063124 | rank_ic_daily:0.075498 | ic_raw:0.063124 | rank_ic:0.075498
+| Train 31 | time_tau:4.922553 | time_half_life:3.412053 | time_tau_std:0.001423 | time_tau_p10:4.921241 | time_tau_p90:4.923848 | time_tau_range_util:0.000053 | film_gamma_strength:0.125126 | film_beta_strength:0.016744 | factor_gate_mean:0.999494 | factor_gate_std:0.031808 | factor_gate_entropy:0.945615 | factor_gate_topk_mass_5:0.094489 | factor_gate_topk_mass_10:0.171675 | router_layer_0_time_ratio:0.585950 | router_layer_0_factor_ratio:0.414050 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946076 | router_layer_0_logit_margin:0.485686 | router_layer_1_time_ratio:0.719520 | router_layer_1_factor_ratio:0.280480 | router_layer_1_collapse_ratio:0.003940 | router_layer_1_entropy_norm:0.838239 | router_layer_1_logit_margin:0.972048 | loss_total:1.335632 | loss_main:1.335564 | loss_listmle:4.698723 | loss_mse:1.335564 | loss_ic:-0.185032 | loss_aux:0.000069 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.212880 | label_std:1.165887 | score_label_std_ratio:0.184434 | ic_pearson_batch:0.185033 | ic_raw:0.185033 | rank_ic_batch:0.182614 | rank_ic:0.182614 | gate_entropy:0.618396 | time_ratio:0.652735 | grad_norm:5.931618 | grad_norm_other:2.230831 | grad_norm_time_embedding:4.430039 | grad_norm_factor_film:0.110594 | grad_norm_regime_encoder:0.973734 | grad_norm_router:1.245285 | grad_norm_time_expert:0.851906 | grad_norm_factor_expert:0.835894 | grad_norm_pooling_head:2.091831 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000007
+| Valid 31 | time_tau:4.915599 | time_half_life:3.407233 | time_tau_std:0.000000 | time_tau_p10:4.915599 | time_tau_p90:4.915599 | time_tau_range_util:0.000000 | film_gamma_strength:0.120296 | film_beta_strength:0.016257 | factor_gate_mean:1.000364 | factor_gate_std:0.031031 | factor_gate_entropy:0.945284 | factor_gate_topk_mass_5:0.095098 | factor_gate_topk_mass_10:0.172057 | router_layer_0_time_ratio:0.676239 | router_layer_0_factor_ratio:0.323761 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.884470 | router_layer_0_logit_margin:0.793686 | router_layer_1_time_ratio:0.751593 | router_layer_1_factor_ratio:0.248407 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.800444 | router_layer_1_logit_margin:1.122294 | loss_total:0.089594 | loss_main:0.089553 | loss_listmle:4.744058 | loss_mse:0.089553 | loss_ic:-0.063568 | loss_aux:0.000041 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.279770 | label_std:0.045755 | score_label_std_ratio:6.368424 | gate_entropy:0.583946 | time_ratio:0.713916 | ic_pearson_daily:0.063574 | rank_ic_daily:0.075544 | ic_raw:0.063574 | rank_ic:0.075544
+| Train 32 | time_tau:4.922762 | time_half_life:3.412198 | time_tau_std:0.001447 | time_tau_p10:4.921417 | time_tau_p90:4.924115 | time_tau_range_util:0.000055 | film_gamma_strength:0.125103 | film_beta_strength:0.016846 | factor_gate_mean:0.999491 | factor_gate_std:0.031740 | factor_gate_entropy:0.945661 | factor_gate_topk_mass_5:0.094513 | factor_gate_topk_mass_10:0.171725 | router_layer_0_time_ratio:0.585558 | router_layer_0_factor_ratio:0.414442 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.945335 | router_layer_0_logit_margin:0.489700 | router_layer_1_time_ratio:0.724384 | router_layer_1_factor_ratio:0.275616 | router_layer_1_collapse_ratio:0.004167 | router_layer_1_entropy_norm:0.832200 | router_layer_1_logit_margin:0.995801 | loss_total:1.333383 | loss_main:1.333316 | loss_listmle:4.699192 | loss_mse:1.333316 | loss_ic:-0.185501 | loss_aux:0.000067 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.216586 | label_std:1.165567 | score_label_std_ratio:0.187626 | ic_pearson_batch:0.185502 | ic_raw:0.185502 | rank_ic_batch:0.182567 | rank_ic:0.182567 | gate_entropy:0.616047 | time_ratio:0.654971 | grad_norm:6.138459 | grad_norm_other:2.269525 | grad_norm_time_embedding:4.663466 | grad_norm_factor_film:0.113170 | grad_norm_regime_encoder:1.004413 | grad_norm_router:1.288767 | grad_norm_time_expert:0.866777 | grad_norm_factor_expert:0.874494 | grad_norm_pooling_head:2.040690 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000005
+| Valid 32 | time_tau:4.915624 | time_half_life:3.407251 | time_tau_std:0.000000 | time_tau_p10:4.915624 | time_tau_p90:4.915624 | time_tau_range_util:0.000000 | film_gamma_strength:0.121219 | film_beta_strength:0.016265 | factor_gate_mean:1.000393 | factor_gate_std:0.031269 | factor_gate_entropy:0.945305 | factor_gate_topk_mass_5:0.095100 | factor_gate_topk_mass_10:0.172057 | router_layer_0_time_ratio:0.674774 | router_layer_0_factor_ratio:0.325226 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.885573 | router_layer_0_logit_margin:0.788894 | router_layer_1_time_ratio:0.743606 | router_layer_1_factor_ratio:0.256394 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.812353 | router_layer_1_logit_margin:1.081741 | loss_total:0.067323 | loss_main:0.067280 | loss_listmle:4.732360 | loss_mse:0.067280 | loss_ic:-0.063277 | loss_aux:0.000043 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.240672 | label_std:0.045755 | score_label_std_ratio:5.476964 | gate_entropy:0.588456 | time_ratio:0.709190 | ic_pearson_daily:0.063284 | rank_ic_daily:0.075425 | ic_raw:0.063284 | rank_ic:0.075425
+| Train 33 | time_tau:4.921874 | time_half_life:3.411583 | time_tau_std:0.001460 | time_tau_p10:4.920506 | time_tau_p90:4.923227 | time_tau_range_util:0.000055 | film_gamma_strength:0.125392 | film_beta_strength:0.016845 | factor_gate_mean:0.999503 | factor_gate_std:0.031783 | factor_gate_entropy:0.945752 | factor_gate_topk_mass_5:0.094381 | factor_gate_topk_mass_10:0.171560 | router_layer_0_time_ratio:0.585954 | router_layer_0_factor_ratio:0.414047 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.945793 | router_layer_0_logit_margin:0.487603 | router_layer_1_time_ratio:0.721692 | router_layer_1_factor_ratio:0.278308 | router_layer_1_collapse_ratio:0.004107 | router_layer_1_entropy_norm:0.836634 | router_layer_1_logit_margin:0.980665 | loss_total:1.331187 | loss_main:1.331121 | loss_listmle:4.698478 | loss_mse:1.331121 | loss_ic:-0.186239 | loss_aux:0.000065 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.214123 | label_std:1.164638 | score_label_std_ratio:0.185619 | ic_pearson_batch:0.186240 | ic_raw:0.186240 | rank_ic_batch:0.184172 | rank_ic:0.184172 | gate_entropy:0.617742 | time_ratio:0.653823 | grad_norm:6.110080 | grad_norm_other:2.278437 | grad_norm_time_embedding:4.628100 | grad_norm_factor_film:0.112182 | grad_norm_regime_encoder:1.001726 | grad_norm_router:1.276703 | grad_norm_time_expert:0.872080 | grad_norm_factor_expert:0.868063 | grad_norm_pooling_head:2.040994 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:1.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000004
+| Valid 33 | time_tau:4.911708 | time_half_life:3.404537 | time_tau_std:0.000000 | time_tau_p10:4.911708 | time_tau_p90:4.911708 | time_tau_range_util:0.000000 | film_gamma_strength:0.121018 | film_beta_strength:0.016320 | factor_gate_mean:1.000389 | factor_gate_std:0.031242 | factor_gate_entropy:0.945404 | factor_gate_topk_mass_5:0.094974 | factor_gate_topk_mass_10:0.171922 | router_layer_0_time_ratio:0.677395 | router_layer_0_factor_ratio:0.322606 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.883067 | router_layer_0_logit_margin:0.799418 | router_layer_1_time_ratio:0.738887 | router_layer_1_factor_ratio:0.261113 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.820420 | router_layer_1_logit_margin:1.054854 | loss_total:0.069615 | loss_main:0.069571 | loss_listmle:4.731374 | loss_mse:0.069571 | loss_ic:-0.062991 | loss_aux:0.000043 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.243854 | label_std:0.045755 | score_label_std_ratio:5.552373 | gate_entropy:0.590384 | time_ratio:0.708141 | ic_pearson_daily:0.062997 | rank_ic_daily:0.076047 | ic_raw:0.062997 | rank_ic:0.076047
+| Train 34 | time_tau:4.919000 | time_half_life:3.409591 | time_tau_std:0.001461 | time_tau_p10:4.917640 | time_tau_p90:4.920360 | time_tau_range_util:0.000055 | film_gamma_strength:0.125427 | film_beta_strength:0.016884 | factor_gate_mean:0.999501 | factor_gate_std:0.031847 | factor_gate_entropy:0.945811 | factor_gate_topk_mass_5:0.094293 | factor_gate_topk_mass_10:0.171446 | router_layer_0_time_ratio:0.585559 | router_layer_0_factor_ratio:0.414441 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.945883 | router_layer_0_logit_margin:0.487506 | router_layer_1_time_ratio:0.723991 | router_layer_1_factor_ratio:0.276009 | router_layer_1_collapse_ratio:0.004371 | router_layer_1_entropy_norm:0.834263 | router_layer_1_logit_margin:0.990388 | loss_total:1.334384 | loss_main:1.334322 | loss_listmle:4.698505 | loss_mse:1.334322 | loss_ic:-0.186328 | loss_aux:0.000062 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.214827 | label_std:1.166296 | score_label_std_ratio:0.185971 | ic_pearson_batch:0.186329 | ic_raw:0.186329 | rank_ic_batch:0.183493 | rank_ic:0.183493 | gate_entropy:0.616951 | time_ratio:0.654775 | grad_norm:6.199427 | grad_norm_other:2.304806 | grad_norm_time_embedding:4.732504 | grad_norm_factor_film:0.113189 | grad_norm_regime_encoder:1.006525 | grad_norm_router:1.291541 | grad_norm_time_expert:0.883700 | grad_norm_factor_expert:0.885445 | grad_norm_pooling_head:2.028482 | grad_nonfinite_tensors:2.000000 | grad_nonfinite_values:3.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000003
+| Valid 34 | time_tau:4.911803 | time_half_life:3.404602 | time_tau_std:0.000000 | time_tau_p10:4.911803 | time_tau_p90:4.911803 | time_tau_range_util:0.000000 | film_gamma_strength:0.121534 | film_beta_strength:0.016328 | factor_gate_mean:1.000333 | factor_gate_std:0.031391 | factor_gate_entropy:0.945477 | factor_gate_topk_mass_5:0.094939 | factor_gate_topk_mass_10:0.171831 | router_layer_0_time_ratio:0.675145 | router_layer_0_factor_ratio:0.324855 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.885327 | router_layer_0_logit_margin:0.789631 | router_layer_1_time_ratio:0.745614 | router_layer_1_factor_ratio:0.254386 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.809635 | router_layer_1_logit_margin:1.091439 | loss_total:0.066349 | loss_main:0.066308 | loss_listmle:4.732182 | loss_mse:0.066308 | loss_ic:-0.062792 | loss_aux:0.000041 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.239102 | label_std:0.045755 | score_label_std_ratio:5.443960 | gate_entropy:0.587429 | time_ratio:0.710379 | ic_pearson_daily:0.062799 | rank_ic_daily:0.075119 | ic_raw:0.062799 | rank_ic:0.075119
+| Train 35 | time_tau:4.919060 | time_half_life:3.409632 | time_tau_std:0.001466 | time_tau_p10:4.917709 | time_tau_p90:4.920433 | time_tau_range_util:0.000055 | film_gamma_strength:0.125734 | film_beta_strength:0.016908 | factor_gate_mean:0.999480 | factor_gate_std:0.031903 | factor_gate_entropy:0.945867 | factor_gate_topk_mass_5:0.094214 | factor_gate_topk_mass_10:0.171310 | router_layer_0_time_ratio:0.584364 | router_layer_0_factor_ratio:0.415636 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946642 | router_layer_0_logit_margin:0.483275 | router_layer_1_time_ratio:0.716710 | router_layer_1_factor_ratio:0.283290 | router_layer_1_collapse_ratio:0.004000 | router_layer_1_entropy_norm:0.843102 | router_layer_1_logit_margin:0.955689 | loss_total:1.329029 | loss_main:1.328963 | loss_listmle:4.698129 | loss_mse:1.328963 | loss_ic:-0.189954 | loss_aux:0.000067 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.217383 | label_std:1.164558 | score_label_std_ratio:0.188471 | ic_pearson_batch:0.189956 | ic_raw:0.189956 | rank_ic_batch:0.186590 | rank_ic:0.186590 | gate_entropy:0.620278 | time_ratio:0.650537 | grad_norm:6.413626 | grad_norm_other:2.345752 | grad_norm_time_embedding:4.943864 | grad_norm_factor_film:0.115060 | grad_norm_regime_encoder:1.024586 | grad_norm_router:1.313499 | grad_norm_time_expert:0.900438 | grad_norm_factor_expert:0.924708 | grad_norm_pooling_head:2.072859 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000002
+| Valid 35 | time_tau:4.911746 | time_half_life:3.404563 | time_tau_std:0.000000 | time_tau_p10:4.911746 | time_tau_p90:4.911746 | time_tau_range_util:0.000000 | film_gamma_strength:0.121531 | film_beta_strength:0.016362 | factor_gate_mean:1.000358 | factor_gate_std:0.031357 | factor_gate_entropy:0.945510 | factor_gate_topk_mass_5:0.094890 | factor_gate_topk_mass_10:0.171771 | router_layer_0_time_ratio:0.675328 | router_layer_0_factor_ratio:0.324672 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.885181 | router_layer_0_logit_margin:0.789638 | router_layer_1_time_ratio:0.732298 | router_layer_1_factor_ratio:0.267702 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.829310 | router_layer_1_logit_margin:1.022666 | loss_total:0.081303 | loss_main:0.081254 | loss_listmle:4.739085 | loss_mse:0.081254 | loss_ic:-0.063120 | loss_aux:0.000049 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.267710 | label_std:0.045755 | score_label_std_ratio:6.093709 | gate_entropy:0.594197 | time_ratio:0.703813 | ic_pearson_daily:0.063127 | rank_ic_daily:0.076138 | ic_raw:0.063127 | rank_ic:0.076138
+| Train 36 | time_tau:4.919067 | time_half_life:3.409638 | time_tau_std:0.001474 | time_tau_p10:4.917706 | time_tau_p90:4.920450 | time_tau_range_util:0.000055 | film_gamma_strength:0.125702 | film_beta_strength:0.016948 | factor_gate_mean:0.999480 | factor_gate_std:0.031882 | factor_gate_entropy:0.945900 | factor_gate_topk_mass_5:0.094177 | factor_gate_topk_mass_10:0.171264 | router_layer_0_time_ratio:0.585848 | router_layer_0_factor_ratio:0.414152 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.945990 | router_layer_0_logit_margin:0.486641 | router_layer_1_time_ratio:0.718569 | router_layer_1_factor_ratio:0.281431 | router_layer_1_collapse_ratio:0.003684 | router_layer_1_entropy_norm:0.841269 | router_layer_1_logit_margin:0.963803 | loss_total:1.334696 | loss_main:1.334631 | loss_listmle:4.698417 | loss_mse:1.334631 | loss_ic:-0.186453 | loss_aux:0.000065 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.217986 | label_std:1.166185 | score_label_std_ratio:0.188743 | ic_pearson_batch:0.186456 | ic_raw:0.186456 | rank_ic_batch:0.184390 | rank_ic:0.184390 | gate_entropy:0.619417 | time_ratio:0.652208 | grad_norm:6.501387 | grad_norm_other:2.392355 | grad_norm_time_embedding:5.009125 | grad_norm_factor_film:0.116611 | grad_norm_regime_encoder:1.038528 | grad_norm_router:1.330833 | grad_norm_time_expert:0.918628 | grad_norm_factor_expert:0.933599 | grad_norm_pooling_head:2.093777 | grad_nonfinite_tensors:2.500000 | grad_nonfinite_values:7.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000001
+| Valid 36 | time_tau:4.911695 | time_half_life:3.404528 | time_tau_std:0.000000 | time_tau_p10:4.911695 | time_tau_p90:4.911695 | time_tau_range_util:0.000000 | film_gamma_strength:0.121498 | film_beta_strength:0.016379 | factor_gate_mean:1.000348 | factor_gate_std:0.031331 | factor_gate_entropy:0.945520 | factor_gate_topk_mass_5:0.094914 | factor_gate_topk_mass_10:0.171795 | router_layer_0_time_ratio:0.674712 | router_layer_0_factor_ratio:0.325288 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.885792 | router_layer_0_logit_margin:0.786903 | router_layer_1_time_ratio:0.735831 | router_layer_1_factor_ratio:0.264169 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.823866 | router_layer_1_logit_margin:1.041431 | loss_total:0.075140 | loss_main:0.075093 | loss_listmle:4.736208 | loss_mse:0.075093 | loss_ic:-0.063186 | loss_aux:0.000047 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.256118 | label_std:0.045755 | score_label_std_ratio:5.830597 | gate_entropy:0.592522 | time_ratio:0.705272 | ic_pearson_daily:0.063193 | rank_ic_daily:0.075961 | ic_raw:0.063193 | rank_ic:0.075961
+| Train 37 | time_tau:4.919067 | time_half_life:3.409637 | time_tau_std:0.001481 | time_tau_p10:4.917697 | time_tau_p90:4.920470 | time_tau_range_util:0.000056 | film_gamma_strength:0.125799 | film_beta_strength:0.016957 | factor_gate_mean:0.999476 | factor_gate_std:0.031899 | factor_gate_entropy:0.945897 | factor_gate_topk_mass_5:0.094194 | factor_gate_topk_mass_10:0.171291 | router_layer_0_time_ratio:0.585005 | router_layer_0_factor_ratio:0.414995 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946531 | router_layer_0_logit_margin:0.483275 | router_layer_1_time_ratio:0.721154 | router_layer_1_factor_ratio:0.278846 | router_layer_1_collapse_ratio:0.004092 | router_layer_1_entropy_norm:0.837640 | router_layer_1_logit_margin:0.976829 | loss_total:1.333419 | loss_main:1.333357 | loss_listmle:4.698348 | loss_mse:1.333357 | loss_ic:-0.188585 | loss_aux:0.000062 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.216424 | label_std:1.165993 | score_label_std_ratio:0.187468 | ic_pearson_batch:0.188585 | ic_raw:0.188585 | rank_ic_batch:0.185746 | rank_ic:0.185746 | gate_entropy:0.618347 | time_ratio:0.653080 | grad_norm:6.503656 | grad_norm_other:2.384346 | grad_norm_time_embedding:5.015016 | grad_norm_factor_film:0.115714 | grad_norm_regime_encoder:1.037144 | grad_norm_router:1.340709 | grad_norm_time_expert:0.912838 | grad_norm_factor_expert:0.936160 | grad_norm_pooling_head:2.088065 | optimizer_steps:2979.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:0.000000 | grad_nonfinite_steps:0.000000 | grad_skipped_rate:0.000000 | grad_nonfinite_rate:0.000000 | lr:0.000001
+| Valid 37 | time_tau:4.911645 | time_half_life:3.404493 | time_tau_std:0.000000 | time_tau_p10:4.911645 | time_tau_p90:4.911645 | time_tau_range_util:0.000000 | film_gamma_strength:0.121587 | film_beta_strength:0.016384 | factor_gate_mean:1.000345 | factor_gate_std:0.031361 | factor_gate_entropy:0.945533 | factor_gate_topk_mass_5:0.094935 | factor_gate_topk_mass_10:0.171809 | router_layer_0_time_ratio:0.674883 | router_layer_0_factor_ratio:0.325117 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.885613 | router_layer_0_logit_margin:0.787381 | router_layer_1_time_ratio:0.739700 | router_layer_1_factor_ratio:0.260300 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.818376 | router_layer_1_logit_margin:1.060950 | loss_total:0.077538 | loss_main:0.077494 | loss_listmle:4.737532 | loss_mse:0.077494 | loss_ic:-0.063119 | loss_aux:0.000045 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.259796 | label_std:0.045755 | score_label_std_ratio:5.914166 | gate_entropy:0.590558 | time_ratio:0.707291 | ic_pearson_daily:0.063125 | rank_ic_daily:0.075947 | ic_raw:0.063125 | rank_ic:0.075947
+| Train 38 | time_tau:4.919097 | time_half_life:3.409658 | time_tau_std:0.001485 | time_tau_p10:4.917728 | time_tau_p90:4.920498 | time_tau_range_util:0.000056 | film_gamma_strength:0.125857 | film_beta_strength:0.016964 | factor_gate_mean:0.999475 | factor_gate_std:0.031911 | factor_gate_entropy:0.945902 | factor_gate_topk_mass_5:0.094182 | factor_gate_topk_mass_10:0.171258 | router_layer_0_time_ratio:0.585106 | router_layer_0_factor_ratio:0.414894 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946426 | router_layer_0_logit_margin:0.483871 | router_layer_1_time_ratio:0.720350 | router_layer_1_factor_ratio:0.279650 | router_layer_1_collapse_ratio:0.004290 | router_layer_1_entropy_norm:0.838634 | router_layer_1_logit_margin:0.973075 | loss_total:1.328774 | loss_main:1.328710 | loss_listmle:4.697880 | loss_mse:1.328710 | loss_ic:-0.189909 | loss_aux:0.000064 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.219910 | label_std:1.164828 | score_label_std_ratio:0.190618 | ic_pearson_batch:0.189911 | ic_raw:0.189911 | rank_ic_batch:0.187160 | rank_ic:0.187160 | gate_entropy:0.618655 | time_ratio:0.652728 | grad_norm:6.456462 | grad_norm_other:2.400246 | grad_norm_time_embedding:4.969571 | grad_norm_factor_film:0.116925 | grad_norm_regime_encoder:1.043105 | grad_norm_router:1.323043 | grad_norm_time_expert:0.920417 | grad_norm_factor_expert:0.926690 | grad_norm_pooling_head:2.044762 | grad_nonfinite_tensors:1.000000 | grad_nonfinite_values:2.000000 | optimizer_steps:2977.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:2.000000 | grad_nonfinite_steps:2.000000 | grad_skipped_rate:0.000671 | grad_nonfinite_rate:0.000671 | lr:0.000000
+| Valid 38 | time_tau:4.911632 | time_half_life:3.404484 | time_tau_std:0.000000 | time_tau_p10:4.911632 | time_tau_p90:4.911632 | time_tau_range_util:0.000000 | film_gamma_strength:0.121697 | film_beta_strength:0.016390 | factor_gate_mean:1.000337 | factor_gate_std:0.031394 | factor_gate_entropy:0.945544 | factor_gate_topk_mass_5:0.094940 | factor_gate_topk_mass_10:0.171804 | router_layer_0_time_ratio:0.674521 | router_layer_0_factor_ratio:0.325479 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.886042 | router_layer_0_logit_margin:0.785641 | router_layer_1_time_ratio:0.738343 | router_layer_1_factor_ratio:0.261657 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.820369 | router_layer_1_logit_margin:1.054002 | loss_total:0.076774 | loss_main:0.076729 | loss_listmle:4.738038 | loss_mse:0.076729 | loss_ic:-0.063286 | loss_aux:0.000045 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.260006 | label_std:0.045755 | score_label_std_ratio:5.918039 | gate_entropy:0.591397 | time_ratio:0.706432 | ic_pearson_daily:0.063292 | rank_ic_daily:0.075783 | ic_raw:0.063292 | rank_ic:0.075783
+| Train 39 | time_tau:4.919093 | time_half_life:3.409656 | time_tau_std:0.001486 | time_tau_p10:4.917731 | time_tau_p90:4.920504 | time_tau_range_util:0.000056 | film_gamma_strength:0.125902 | film_beta_strength:0.016972 | factor_gate_mean:0.999472 | factor_gate_std:0.031921 | factor_gate_entropy:0.945906 | factor_gate_topk_mass_5:0.094176 | factor_gate_topk_mass_10:0.171252 | router_layer_0_time_ratio:0.585059 | router_layer_0_factor_ratio:0.414941 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946515 | router_layer_0_logit_margin:0.483336 | router_layer_1_time_ratio:0.719915 | router_layer_1_factor_ratio:0.280085 | router_layer_1_collapse_ratio:0.003724 | router_layer_1_entropy_norm:0.839392 | router_layer_1_logit_margin:0.970517 | loss_total:1.330854 | loss_main:1.330790 | loss_listmle:4.698198 | loss_mse:1.330790 | loss_ic:-0.189749 | loss_aux:0.000064 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.219409 | label_std:1.165452 | score_label_std_ratio:0.190150 | ic_pearson_batch:0.189750 | ic_raw:0.189750 | rank_ic_batch:0.187803 | rank_ic:0.187803 | gate_entropy:0.618948 | time_ratio:0.652487 | grad_norm:6.514052 | grad_norm_other:2.403853 | grad_norm_time_embedding:5.027183 | grad_norm_factor_film:0.117090 | grad_norm_regime_encoder:1.041325 | grad_norm_router:1.331322 | grad_norm_time_expert:0.926068 | grad_norm_factor_expert:0.936098 | grad_norm_pooling_head:2.071548 | grad_nonfinite_tensors:3.000000 | grad_nonfinite_values:7.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000000
+| Valid 39 | time_tau:4.911639 | time_half_life:3.404488 | time_tau_std:0.000000 | time_tau_p10:4.911639 | time_tau_p90:4.911639 | time_tau_range_util:0.000000 | film_gamma_strength:0.121714 | film_beta_strength:0.016394 | factor_gate_mean:1.000337 | factor_gate_std:0.031396 | factor_gate_entropy:0.945545 | factor_gate_topk_mass_5:0.094936 | factor_gate_topk_mass_10:0.171801 | router_layer_0_time_ratio:0.674539 | router_layer_0_factor_ratio:0.325461 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.886028 | router_layer_0_logit_margin:0.785704 | router_layer_1_time_ratio:0.740506 | router_layer_1_factor_ratio:0.259494 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.817231 | router_layer_1_logit_margin:1.065043 | loss_total:0.078293 | loss_main:0.078249 | loss_listmle:4.738770 | loss_mse:0.078249 | loss_ic:-0.063247 | loss_aux:0.000044 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.262260 | label_std:0.045755 | score_label_std_ratio:5.969554 | gate_entropy:0.590305 | time_ratio:0.707522 | ic_pearson_daily:0.063252 | rank_ic_daily:0.075735 | ic_raw:0.063252 | rank_ic:0.075735
+| Train 40 | time_tau:4.919091 | time_half_life:3.409654 | time_tau_std:0.001486 | time_tau_p10:4.917729 | time_tau_p90:4.920488 | time_tau_range_util:0.000056 | film_gamma_strength:0.125922 | film_beta_strength:0.016976 | factor_gate_mean:0.999473 | factor_gate_std:0.031927 | factor_gate_entropy:0.945910 | factor_gate_topk_mass_5:0.094174 | factor_gate_topk_mass_10:0.171250 | router_layer_0_time_ratio:0.585129 | router_layer_0_factor_ratio:0.414871 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.946418 | router_layer_0_logit_margin:0.483832 | router_layer_1_time_ratio:0.721272 | router_layer_1_factor_ratio:0.278728 | router_layer_1_collapse_ratio:0.004236 | router_layer_1_entropy_norm:0.837642 | router_layer_1_logit_margin:0.977327 | loss_total:1.332807 | loss_main:1.332744 | loss_listmle:4.698689 | loss_mse:1.332744 | loss_ic:-0.188494 | loss_aux:0.000062 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.218941 | label_std:1.165943 | score_label_std_ratio:0.189611 | ic_pearson_batch:0.188496 | ic_raw:0.188496 | rank_ic_batch:0.185512 | rank_ic:0.185512 | gate_entropy:0.618308 | time_ratio:0.653201 | grad_norm:6.479428 | grad_norm_other:2.397974 | grad_norm_time_embedding:4.996494 | grad_norm_factor_film:0.116487 | grad_norm_regime_encoder:1.043923 | grad_norm_router:1.325252 | grad_norm_time_expert:0.917636 | grad_norm_factor_expert:0.932873 | grad_norm_pooling_head:2.059960 | grad_nonfinite_tensors:3.000000 | grad_nonfinite_values:4.000000 | optimizer_steps:2978.000000 | grad_attempt_steps:2979.000000 | grad_skipped_steps:1.000000 | grad_nonfinite_steps:1.000000 | grad_skipped_rate:0.000336 | grad_nonfinite_rate:0.000336 | lr:0.000000
+| Valid 40 | time_tau:4.911639 | time_half_life:3.404488 | time_tau_std:0.000000 | time_tau_p10:4.911639 | time_tau_p90:4.911639 | time_tau_range_util:0.000000 | film_gamma_strength:0.121711 | film_beta_strength:0.016395 | factor_gate_mean:1.000338 | factor_gate_std:0.031394 | factor_gate_entropy:0.945544 | factor_gate_topk_mass_5:0.094938 | factor_gate_topk_mass_10:0.171804 | router_layer_0_time_ratio:0.674601 | router_layer_0_factor_ratio:0.325399 | router_layer_0_collapse_ratio:0.000000 | router_layer_0_entropy_norm:0.885963 | router_layer_0_logit_margin:0.785980 | router_layer_1_time_ratio:0.740696 | router_layer_1_factor_ratio:0.259304 | router_layer_1_collapse_ratio:0.000000 | router_layer_1_entropy_norm:0.816962 | router_layer_1_logit_margin:1.065986 | loss_total:0.078065 | loss_main:0.078021 | loss_listmle:4.738645 | loss_mse:0.078021 | loss_ic:-0.063247 | loss_aux:0.000044 | loss_sparsity:0.000000 | valid_ratio:1.000000 | score_std:0.261879 | label_std:0.045755 | score_label_std_ratio:5.960957 | gate_entropy:0.590189 | time_ratio:0.707649 | ic_pearson_daily:0.063253 | rank_ic_daily:0.075739 | ic_raw:0.063253 | rank_ic:0.075739
+>>> [Train] restored best checkpoint (valid_rank_ic=0.078120, epoch=25)
+>>> [Phase 1.1] Export Spatio-Temporal Visuals...
+>>> [Phase 2] Signal Analysis...
+'The following are prediction results of the QlibQuantMoE model.'
+                          score
+datetime   instrument          
+2020-07-01 SH600000    0.202881
+           SH600004   -0.025879
+           SH600009    0.265625
+           SH600010    0.031891
+           SH600011    0.311035
+{'IC': np.float64(0.06251043728605424),
+ 'ICIR': np.float64(0.43514856387075057),
+ 'Rank IC': np.float64(0.0781186260026794),
+ 'Rank ICIR': np.float64(0.5499413630680678)}
+>>> [Config] Clip backtest window (pred.pkl datetime range): 2020-07-01~2022-12-31 -> 2020-07-01~2022-12-30
+>>> [Phase 3] Backtesting...
+'The following are analysis results of benchmark return(1day).'
+                       risk
+mean              -0.000040
+std                0.012572
+annualized_return -0.009549
+information_ratio -0.049231
+max_drawdown      -0.473380
+'The following are analysis results of the excess return without cost(1day).'
+                       risk
+mean               0.001635
+std                0.006709
+annualized_return  0.389205
+information_ratio  3.760399
+max_drawdown      -0.056641
+'The following are analysis results of the excess return with cost(1day).'
+                       risk
+mean               0.000980
+std                0.006710
+annualized_return  0.233283
+information_ratio  2.253668
+max_drawdown      -0.073408
+'The following are analysis results of indicators(1day).'
+     value
+ffr    1.0
+pa     0.0
+pos    0.0
+>>> [Phase 3.1] Export Qlib Official Graphs...
+
+================================================================================
+>>> [Metrics Summary] SignalRecord + PortAnaRecord
+================================================================================
+
+[Signal Analysis Metrics]
+  IC mean=0.062510, std=0.143653, IR=0.435149
+  RankIC mean=0.078119, std=0.142049, IR=0.549941
+
+[Portfolio Analysis Metrics]
+                                                  risk
+excess_return_without_cost mean               0.001635
+                           std                0.006709
+                           annualized_return  0.389205
+                           information_ratio  3.760399
+                           max_drawdown      -0.056641
+excess_return_with_cost    mean               0.000980
+                           std                0.006710
+                           annualized_return  0.233283
+                           information_ratio  2.253668
+                           max_drawdown      -0.073408
+
+[Indicator Analysis Metrics]
+     value
+ffr    1.0
+pa     0.0
+pos    0.0
+
+[Generated Graphs]
+  - analysis_position.report_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_report_graph.html
+  - analysis_position.score_ic_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_score_ic_graph.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_cumulative_return_graph_1.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_cumulative_return_graph_2.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_cumulative_return_graph_3.html
+  - analysis_position.cumulative_return_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_cumulative_return_graph_4.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_risk_analysis_graph_1.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_risk_analysis_graph_2.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_risk_analysis_graph_3.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_risk_analysis_graph_4.html
+  - analysis_position.risk_analysis_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_risk_analysis_graph_5.html
+  - analysis_position.rank_label_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_rank_label_graph_1.html
+  - analysis_position.rank_label_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_rank_label_graph_2.html
+  - analysis_position.rank_label_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_position_rank_label_graph_3.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_model_model_performance_graph_1.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_model_model_performance_graph_2.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_model_model_performance_graph_3.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_model_model_performance_graph_4.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_model_model_performance_graph_5.html
+  - analysis_model.model_performance_graph: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788/qlib_analysis_model_model_performance_graph_6.html
+
+[Recorder Objects]
+================================================================================
+
+>>> [Diagnostics] Generate minimum required diagnostic matrix...
+>>> [Diagnostics] Saved diagnostic_matrix.csv and diagnostic_summary.md
+>>> [Phase 4] Generate Paper-level Report...
+
+================================================================================
+EXPERIMENT REPORT SUMMARY (031cbca339604ad4ad3bca3c37930788)
+================================================================================
+| Model   | Dataset                                   |   IC (mean) |   ICIR |   IC HAC t-stat |   RankIC (mean) |   RankIC IR |   RankIC HAC t-stat | Ann. Return   |   Info Ratio | Max Drawdown   | Turnover   | Gate time_ratio stats                       |
+|:--------|:------------------------------------------|------------:|-------:|----------------:|----------------:|------------:|--------------------:|:--------------|-------------:|:---------------|:-----------|:--------------------------------------------|
+| RST-MoE | Alpha158 / csi300 / 2008-01-01~2022-12-31 |      0.0625 |   0.44 |             7.2 |          0.0781 |        0.55 |                 9.3 | 23.33%        |         2.25 | -7.34%         | 32.78%     | mean=0.677, std=0.062, p10=0.615, p90=0.729 |
+--------------------------------------------------------------------------------
+Full Markdown report written to: C:\Users\60585\PycharmProjects\qibMacV2\mlruns\966432381987661662\031cbca339604ad4ad3bca3c37930788\kdd_report.md
+--------------------------------------------------------------------------------
+# RST-MoE on Alpha158 / CSI300
+
+## 1. Experimental Setup
+
+- **Data**:
+  - Handler: Alpha158
+  - Instruments: csi300
+  - Train: 2008-01-01 ~ 2020-03-31
+  - Valid: 2020-07-01 ~ 2022-12-31
+  - Test: 2020-07-01 ~ 2022-12-31
+- **Label**: ['Ref($close, -5) / Ref($close, -1) - 1']
+  - **Model**:
+    - class: QlibQuantMoE
+    - d_model=64, n_layers=2, n_heads=4
+    - main_loss=mse
+    - value_embedding_type=feature_tokenizer
+    - feature_tokenizer_add_factor_id=False
+    - feature_tokenizer_bias=True
+    - feature_tokenizer_init_std=0.02
+    - use_feature_selection=False
+    - use_alibi=False
+- **Training**:
+  - lr=5e-05, epochs=40, batch_size=300
+  - seed=44
+- **Backtest**:
+  - strategy: TopkDropoutStrategy, topk=30, n_drop=5
+  - benchmark=SH000300, deal_price=close, cost(open/close)=None/None
+
+### 1.1 Full Config (Resolved)
+
+```python
+data_conf = {'class': 'TSDatasetH',
+ 'module_path': 'qlib.data.dataset',
+ 'kwargs': {'step_len': 8,
+            'handler': {'class': 'Alpha158',
+                        'module_path': 'qlib.contrib.data.handler',
+                        'kwargs': {'start_time': '2008-01-01',
+                                   'end_time': '2022-12-31',
+                                   'fit_start_time': '2008-01-01',
+                                   'fit_end_time': '2020-03-31',
+                                   'instruments': 'csi300',
+                                   'infer_processors': [{'class': 'RobustZScoreNorm',
+                                                         'kwargs': {'fields_group': 'feature',
+                                                                    'clip_outlier': True,
+                                                                    'fit_start_time': '2008-01-01',
+                                                                    'fit_end_time': '2020-03-31'}},
+                                                        {'class': 'Fillna', 'kwargs': {'fields_group': 'feature'}}],
+                                   'learn_processors': [{'class': 'DropnaLabel'},
+                                                        {'class': 'CSZScoreNorm',
+                                                         'kwargs': {'fields_group': 'label', 'method': 'robust'}}],
+                                   'label': ['Ref($close, -5) / Ref($close, -1) - 1']}},
+            'segments': {'train': ('2008-01-01', '2020-03-31'),
+                         'valid': ('2020-07-01', '2022-12-31'),
+                         'test': ('2020-07-01', '2022-12-31')}}}
+
+model_config = {'d_model': 64,
+ 'n_heads': 4,
+ 'n_layers': 2,
+ 'd_ff': 256,
+ 'dropout': 0.15,
+ 'initializer_range': 0.02,
+ 'num_alphas': 158,
+ 'context_len': 8,
+ 'value_embedding_type': 'feature_tokenizer',
+ 'feature_tokenizer_bias': True,
+ 'feature_tokenizer_add_factor_id': False,
+ 'feature_tokenizer_init_std': 0.02,
+ 'use_regime_time_embedding': True,
+ 'time_tau_min': 0.5,
+ 'time_tau_max': 50.0,
+ 'time_tau_init': 5.0,
+ 'time_emb_init_std': 0.02,
+ 'time_decay_normalize': True,
+ 'use_regime_factor_gate': True,
+ 'factor_gate_scale': 1.0,
+ 'factor_gate_shift_scale': 0.2,
+ 'router_noise': 0.01,
+ 'router_temperature': 1.0,
+ 'router_z_loss_coef': 0.01,
+ 'router_use_layer_summary': True,
+ 'router_mode': 'learned',
+ 'use_alibi': False,
+ 'use_feature_selection': False,
+ 'selection_reg_lambda': 1e-05,
+ 'selection_temperature': 0.1,
+ 'selection_noise_std': 0.5,
+ 'main_loss': 'mse',
+ 'loss_weights': {'listmle': 1.0, 'mse': 1.0, 'ic': 1.0, 'rank': 0.0, 'huber': 0.0},
+ 'mse_normalize': False,
+ 'rank_topk': 5,
+ 'huber_delta': 1.0,
+ 'listmle_tau': 0.8,
+ 'use_external_macro': True,
+ 'd_macro_input': 102,
+ 'regime_macro_dropout': 0.1,
+ 'regime_internal_mode': 'long',
+ 'regime_internal_lag': 5,
+ 'regime_internal_use_batch_stats': False,
+ 'regime_internal_tail_threshold': 2.0,
+ 'pooling_alpha': 0.7}
+
+trainer_config = {'lr': 5e-05,
+ 'n_epochs': 40,
+ 'batch_size': 300,
+ 'precision': 'amp_fp16',
+ 'grad_accum_steps': 1,
+ 'seed': 44,
+ 'train_stop_key': 'loss_main',
+ 'train_stop_threshold': None,
+ 'min_epochs': 40,
+ 'consecutive_k': 999999,
+ 'num_workers': 0,
+ 'market_state_path': 'data/market_state_csi300.pkl',
+ 'market_state_shift': 0,
+ 'market_state_strict': True,
+ 'use_warmup': True,
+ 'warmup_ratio': 0.05,
+ 'warmup_steps': 0,
+ 'debug_sanity_check': True,
+ 'strict_valid_data_key': True,
+ 'early_stop': 0,
+ 'min_delta': 0.001,
+ 'use_tqdm': False,
+ 'checkpoint_metric': 'valid_rank_ic',
+ 'checkpoint_mode': 'max',
+ 'checkpoint_min_delta': 0.0,
+ 'run_setting': 'cap01_d64_h4_l2_ff256_do015_seed44'}
+
+port_conf = {'strategy': {'class': 'TopkDropoutStrategy',
+              'module_path': 'qlib.contrib.strategy.signal_strategy',
+              'kwargs': {'signal': '<PRED>', 'topk': 30, 'n_drop': 5}},
+ 'backtest': {'start_time': '2020-07-01',
+              'end_time': '2022-12-30',
+              'account': 100000000,
+              'benchmark': 'SH000300',
+              'exchange_kwargs': {'freq': 'day', 'deal_price': 'close'}}}
+```
+
+## 2. Cross-sectional Forecasting Performance
+
+- **IC (test)**:
+  - mean = 0.0625, std = 0.1437, ICIR = 0.44, HAC t-stat = 7.2 (lags=5)
+- **RankIC (test)**:
+  - mean = 0.0781, std = 0.1420, IR = 0.55, HAC t-stat = 9.3 (lags=5)
+- 注：采用 Newey–West(HAC) t-stat 以处理日度序列的自相关/异方差。
+
+### 2.X Regime Bucket Evaluation (test segment)
+
+基于 `market_state`（与训练时相同的宏观状态文件）对 test 交易日做分桶，观察不同市场状态下的预测质量与路由行为差异。
+
+- market_state: `market_state_csi300.pkl`, shift=0, fit_segments=['train'] (fit_days=2979, test_days=611)
+
+- 2×2 分桶（median@fit）：`market_state_corr_pc1_ratio`=0.004828, `market_state_tail_2sigma`=-2.783e-05
+
+| Regime               |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------------------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| High-PC1 / High-Tail |     56 |     0.120366  |    0.867988 | 0.102722  | 0.727366 |          0.628531 |         0.502574 |         0.654173 |         0.711034 |            0.635789 |           0.596504 |           0.64145  |           0.671869 |         4.92555 |        4.91452 |        4.92224 |        4.94154 |               3.41413 |              3.40648 |              3.41183 |              3.42521 |                1.00038  |               0.993814 |               1.00099  |                1.00601 |              0.0304542 |             0.0193668 |             0.0310382 |             0.0397722 |                   0.946295 |                  0.938085 |                  0.946352 |                  0.95298  |                      0.0949093 |                     0.0894358 |                     0.0940658 |                      0.101558 |                        0.171317 |                       0.164519 |                       0.171091 |                       0.178696 |
+| High-PC1 / Low-Tail  |    356 |     0.0765498 |    0.532224 | 0.0643386 | 0.434917 |          0.672424 |         0.612527 |         0.686416 |         0.725322 |            0.622102 |           0.58427  |           0.618703 |           0.663366 |         4.92522 |        4.91452 |        4.9261  |        4.93767 |               3.4139  |              3.40648 |              3.41451 |              3.42254 |                1.00081  |               0.994454 |               1.00086  |                1.00729 |              0.0304286 |             0.0212809 |             0.0307382 |             0.0390874 |                   0.945662 |                  0.938661 |                  0.946522 |                  0.951559 |                      0.0948692 |                     0.0897354 |                     0.0941353 |                      0.101108 |                        0.171351 |                       0.164363 |                       0.170248 |                       0.181641 |
+| Low-PC1 / High-Tail  |     46 |     0.0735114 |    0.548308 | 0.0586233 | 0.431993 |          0.674319 |         0.627365 |         0.692834 |         0.727962 |            0.615454 |           0.581343 |           0.616408 |           0.650611 |         4.92282 |        4.91452 |        4.92224 |        4.92996 |               3.41224 |              3.40648 |              3.41183 |              3.41718 |                0.998925 |               0.991409 |               0.99995  |                1.00496 |              0.027468  |             0.0190351 |             0.0271424 |             0.0374957 |                   0.944563 |                  0.936886 |                  0.946134 |                  0.949332 |                      0.0964775 |                     0.0890773 |                     0.096196  |                      0.103989 |                        0.173739 |                       0.165204 |                       0.171658 |                       0.18619  |
+| Low-PC1 / Low-Tail   |    153 |     0.0676912 |    0.48347  | 0.0447076 | 0.332221 |          0.706363 |         0.672592 |         0.713335 |         0.739391 |            0.600395 |           0.571689 |           0.597629 |           0.63185  |         4.92178 |        4.91452 |        4.92224 |        4.92996 |               3.41152 |              3.40648 |              3.41183 |              3.41718 |                0.999305 |               0.991992 |               0.998757 |                1.00714 |              0.0278245 |             0.0170544 |             0.0284326 |             0.0376165 |                   0.944181 |                  0.937389 |                  0.945081 |                  0.949875 |                      0.0959404 |                     0.089545  |                     0.0952284 |                      0.102264 |                        0.173782 |                       0.165102 |                       0.171601 |                       0.184515 |
+
+- Terciles by `market_state_corr_pc1_ratio` (Market-mode strength (PC1 ratio)), edges@fit=[-0.4096, 0.4701]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |    113 |     0.0657752 |    0.478685 | 0.0424317 | 0.318885 |          0.698939 |         0.661775 |         0.707113 |         0.736002 |            0.603447 |           0.573055 |           0.604314 |           0.636645 |         4.92159 |        4.91143 |        4.92224 |        4.92996 |               3.41138 |              3.40434 |              3.41183 |              3.41718 |                0.999519 |               0.991512 |               0.999247 |                1.00721 |              0.0259782 |             0.0167756 |             0.025306  |             0.036473  |                   0.943581 |                  0.936566 |                  0.944579 |                  0.948668 |                      0.096715  |                     0.0894232 |                     0.0962031 |                      0.104324 |                        0.175133 |                       0.165755 |                       0.173229 |                       0.188164 |
+| Mid      |    194 |     0.0757931 |    0.542562 | 0.0571883 | 0.410582 |          0.689826 |         0.643553 |         0.698526 |         0.730033 |            0.611758 |           0.581136 |           0.609503 |           0.649465 |         4.92361 |        4.91452 |        4.92417 |        4.93382 |               3.41279 |              3.40648 |              3.41317 |              3.41986 |                0.999689 |               0.992557 |               0.99977  |                1.00645 |              0.030311  |             0.0212087 |             0.0305087 |             0.0385978 |                   0.945156 |                  0.937687 |                  0.945807 |                  0.951562 |                      0.0950473 |                     0.0895866 |                     0.0946282 |                      0.100487 |                        0.171875 |                       0.164792 |                       0.170805 |                       0.182147 |
+| High     |    304 |     0.0841909 |    0.579378 | 0.0733703 | 0.490709 |          0.660746 |         0.592656 |         0.67879  |         0.72389  |            0.626228 |           0.584935 |           0.625364 |           0.670315 |         4.92556 |        4.91452 |        4.9261  |        4.93767 |               3.41414 |              3.40648 |              3.41451 |              3.42254 |                1.00089  |               0.994478 |               1.00104  |                1.00728 |              0.0304041 |             0.020733  |             0.0308055 |             0.039305  |                   0.945964 |                  0.93887  |                  0.946572 |                  0.951562 |                      0.0948593 |                     0.0896633 |                     0.0940076 |                      0.101551 |                        0.171189 |                       0.164253 |                       0.170217 |                       0.180952 |
+
+- Terciles by `market_state_tail_2sigma` (Tail intensity (|x|>2)), edges@fit=[-0.4283, 0.5003]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |    357 |     0.0767714 |    0.521927 | 0.0608521 | 0.410325 |          0.685406 |         0.632409 |         0.694287 |         0.729381 |            0.614895 |           0.580535 |           0.613084 |           0.657021 |         4.92414 |        4.91452 |        4.92224 |        4.93382 |               3.41315 |              3.40648 |              3.41183 |              3.41986 |                1.0004   |               0.993143 |               1.00039  |                1.00728 |              0.0298446 |             0.0198975 |             0.0302325 |             0.0389455 |                   0.945113 |                  0.937896 |                  0.945781 |                  0.95108  |                      0.0951535 |                     0.0896735 |                     0.0943032 |                      0.101448 |                        0.172249 |                       0.164415 |                       0.17076  |                       0.183222 |
+| Mid      |    215 |     0.0727118 |    0.54586  | 0.0582481 | 0.434357 |          0.673327 |         0.614447 |         0.688044 |         0.730288 |            0.61849  |           0.580072 |           0.617299 |           0.660654 |         4.92407 |        4.91452 |        4.92224 |        4.93767 |               3.4131  |              3.40648 |              3.41183 |              3.42254 |                1.00036  |               0.99367  |               1.00091  |                1.00604 |              0.0292644 |             0.0189001 |             0.0305955 |             0.03855   |                   0.945781 |                  0.939272 |                  0.946197 |                  0.951079 |                      0.0952989 |                     0.0891392 |                     0.0947666 |                      0.102083 |                        0.171608 |                       0.163655 |                       0.170812 |                       0.18001  |
+| High     |     39 |     0.120257  |    0.866048 | 0.101188  | 0.67787  |          0.620975 |         0.409439 |         0.658307 |         0.723151 |            0.634643 |           0.584004 |           0.641371 |           0.671797 |         4.9256  |        4.91452 |        4.9261  |        4.93845 |               3.41417 |              3.40648 |              3.41451 |              3.42307 |                0.998338 |               0.990939 |               0.996997 |                1.00627 |              0.0285218 |             0.0218884 |             0.027797  |             0.0373471 |                   0.943837 |                  0.935686 |                  0.944579 |                  0.94968  |                      0.096055  |                     0.0898824 |                     0.0955554 |                      0.103767 |                        0.174018 |                       0.166335 |                       0.171823 |                       0.184994 |
+
+- Terciles by `market_state_corr_mean_abs` (Crowding (mean abs corr)), edges@fit=[-0.4076, 0.4851]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |     84 |     0.0528402 |    0.420052 | 0.0328674 | 0.279365 |          0.709763 |         0.67548  |         0.716112 |         0.739959 |            0.598103 |           0.569524 |           0.59637  |           0.627589 |         4.92279 |        4.91452 |        4.92224 |        4.92996 |               3.41222 |              3.40648 |              3.41183 |              3.41718 |                0.998724 |               0.991072 |               0.997734 |                1.00719 |              0.0262456 |             0.0164486 |             0.0255642 |             0.0364194 |                   0.944507 |                  0.938139 |                  0.944927 |                  0.949661 |                      0.0960786 |                     0.0890662 |                     0.0957079 |                      0.104032 |                        0.173664 |                       0.165176 |                       0.171835 |                       0.18395  |
+| Mid      |    194 |     0.0766456 |    0.534436 | 0.0564037 | 0.398173 |          0.692564 |         0.649041 |         0.701118 |         0.731676 |            0.609085 |           0.578489 |           0.607398 |           0.646758 |         4.92206 |        4.91452 |        4.92224 |        4.92996 |               3.41171 |              3.40648 |              3.41183 |              3.41718 |                0.999924 |               0.992601 |               1.0004   |                1.00661 |              0.0296937 |             0.0202716 |             0.0298779 |             0.0393891 |                   0.944713 |                  0.937086 |                  0.945447 |                  0.950683 |                      0.0959356 |                     0.0897623 |                     0.0954344 |                      0.102241 |                        0.173298 |                       0.165293 |                       0.171507 |                       0.184236 |
+| High     |    333 |     0.0853533 |    0.589753 | 0.0735456 | 0.491133 |          0.659747 |         0.592896 |         0.678726 |         0.723334 |            0.627149 |           0.58689  |           0.625436 |           0.670605 |         4.92582 |        4.91452 |        4.9261  |        4.93767 |               3.41432 |              3.40648 |              3.41451 |              3.42254 |                1.00083  |               0.994441 |               1.00091  |                1.00728 |              0.0303108 |             0.0209576 |             0.0307999 |             0.0390246 |                   0.94578  |                  0.938677 |                  0.946532 |                  0.951564 |                      0.094664  |                     0.0895769 |                     0.0939619 |                      0.100994 |                        0.171074 |                       0.164231 |                       0.170199 |                       0.180596 |
+
+- Terciles by `market_vol_20` (Benchmark vol (20d)), edges@fit=[-0.3549, 0.4864]
+
+| Bucket   |   Days |   RankIC_mean |   RankIC_IR |   IC_mean |    IC_IR |   time_ratio_mean |   time_ratio_p10 |   time_ratio_p50 |   time_ratio_p90 |   gate_entropy_mean |   gate_entropy_p10 |   gate_entropy_p50 |   gate_entropy_p90 |   time_tau_mean |   time_tau_p10 |   time_tau_p50 |   time_tau_p90 |   time_half_life_mean |   time_half_life_p10 |   time_half_life_p50 |   time_half_life_p90 |   factor_gate_mean_mean |   factor_gate_mean_p10 |   factor_gate_mean_p50 |   factor_gate_mean_p90 |   factor_gate_std_mean |   factor_gate_std_p10 |   factor_gate_std_p50 |   factor_gate_std_p90 |   factor_gate_entropy_mean |   factor_gate_entropy_p10 |   factor_gate_entropy_p50 |   factor_gate_entropy_p90 |   factor_gate_topk_mass_5_mean |   factor_gate_topk_mass_5_p10 |   factor_gate_topk_mass_5_p50 |   factor_gate_topk_mass_5_p90 |   factor_gate_topk_mass_10_mean |   factor_gate_topk_mass_10_p10 |   factor_gate_topk_mass_10_p50 |   factor_gate_topk_mass_10_p90 |
+|:---------|-------:|--------------:|------------:|----------:|---------:|------------------:|-----------------:|-----------------:|-----------------:|--------------------:|-------------------:|-------------------:|-------------------:|----------------:|---------------:|---------------:|---------------:|----------------------:|---------------------:|---------------------:|---------------------:|------------------------:|-----------------------:|-----------------------:|-----------------------:|-----------------------:|----------------------:|----------------------:|----------------------:|---------------------------:|--------------------------:|--------------------------:|--------------------------:|-------------------------------:|------------------------------:|------------------------------:|------------------------------:|--------------------------------:|-------------------------------:|-------------------------------:|-------------------------------:|
+| Low      |    305 |     0.0651259 |    0.502577 | 0.0545993 | 0.416364 |          0.682821 |         0.64213  |         0.691467 |         0.725208 |            0.618077 |           0.586173 |           0.615398 |           0.651264 |         4.92355 |        4.91452 |        4.92224 |        4.93382 |               3.41275 |              3.40648 |              3.41183 |              3.41986 |                0.998696 |               0.992733 |               0.998998 |                1.00479 |              0.0304453 |             0.0208498 |             0.0310963 |             0.0388896 |                   0.945852 |                  0.940255 |                  0.946197 |                  0.951098 |                      0.0955144 |                     0.0896989 |                     0.0949018 |                      0.101795 |                        0.17134  |                       0.16464  |                       0.17017  |                       0.18001  |
+| Mid      |    208 |     0.0971419 |    0.640771 | 0.0747993 | 0.49409  |          0.670045 |         0.602793 |         0.687424 |         0.731027 |            0.619673 |           0.579846 |           0.618034 |           0.666461 |         4.9258  |        4.91452 |        4.9261  |        4.94154 |               3.4143  |              3.40648 |              3.41451 |              3.42521 |                1.00101  |               0.992841 |               1.00194  |                1.00754 |              0.029036  |             0.0196246 |             0.0289278 |             0.0380114 |                   0.944994 |                  0.937518 |                  0.945661 |                  0.952096 |                      0.0943512 |                     0.089022  |                     0.0937683 |                      0.100207 |                        0.17203  |                       0.164172 |                       0.171055 |                       0.182834 |
+| High     |     98 |     0.0781791 |    0.505566 | 0.0610495 | 0.375374 |          0.673914 |         0.530607 |         0.705552 |         0.738793 |            0.610594 |           0.566558 |           0.59823  |           0.67606  |         4.92287 |        4.91066 |        4.91838 |        4.93767 |               3.41227 |              3.40381 |              3.40916 |              3.42254 |                1.0035   |               0.995759 |               1.00388  |                1.00932 |              0.0278919 |             0.016801  |             0.0276664 |             0.0385635 |                   0.944023 |                  0.935645 |                  0.944516 |                  0.949986 |                      0.0964109 |                     0.0900796 |                     0.0956061 |                      0.104382 |                        0.174841 |                       0.165083 |                       0.171935 |                       0.187858 |
+
+- Spearman correlations (market_state vs metrics), top 12 by |ρ|:
+
+| Feature                     | Metric                   |   N |   SpearmanR |    t_stat |     p_value |
+|:----------------------------|:-------------------------|----:|------------:|----------:|------------:|
+| market_state_corr_mean_abs  | time_ratio               | 611 |   -0.40329  | -10.876   | 2.67038e-25 |
+| market_state_corr_mean_abs  | gate_entropy             | 611 |    0.382647 |  10.2208  | 9.69782e-23 |
+| market_state_corr_pc1_ratio | time_ratio               | 611 |   -0.331882 |  -8.68226 | 3.55243e-17 |
+| market_state_corr_pc1_ratio | gate_entropy             | 611 |    0.316493 |   8.23366 | 1.10934e-15 |
+| market_state_corr_mean_abs  | time_tau                 | 611 |    0.200061 |   5.03897 | 6.17817e-07 |
+| market_state_corr_mean_abs  | time_half_life           | 611 |    0.200061 |   5.03897 | 6.17817e-07 |
+| market_state_tail_2sigma    | time_ratio               | 611 |   -0.186209 |  -4.67706 | 3.58736e-06 |
+| market_state_tail_2sigma    | gate_entropy             | 611 |    0.176634 |   4.4286  | 1.12439e-05 |
+| market_state_corr_pc1_ratio | time_tau                 | 611 |    0.15515  |   3.87571 | 0.000117855 |
+| market_state_corr_pc1_ratio | time_half_life           | 611 |    0.15515  |   3.87571 | 0.000117855 |
+| market_state_corr_pc1_ratio | factor_gate_topk_mass_10 | 611 |   -0.148029 |  -3.69374 | 0.000240857 |
+| market_state_corr_mean_abs  | factor_gate_topk_mass_10 | 611 |   -0.147162 |  -3.67163 | 0.000262189 |
+
+- Full table: `regime_corr_spearman.csv`
+
+![Regime scatter (performance)](regime_scatter_perf.png)
+
+![Regime scatter (routing)](regime_scatter_router.png)
+
+#### 2.X.1 指标释义（读表指南）
+
+- `market_state_corr_pc1_ratio`：市场“单一主导因子/同涨同跌”强度（越高越像单一市场因子驱动）。
+- `market_state_tail_2sigma`：尾部/冲击强度（越高表示极端波动占比越高）。
+- `market_state_corr_mean_abs`：拥挤度/相关性水平（越高越拥挤，alpha 更难独立发挥）。
+- `market_vol_20`：基准 20 日波动（通常已标准化，解读为相对高/低波动）。
+- `RankIC/IC`：预测排序/线性相关质量；`IR` 为日度均值/标准差（样本少时不稳定）。
+- `time_ratio`：路由对 time-expert 的权重（高→更偏时序专家，低→更偏截面因子专家）。
+- `gate_entropy`：路由不确定性（接近 0.693，约等于两专家均匀；越低越“果断”）。
+- `time_tau/time_half_life`：时间记忆尺度（越大→更长记忆/更慢衰减）。
+- `factor_gate_entropy/topk_mass`：因子重加权是否集中（topk_mass 高/entropy 低→更集中）。
+
+
+
+#### 2.X.2 观测到的差异（test）
+
+- RankIC daily range: -0.3292~0.4395
+
+- IC daily range: -0.3655~0.4210
+
+- time_ratio daily range: 0.3264~0.7706
+
+- gate_entropy daily range: 0.5278~0.6918
+
+- time_tau daily range: 4.9107~4.9493
+
+- 2×2 regimes: RankIC_mean: best=High-PC1 / High-Tail(0.1204), worst=Low-PC1 / Low-Tail(0.0677), spread=0.0527
+
+- 2×2 routing: time_ratio_mean: best=Low-PC1 / Low-Tail(0.7064), worst=High-PC1 / High-Tail(0.6285), spread=0.0778
+
+- `market_state_corr_pc1_ratio` terciles: RankIC_mean Δ(High-Low)=0.0184, time_ratio_mean Δ(High-Low)=-0.0382
+
+- `market_state_tail_2sigma` terciles: RankIC_mean Δ(High-Low)=0.0435, time_ratio_mean Δ(High-Low)=-0.0644
+
+- `market_state_corr_mean_abs` terciles: RankIC_mean Δ(High-Low)=0.0325, time_ratio_mean Δ(High-Low)=-0.0500
+
+- `market_vol_20` terciles: RankIC_mean Δ(High-Low)=0.0131, time_ratio_mean Δ(High-Low)=-0.0089
+
+- Routing ↔ quality coupling (Spearman, test): time_ratio↔rank_ic: ρ=-0.03 (n=611); gate_entropy↔rank_ic: ρ=0.02 (n=611); time_tau↔rank_ic: ρ=-0.08 (n=611); factor_gate_entropy↔rank_ic: ρ=0.01 (n=611)
+
+- Strongest state↔performance: `market_state_corr_mean_abs` vs `ic` ρ=0.07 (n=611).
+
+- Strongest state↔routing: `market_state_corr_mean_abs` vs `time_ratio` ρ=-0.40 (n=611).
+
+
+- 解释建议：若“预测质量差异”显著但 `time_ratio/gate_entropy/time_tau` 基本不变，说明路由/时间尺度未随宏观状态自适应；反之若路由显著变化但 RankIC 不变，可能是“在动但没带来收益”。
+- 注意：test 天数通常较少，分桶后的 `IR` 与相关性更偏诊断用途；建议在更长窗口/多次 run 上复核。 
+
+
+## 3. Training Dynamics & Portfolio Backtest
+
+### 3.1 Training Dynamics (MSE vs. RankIC)
+
+训练阶段采用 **MSE 主 loss**（基于 rank-label），这里展示 train/mse 与 valid/rank_ic 随 epoch 的演化，并粗略量化二者的相关性：
+
+- Peak valid RankIC approx 0.0781 at epoch 25
+- Corr(-train MSE, valid RankIC) approx 0.901
+
+![Training dynamics (MSE vs RankIC)](train_curves_mse_rankic.png)
+
+### 3.2 Portfolio Backtest (2020-07-01~2022-12-30, csi300 universe)
+
+- 年化收益 (excess return with cost): 23.33% (如果为 nan 请检查 portfolio_analysis/port_analysis_1day.pkl)
+- 信息比 (Information Ratio): 2.25
+- 最大回撤: -7.34%
+- 成交换手率 (Turnover): 32.78%
+
+## 3.3 Qlib Official Graphs
+
+使用 Qlib 官方 report 模块生成的图表：
+
+### analysis_position.report_graph
+
+- [analysis_position.report_graph](qlib_analysis_position_report_graph.html)
+
+### analysis_position.risk_analysis_graph
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_1.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_2.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_3.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_4.html)
+
+- [analysis_position.risk_analysis_graph](qlib_analysis_position_risk_analysis_graph_5.html)
+
+### analysis_position.score_ic_graph
+
+- [analysis_position.score_ic_graph](qlib_analysis_position_score_ic_graph.html)
+
+### analysis_model.model_performance_graph
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_1.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_2.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_3.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_4.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_5.html)
+
+- [analysis_model.model_performance_graph](qlib_analysis_model_model_performance_graph_6.html)
+
+### analysis_position.cumulative_return_graph
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_1.html)
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_2.html)
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_3.html)
+
+- [analysis_position.cumulative_return_graph](qlib_analysis_position_cumulative_return_graph_4.html)
+
+### analysis_position.rank_label_graph
+
+- [analysis_position.rank_label_graph](qlib_analysis_position_rank_label_graph_1.html)
+
+- [analysis_position.rank_label_graph](qlib_analysis_position_rank_label_graph_2.html)
+
+- [analysis_position.rank_label_graph](qlib_analysis_position_rank_label_graph_3.html)
+
+## 4. Spatio-Temporal Disentanglement Diagnostics
+
+### 4.1 Router Gate over Time (time vs. cross-sectional experts)
+
+- Gate time_ratio (time-expert weight) stats on test set: mean=0.677, std=0.062, p10=0.615, p90=0.729
+
+- Gate entropy stats on test set: mean=0.617, std=0.031, p10=0.581, p90=0.661
+
+- time_ratio 接近 1 表示更信任「时间 expert」，接近 0 表示更信任「截面 expert」。
+- 若 mean 在 (0.3, 0.7) 且 std > 0，说明路由器确实在不同阶段做非平凡决策；
+  若长期贴近 0 或 1，则 MoE 退化为单专家模型。
+
+![Gate time_ratio series](st_disentangle_gate_series_test.png)
+
+![Gate entropy series](st_disentangle_gate_entropy_series_test.png)
+
+### 4.1.1 Regime-Adaptive Time Scale (tau / half-life)
+
+- time_tau stats on test set: mean=4.924, std=0.008, p10=4.915, p90=4.934
+
+- time_half_life stats on test set: mean=3.413, std=0.006, p10=3.406, p90=3.420
+
+![time_tau series](st_disentangle_time_tau_series_test.png)
+
+![time_half_life series](st_disentangle_time_half_life_series_test.png)
+
+- `time_tau` 来自 regime-adaptive time embedding 的时间尺度参数（越大越偏长记忆，越小越偏短记忆）。
+- `time_half_life = time_tau * ln(2)`（单位为窗口时间步，若 1 步=1 天则可视作“天数半衰期”）。
+
+### 4.1.1.1 tau vs time_ratio (same-day overlay)
+
+![tau vs time_ratio](st_disentangle_tau_vs_time_ratio_test.png)
+
+### 4.1.2 Regime-Adaptive Factor Gate (concentration)
+
+- factor_gate_mean stats on test set: mean=1.000, std=0.005, p10=0.993, p90=1.007
+
+- factor_gate_std stats on test set: mean=0.030, std=0.007, p10=0.020, p90=0.039
+
+- factor_gate_entropy stats on test set: mean=0.945, std=0.005, p10=0.938, p90=0.951
+
+- factor_gate_topk_mass_5 stats on test set: mean=0.095, std=0.005, p10=0.090, p90=0.102
+
+- factor_gate_topk_mass_10 stats on test set: mean=0.172, std=0.008, p10=0.164, p90=0.183
+
+![factor_gate_mean series](st_disentangle_factor_gate_mean_series_test.png)
+
+![factor_gate_std series](st_disentangle_factor_gate_std_series_test.png)
+
+![factor_gate_entropy series](st_disentangle_factor_gate_entropy_series_test.png)
+
+![factor_gate_topk_mass_5 series](st_disentangle_factor_gate_topk_mass_5_series_test.png)
+
+![factor_gate_topk_mass_10 series](st_disentangle_factor_gate_topk_mass_10_series_test.png)
+
+- `factor_gate_mean` / `factor_gate_std`：regime-adaptive factor gate 权重的日均值/标准差，反映因子重加权的整体幅度和波动。
+- `factor_gate_entropy` 是把 per-sample 的 factor gate 归一化后得到的分布熵（再除以 log(N) 做归一化到 0~1）。
+  越低表示 gate 越“集中”，即 regime 对因子组合的重加权更强、更具结构性。
+- `factor_gate_topk_mass_5` / `factor_gate_topk_mass_10` 表示前 5 / 10 个因子（按 gate 权重排序）的累计质量占比；越高说明越稀疏/越集中。
+
+### 4.2 Temporal Attention (Heatmap + Locality)
+
+基于若干代表性交易日的 **time-attention heatmap**，统计对角/邻近对角的注意力质量：
+
+- 2020-07-01: diag_mass=0.132, local_band_mass=0.361
+- 2021-02-09: diag_mass=0.130, local_band_mass=0.353
+- 2021-09-28: diag_mass=0.130, local_band_mass=0.355
+- 2022-12-30: diag_mass=0.130, local_band_mass=0.356
+
+![Time attention (2020-07-01)](st_disentangle_attn_time_2020-07-01.png)
+
+![Time attention (2021-02-09)](st_disentangle_attn_time_2021-02-09.png)
+
+![Time attention (2021-09-28)](st_disentangle_attn_time_2021-09-28.png)
+
+![Time attention (2022-12-30)](st_disentangle_attn_time_2022-12-30.png)
+
+- diag_mass 衡量注意力在完全对齐的时间步 (i=j) 上的质量；
+- local_band_mass 衡量注意力在 |i-j| ≤ 1 的近邻时间步上的质量。
+- 越高说明模型更偏向「局部时序模式」（类似 AR / 局部卷积），
+  越低说明模型依赖更长程的时序依赖。
+
+### 4.3 Factor Attention (Heatmap + Concentration)
+
+基于同一批交易日的 **factor-attention heatmap**（默认取窗口最后一个时间步），统计注意力的集中度：
+
+- 2020-07-01: diag_mass=0.007, top5_mass=0.037, entropy=0.999
+- 2021-02-09: diag_mass=0.007, top5_mass=0.036, entropy=0.999
+- 2021-09-28: diag_mass=0.007, top5_mass=0.036, entropy=0.999
+- 2022-12-30: diag_mass=0.007, top5_mass=0.036, entropy=0.999
+
+#### 4.3.1 Factor Attention Top-K (ids)
+
+- 2020-07-01: top10 ids=[64, 31, 16, 46, 143, 27, 22, 76, 61, 144]
+- 2021-02-09: top10 ids=[67, 31, 132, 143, 93, 61, 156, 4, 64, 146]
+- 2021-09-28: top10 ids=[132, 7, 84, 98, 8, 108, 112, 36, 4, 72]
+- 2022-12-30: top10 ids=[98, 7, 25, 142, 112, 49, 67, 11, 64, 84]
+
+![Factor attention (2020-07-01)](st_disentangle_attn_factor_2020-07-01.png)
+
+![Factor attention (2021-02-09)](st_disentangle_attn_factor_2021-02-09.png)
+
+![Factor attention (2021-09-28)](st_disentangle_attn_factor_2021-09-28.png)
+
+![Factor attention (2022-12-30)](st_disentangle_attn_factor_2022-12-30.png)
+
+- diag_mass：因子对自身的注意力质量（越高说明更“自回归/自保留”）；
+- top5_mass：每个因子行向量中 Top-5 权重质量的均值（越高说明更稀疏、更“专家化”）；
+- entropy：归一化熵 (0~1)，越低越尖锐，越高越均匀。
+- 注意：因子维度没有天然顺序，因此不像时间维那样用“邻近对角带”解释；我们更关心“是否稀疏/是否可解释地集中在少数因子交互上”。
+
+### 4.4 Factor Pooling Attention (Heatmap + Top-K)
+
+来自 attention pooling 的 `factor_attention_weights`（模型输出 `factor_pool_weights`），按日对 batch 做均值后导出 heatmap 与 Top-K：
+
+#### 4.4.1 Factor Pooling Top-K (ids)
+
+- 2020-07-01: top10 ids=[13, 32, 29, 19, 14, 17, 56, 20, 55, 9]
+- 2021-02-09: top10 ids=[13, 19, 114, 9, 110, 109, 117, 73, 56, 78]
+- 2021-09-28: top10 ids=[13, 56, 19, 34, 119, 110, 109, 114, 78, 44]
+- 2022-12-30: top10 ids=[13, 114, 19, 119, 56, 110, 117, 29, 40, 17]
+
+![Factor pooling attention (2020-07-01)](st_disentangle_attn_pool_factor_2020-07-01.png)
+
+![Factor pooling attention (2021-02-09)](st_disentangle_attn_pool_factor_2021-02-09.png)
+
+![Factor pooling attention (2021-09-28)](st_disentangle_attn_pool_factor_2021-09-28.png)
+
+![Factor pooling attention (2022-12-30)](st_disentangle_attn_pool_factor_2022-12-30.png)
+
+## 5. Summary
+
+RST-MoE 在官方 Alpha158 / CSI300 框架下，兼顾了稳健的日频预测性能 （IC / RankIC / 信息比）和可解释的时空解耦结构（gate 曲线 + attention 局部性），同时通过 MSE 训练曲线与 RankIC 的联动，展示了从 rank-label → MSE 优化 → 截面预测 → 组合收益的一条清晰传导链。
+
+================================================================================

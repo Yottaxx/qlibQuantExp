@@ -1,0 +1,66 @@
+version: 1
+package: qlibQuantExp-skills
+description: Imagination-driven scientific-research skills for the RST-MoE quant project
+maintained_by: yotta
+last_updated: 2026-05-22
+license: MIT
+repository: https://github.com/Yottaxx/qlibQuantExp-skills
+
+skills:
+  - name: qx-transpose-from-another-field
+    version: 0.1
+    path: skills/transpose-from-another-field
+    lineage: Gentner structure-mapping; Maxwell-electromagnetism, Bohr-atom, Darwin-Malthus
+    writes_to: shared/analogies/
+    last_commit: null  # filled on first git commit
+
+  - name: qx-forge-a-sharp-falsifier
+    version: 0.1
+    path: skills/forge-a-sharp-falsifier
+    lineage: Popper, Conjectures and Refutations
+    writes_to: shared/falsifiers/
+    last_commit: null
+
+  - name: qx-notebook-the-anomaly
+    version: 0.1
+    path: skills/notebook-the-anomaly
+    lineage: Faraday's Idea Books; Darwin Notebooks B-D; Edison; Feynman
+    writes_to: shared/notebook/
+    last_commit: null
+
+  - name: qx-protect-or-relax-the-hard-core
+    version: 0.1
+    path: skills/protect-or-relax-the-hard-core
+    lineage: Lakatos, Methodology of Scientific Research Programmes; Proofs and Refutations
+    writes_to: shared/hardcore.md
+    last_commit: null
+
+  - name: qx-research-ledger
+    version: 0.1
+    path: skills/qx-research-ledger
+    lineage: Faraday's Diary + Index; MLAgentBench research_log; Reflexion episodic memory
+    writes_to: shared/ledger.md
+    last_commit: null
+
+  - name: qx-skill-creator
+    version: 0.1
+    path: skills/qx-skill-creator
+    lineage: Anthropic official skill-creator; ARIS meta-optimize
+    writes_to: skills/  (package mutation; the only authorized path)
+    last_commit: null
+
+shared_resources:
+  - shared/lineages.md           # the navigational core — names the 6 thinkers
+  - shared/hardcore.md           # Lakatosian manifesto (append-only)
+  - shared/ledger.md             # Faraday Diary + Index (append-only)
+  - shared/notebook/             # Faraday Idea Books (dated; append-only)
+  - shared/analogies/            # Gentner structure-mapped analogies
+  - shared/falsifiers/           # Popper falsifier cards
+
+conventions:
+  description_max_chars: 1024    # Anthropic hard limit
+  skill_md_body_max_lines: 200   # Tighter than Anthropic's ideal 500
+  siblings_referenced_min: 2     # Per skill description (K-Dense routing pattern)
+  lineage_required: true
+  generative_artifact_required: true
+  body_must_include_posture_section: true

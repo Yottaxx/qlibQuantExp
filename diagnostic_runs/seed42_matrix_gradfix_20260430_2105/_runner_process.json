@@ -1,0 +1,8 @@
+﻿{
+    "pid":  13516,
+    "out_dir":  "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\diagnostic_runs\\seed42_matrix_gradfix_20260430_2105",
+    "python":  "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+    "started":  "2026-04-30T21:01:00",
+    "settings":  "all",
+    "fix":  "grad_norm finite-step averaging + AMP overflow metrics"
+}

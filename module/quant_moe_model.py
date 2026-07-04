@@ -4,6 +4,7 @@ import math
 
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 from transformers import PreTrainedModel
 
 from module.architecture.feature_selector import DifferentiableFeatureSelector
@@ -14,6 +15,7 @@ from module.architecture.moe_block import RegimeAdaptiveMoEBlock
 from module.architecture.regime_encoder import RegimeContextEncoder
 from module.architecture.regime_adaptive_embedding import RegimeAdaptiveFactorGate, RegimeAdaptiveTimeEmbedding
 from module.architecture.attention_pooling import AdaptivePooling
+from module.architecture.cross_stock_block import CrossStockBlock
 from module.utils.utils import build_bidirectional_alibi_bias
 
 
@@ -113,6 +115,40 @@ class QuantMoEModel(PreTrainedModel):
         # 6) Stock score head
         self.head = nn.Linear(d_model, 1)
 
+        # 6.1) Portfolio-IR auxiliary loss state (h-20260627-001, L-6; default OFF via ir_aux_lambda=0).
+        # total += lam(ramp) * (-r_t / sqrt(detach(EMA_var)+eps)); r_t = sum_i w_i*y_i over the per-day
+        # cross-section, w = L1-normalized dollar-neutral weights from p. EMA buffers update TRAIN-ONLY
+        # (self.training) under no_grad and are FROZEN in valid/test (eval mode) => no train/valid leakage.
+        # Variance denom is DETACHED => no gradient on variance (honestly NOT a true Sharpe).
+        # Buffers are persistent=False so they neither break loading existing anchor checkpoints nor leak
+        # train state into saved checkpoints (l_ir never affects the prediction path; eval skips it).
+        self.ir_aux_lambda = float(getattr(config, "ir_aux_lambda", 0.0))
+        self.ir_aux_ramp_steps = int(getattr(config, "ir_aux_ramp_steps", 5000))
+        self.ir_aux_var_eps = float(getattr(config, "ir_aux_var_eps", 1e-6))
+        self.ir_aux_ema_decay = float(getattr(config, "ir_aux_ema_decay", 0.99))
+        self.register_buffer("ir_ema_r", torch.zeros(1), persistent=False)
+        self.register_buffer("ir_ema_r2", torch.ones(1), persistent=False)
+        self.register_buffer("ir_step", torch.zeros(1, dtype=torch.long), persistent=False)
+
+        # 6.5) Optional readout cross-stock attention (h-20260619): post-pool, pre-head, ungated/
+        # mainpath/in-series. Mixes across the daily cross-section right before scoring. Requires
+        # h_pooled's batch dim = ONE full trading day (samplers guarantee this; eval uses no-split
+        # chunks via model_adapter._daily_chunk_max_bs). Default off => baseline byte-identical.
+        self.use_readout_stock_attn = bool(getattr(config, "use_readout_stock_attn", False))
+        self.readout_stock_override = None  # eval leave-one-out hook: None | "uniform" | "zero"
+        if self.use_readout_stock_attn:
+            _rs_heads = int(getattr(config, "readout_stock_attn_heads", 0) or 0) or int(config.n_heads)
+            self.readout_stock_block = CrossStockBlock(
+                d_model=d_model,
+                n_heads=_rs_heads,
+                qknorm=bool(getattr(config, "readout_stock_attn_qknorm", True)),
+                gated=bool(getattr(config, "readout_stock_attn_gated", False)),
+                temp_init=float(getattr(config, "readout_stock_attn_temp_init", 4.0)),
+                use_ffn=bool(getattr(config, "readout_stock_attn_ffn", False)),
+                dropout=config.dropout,
+                contrast=bool(getattr(config, "readout_stock_attn_contrast", False)),
+            )
+
         # 5.5) Optional temporal readout (time-readout-bonus-20260607): a learned temporal aggregation
         # over T applied BEFORE the (unchanged) factor pool. All designs identity-start at z==h[:,-1]
         # (one-hot-last for the linears, gated-residual for the attentions) so a from-scratch retrain
@@ -181,6 +217,11 @@ class QuantMoEModel(PreTrainedModel):
             nn.init.kaiming_normal_(self.head.weight, mode="fan_in", nonlinearity="linear")
             if self.head.bias is not None:
                 nn.init.zeros_(self.head.bias)
+
+            # Readout cross-stock identity-start: re-zero out_proj AFTER post_init (which re-randomizes
+            # every nn.Linear) so the layer is an exact no-op at init and turns on only via gradient.
+            if getattr(self, "use_readout_stock_attn", False):
+                self.readout_stock_block.reset_identity_start()
 
             # Temporal-readout identity-start overrides. MUST come after post_init() because it
             # re-inits every nn.Linear/LayerNorm; bare Parameters (tr_A/tr_A_N/tr_q/...) survive it.
@@ -415,17 +456,34 @@ class QuantMoEModel(PreTrainedModel):
         router_entropy_values = []
         attn_maps: dict[str, dict[str, torch.Tensor]] = {}
 
+        use_ckpt = bool(getattr(self.config, "use_grad_checkpoint", False)) and self.training
         for idx, layer in enumerate(self.layers):
             need_attn = return_attn and (attn_layers is None or idx in attn_layers)
-            h, diag, layer_attn = layer(
-                h,
-                regime_embedding=regime,
-                attn_bias=attn_bias,
-                return_attn=need_attn,
-                factor_film=factor_film,
-                feature_mask=feature_mask,
-                router_override=router_override,
-            )
+            if use_ckpt and not need_attn:
+                # Recompute the block's activations in backward to cap peak memory. use_reentrant=False
+                # preserves RNG (dropout masks match) => numerically exact. Skipped when attention maps
+                # are requested (return_attn) since those are eval-only diagnostics under no_grad.
+                h, diag, layer_attn = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    h,
+                    regime,
+                    attn_bias,
+                    False,  # return_attn
+                    factor_film=factor_film,
+                    feature_mask=feature_mask,
+                    router_override=router_override,
+                    use_reentrant=False,
+                )
+            else:
+                h, diag, layer_attn = layer(
+                    h,
+                    regime_embedding=regime,
+                    attn_bias=attn_bias,
+                    return_attn=need_attn,
+                    factor_film=factor_film,
+                    feature_mask=feature_mask,
+                    router_override=router_override,
+                )
             z_losses.append(diag["z_loss"])
             entropies.append(diag["entropy"])
             time_ratios.append(diag["time_ratio"])
@@ -436,17 +494,22 @@ class QuantMoEModel(PreTrainedModel):
                 router_entropy_values.append(diag["entropy_per_sample"].detach())
 
             gw = diag["weights"].detach()
+            n_exp = int(gw.shape[1])
             tr_layer = gw[:, 0]
             ent_layer = diag.get("entropy_per_sample", None)
             margin_layer = diag.get("logit_margin_per_sample", None)
             diag_metrics[f"router_layer_{idx}_time_ratio"] = float(tr_layer.mean().item())
-            diag_metrics[f"router_layer_{idx}_factor_ratio"] = float((1.0 - tr_layer).mean().item())
+            # read columns directly (1-time_ratio only holds for 2 experts); E=2 values unchanged.
+            diag_metrics[f"router_layer_{idx}_factor_ratio"] = float(gw[:, 1].mean().item())
+            if n_exp >= 3:
+                diag_metrics[f"router_layer_{idx}_stock_ratio"] = float(gw[:, 2].mean().item())
+            # collapse = any expert dominating; for E=2 max>0.9 <=> (tr<0.1)|(tr>0.9) — equivalent.
             diag_metrics[f"router_layer_{idx}_collapse_ratio"] = float(
-                ((tr_layer < 0.1) | (tr_layer > 0.9)).float().mean().item()
+                (gw.max(dim=1).values > 0.9).float().mean().item()
             )
             if ent_layer is not None:
                 diag_metrics[f"router_layer_{idx}_entropy_norm"] = float(
-                    (ent_layer.detach().float().mean() / math.log(2.0)).item()
+                    (ent_layer.detach().float().mean() / math.log(float(n_exp))).item()
                 )
             if margin_layer is not None:
                 diag_metrics[f"router_layer_{idx}_logit_margin"] = float(
@@ -461,6 +524,19 @@ class QuantMoEModel(PreTrainedModel):
                 "contrib_norm_ratio",
                 "expert_cosine",
                 "time_winner_ratio",
+                # h-20260610-002 stock-expert L2/L3 diagnostics (present only when enabled)
+                "stock_ratio",
+                "stock_expert_norm",
+                "stock_contrib_norm",
+                "stock_winner_ratio",
+                "expert_cosine_ts",
+                "expert_cosine_fs",
+                "stock_attn_entropy_norm",
+                "stock_attn_self_frac",
+                "stock_attn_hub_top5_share",
+                # h-20260624 main-path stock-backbone (gamma trajectory + cold-query entropy)
+                "stock_backbone_gamma",
+                "stock_backbone_attn_entropy_norm",
             ):
                 if metric_name in diag:
                     diag_metrics[f"expert_layer_{idx}_{metric_name}"] = float(
@@ -551,6 +627,16 @@ class QuantMoEModel(PreTrainedModel):
             # 使用最后一时间步的因子表示 [B, N, D]
             h_last = h[:, -1, :, :]  # [B, N, D]
             h_pooled, factor_attention_weights = self.factor_pooling(h_last)  # [B, D], [B, N]
+
+        # Readout cross-stock attention (h-20260619): mix across the daily cross-section right before
+        # scoring. h_pooled:[B,D] with B = ONE full trading day (samplers guarantee; eval no-split).
+        # Mandatory residual, ungated (load-bearing). override = eval leave-one-out ablation.
+        if getattr(self, "use_readout_stock_attn", False):
+            h_pooled = self.readout_stock_block(h_pooled, override=self.readout_stock_override)
+            blk = self.readout_stock_block
+            if blk.last_entropy_norm is not None:
+                diag_metrics["readout_stock_attn_entropy_norm"] = blk.last_entropy_norm
+                diag_metrics["readout_stock_attn_norm"] = blk.last_out_norm
 
         # Stock score prediction
         if stock_score_override is not None:
@@ -646,6 +732,40 @@ class QuantMoEModel(PreTrainedModel):
                 if l_huber is not None:
                     total_loss = total_loss + w.get("huber", 0.0) * l_huber
 
+                # Portfolio-IR auxiliary (h-20260627-001, L-6): soft long-short-return aux on the per-day
+                # book. p,y are ONE trading day's cross-section (FixedDailyBatchSampler guarantees single-day
+                # batches). Default off (ir_aux_lambda=0) => total_loss byte-identical to anchor.
+                # NOTE: upsampled-with-replacement duplicate names are NOT de-duped here (no instrument ids
+                # at this site); this matches MSE's existing treatment of duplicates and is a documented
+                # approximation (leakage-audit invariant 4, SHOULD not MUST) — not a leakage path.
+                l_ir = None
+                lam_eff = 0.0
+                if self.ir_aux_lambda > 0.0:
+                    # FP32 book/vol math under autocast-DISABLED (MF-1, code-review wf_94c0eb30): under
+                    # amp_fp16 the denom floor underflows to 0 (fp16 min subnormal ~6e-8), so an all-equal
+                    # day -> 0/0 -> NaN that would PERMANENTLY poison the detached EMA buffers (every later
+                    # total_loss=NaN, all steps silently skipped). fp32 + clamp_min cannot underflow; the
+                    # in-block isfinite guard makes a single bad day non-catastrophic. (cf. regime_encoder
+                    # fp32-under-AMP precedent.)
+                    with torch.autocast(device_type=p.device.type, enabled=False):
+                        p32 = p.float()
+                        pc = p32 - p32.mean()
+                        w_book = pc / pc.abs().sum().clamp_min(1e-12)      # fp32 clamp_min cannot underflow
+                        r_book = (w_book * y.float()).sum()               # book return (0-dim), differentiable in p
+                        var = (self.ir_ema_r2.float() - self.ir_ema_r.float() ** 2).clamp_min(0.0)
+                        vol = torch.sqrt(var.detach() + self.ir_aux_var_eps).reshape(())   # DETACHED denom
+                        l_ir = -(r_book / vol)                            # 0-dim
+                    if self.training and torch.isfinite(r_book):   # TRAIN-ONLY; guard: a bad day never poisons EMA
+                        ramp = min(1.0, float(self.ir_step.item()) / max(1.0, float(self.ir_aux_ramp_steps)))
+                        lam_eff = self.ir_aux_lambda * ramp
+                        total_loss = total_loss + lam_eff * l_ir
+                        with torch.no_grad():                      # FROZEN in valid/test (self.training False)
+                            rd = r_book.detach()
+                            dec = self.ir_aux_ema_decay
+                            self.ir_ema_r.mul_(dec).add_(rd * (1.0 - dec))
+                            self.ir_ema_r2.mul_(dec).add_(rd * rd * (1.0 - dec))
+                            self.ir_step += 1
+
                 metrics = {
                     "loss_total": float(total_loss.detach().item()),
                     "loss_main": float(l_main.detach().item()),
@@ -660,6 +780,11 @@ class QuantMoEModel(PreTrainedModel):
                     metrics["loss_rank"] = float(l_rank.detach().item())
                 if l_huber is not None:
                     metrics["loss_huber"] = float(l_huber.detach().item())
+                if l_ir is not None and bool(torch.isfinite(l_ir)):
+                    metrics["loss_ir"] = float(l_ir.detach().item())
+                    metrics["ir_book_return"] = float(r_book.detach().item())
+                    metrics["ir_ema_vol"] = float(vol.detach().item())
+                    metrics["ir_lambda_eff"] = float(lam_eff)
             else:
                 metrics = {"valid_ratio": float(valid_ratio)}
         else:

@@ -1,0 +1,10 @@
+==== MASTER start Sat, Jun  6, 2026 11:57:41 PM (TMP=C:/Users/60585/PycharmProjects/qibMacV2/tmp_run) ====
+
+#### PHASE 1: Step-A screen (frozen, n=6 seeds 42-47) ####
+PHASE1_EXIT=0 (see logs/time_readout_stepA.log)
+
+#### PHASE 2: Step-B finetune (readout+top-block, control vs d3cid, n=3 seeds 42-44) ####
+PHASE2_EXIT=0 (see logs/time_readout_stepB.log)
+
+==== MASTER done Sun, Jun  7, 2026  9:57:26 AM ====
+RESULT: analysis/readout_redesign/RESULT_overnight.md

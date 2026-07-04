@@ -76,10 +76,70 @@ class QuantMoEConfig(PretrainedConfig):
             temporal_readout_init: str = "onehot_last",
             # d1pma/duals tr_gate initial value (0.0=>g=0.5 current; -2=>g~0.12; +2=>g~0.88). Gate-init sweep.
             temporal_readout_gate_init: float = 0.0,
+            # h-20260610-002: third stock-axis expert (cross-sectional MHA over the daily batch),
+            # symmetric peer of time/factor experts, router 2->3. Default off => baseline unchanged.
+            use_stock_expert: bool = False,
+            # h-20260610-002 follow-up: subtract the per-day cross-sectional mean from the stock
+            # expert output, so it can only contribute the rank-changing relative component (kills
+            # the loss-neutral uniform-attention attractor). Default off => baseline unchanged.
+            stock_expert_demean: bool = False,
+            # h-20260610-002 follow-up #2: center the stock expert INPUT across the daily cross-
+            # section before projection (centers q/k/v) so attention keys carry only the stock-
+            # relative signal, not the common-mode time/factor embedding. Default off.
+            stock_expert_xs_center: bool = False,
+            # h-20260617: normalize the stock-expert OUTPUT before de-mean/fusion to close the
+            # "V-amplification escape" (uniform attention + ||Wv||||Wo||->88 instead of sharpening).
+            # Modes: "none"(default,baseline) | "rms" | "unit" | "ln" | "ln_affine" | "block_rms"
+            #        | "cap:<float>". Scale-invariant modes (rms/unit/ln) foreclose the escape;
+            # ln_affine REOPENS it via gamma (diagnostic only). Default "none" => baseline unchanged.
+            stock_expert_out_norm: str = "none",
+            # h-20260624: cross-stock attention as a PRE-MoE MAIN-PATH residual (NOT a routed expert).
+            # x = x + gamma * StockAttn(LN(x)); NO de-mean / NO out_norm => removes the V-escape driver
+            # that killed the routed-expert form (entropy froze ~1.0 + ||out||->65-100 under de-mean).
+            # gamma is a learnable scalar init from gamma_init: 0.0 = ReZero opt-in (branch starts a
+            # no-op; only engages if cross-stock context helps), 1.0 = full-on from step 1. Router stays
+            # 2-way (time/factor). Pair with expert_no_wd_scope="stock_backbone" to keep warm-q's wd-free
+            # q/k. Default off => baseline unchanged.
+            stock_backbone: bool = False,
+            stock_backbone_gamma_init: float = 0.0,
+            # h-20260619: cross-stock self-attention at the READOUT (post-pool, pre-head), ungated/
+            # mainpath/in-series. Migration target of warm-q: removes all 3 warm-q pathologies at once
+            # (no de-mean => no V-escape; QK-norm+temp => cold-query immune; ungated residual =>
+            # load-bearing, no router exit). R1=qknorm on (the bet); R0=qknorm off (fixed 1/sqrt(d),
+            # placement-only control); gated=cold-sigmoid control (R2). Default off => baseline-identical.
+            use_readout_stock_attn: bool = False,
+            readout_stock_attn_qknorm: bool = True,
+            readout_stock_attn_gated: bool = False,
+            readout_stock_attn_heads: int = 0,          # 0 => reuse n_heads
+            readout_stock_attn_temp_init: float = 4.0,  # mild => entropy starts ~1, DROP = sharpened
+            readout_stock_attn_ffn: bool = False,
+            # h-20260704 C1: use the CONTRAST operator c_i=Wv·u_i−Σ_j a_ij·Wv·u_j instead of the standard
+            # pooling o=Σ_j a_ij·Wv·u_j at the readout. Uniform attention ⇒ c_i=Wv·(u_i−mean(u)) = the
+            # pure cross-sectional-demeaned coordinate (common-mode-free, V-escape-immune, CS-blind
+            # backbone cannot produce it). Default off => R1 pooling behavior unchanged.
+            readout_stock_attn_contrast: bool = False,
+            # ---- Portfolio-IR auxiliary loss (h-20260627-001, L-6; default OFF => anchor byte-identical) ----
+            # Soft long-short-return / IC-family aux on the per-day book; MSE stays the main loss.
+            # NOTE the variance denominator is DETACHED (no gradient on variance) => honestly NOT a true Sharpe.
+            ir_aux_lambda: float = 0.0,          # 0 => disabled; target weight reached after the ramp
+            ir_aux_ramp_steps: int = 5000,       # linear ramp 0->ir_aux_lambda over this many PER-DAY FORWARD
+                                                 # steps (microbatches; ir_step++ per forward, NOT optimizer
+                                                 # steps -> with grad_accum_steps=K it is K*optimizer-steps)
+            ir_aux_var_eps: float = 1e-6,
+            ir_aux_ema_decay: float = 0.99,      # EMA decay for the detached book-return mean/var
+            # ---- Memory: gradient checkpointing of the MoE layers (default OFF => byte-identical) ----
+            # When ON, each RegimeAdaptiveMoEBlock forward is wrapped in torch.utils.checkpoint
+            # (use_reentrant=False, RNG preserved => dropout masks match => numerically exact). Only the
+            # layer INPUT [B,T,N,D] is kept; the attention/FFN activations are recomputed in backward.
+            # Needed for wide-feature runs (e.g. L-4 CS-rank append => N=316) on a 12GB card where the
+            # full activation graph exceeds VRAM. No effect at eval (eval runs under no_grad).
+            use_grad_checkpoint: bool = False,
             **kwargs
     ):
 
         super().__init__(**kwargs)
+
+        self.use_grad_checkpoint = bool(use_grad_checkpoint)
 
         self.d_model = d_model
         self.n_heads = n_heads
@@ -204,6 +264,25 @@ class QuantMoEConfig(PretrainedConfig):
             )
         self.temporal_readout_init = temporal_readout_init
         self.temporal_readout_gate_init = float(temporal_readout_gate_init)
+        self.use_stock_expert = bool(use_stock_expert)
+        self.stock_expert_demean = bool(stock_expert_demean)
+        self.stock_expert_xs_center = bool(stock_expert_xs_center)
+        self.stock_expert_out_norm = str(stock_expert_out_norm or "none").strip().lower()
+        self.stock_backbone = bool(stock_backbone)
+        self.stock_backbone_gamma_init = float(stock_backbone_gamma_init)
+        self.use_readout_stock_attn = bool(use_readout_stock_attn)
+        self.readout_stock_attn_qknorm = bool(readout_stock_attn_qknorm)
+        self.readout_stock_attn_gated = bool(readout_stock_attn_gated)
+        self.readout_stock_attn_heads = int(readout_stock_attn_heads)
+        self.readout_stock_attn_temp_init = float(readout_stock_attn_temp_init)
+        self.readout_stock_attn_ffn = bool(readout_stock_attn_ffn)
+        self.readout_stock_attn_contrast = bool(readout_stock_attn_contrast)
+
+        # Portfolio-IR auxiliary loss (h-20260627-001, L-6)
+        self.ir_aux_lambda = float(ir_aux_lambda)
+        self.ir_aux_ramp_steps = int(ir_aux_ramp_steps)
+        self.ir_aux_var_eps = float(ir_aux_var_eps)
+        self.ir_aux_ema_decay = float(ir_aux_ema_decay)
 
 
 # ==========================================

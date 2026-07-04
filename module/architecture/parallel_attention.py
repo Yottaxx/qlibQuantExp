@@ -1,8 +1,30 @@
 # module/architecture/parallel_attention.py
 
+import os
+
 import torch
 import torch.nn as nn
 from module.utils.model_configuration import QuantMoEConfig
+
+# CUDA grid-dim limit (2^16-1). PyTorch's fused / memory-efficient SDPA kernels launch a grid whose
+# x-dimension scales with the MHA batch size; above this they raise "invalid configuration argument"
+# (empirically B=63200 works, B=94800 fails on an RTX 40-series). The time expert reshapes to
+# batch = B*N, so a wide feature set (e.g. L-4 CS-rank append => N=316, batch=300 => 94800) trips it
+# while the default N=158 (47400) does not.
+#
+# Fix: when the batch exceeds the limit we split the attention over the batch dimension into chunks
+# <= _SDPA_CHUNK and run each through the normal (memory-efficient) backend, then concatenate. Because
+# self-attention is independent per batch element this is numerically identical to a single call, so
+# existing (narrower) runs are byte-unchanged and we do NOT fall back to the memory-heavy MATH kernel
+# (which materializes the full LxL score matrix per element and caused OOM at N=316, batch=300).
+_SDPA_GRID_LIMIT = 65535
+# 4096 keeps the attention fwd+bwd working set minimal for the B*N=94800 time expert (measured ~5GB
+# reserved already at 8192; smaller only trims further), vs ~9GB at 32768 (which tips a 12GB card over
+# once the rest of the model + optimizer + allocator fragmentation pile on) and ~23GB for the MATH
+# kernel. Smaller = more (cheap, seq-len-8) kernel launches but strictly less peak memory and less
+# fragmentation churn; equivalence to a single call is exact (self-attn is independent per batch
+# element). Overridable via QIB_SDPA_CHUNK for cards with more/less headroom.
+_SDPA_CHUNK = int(os.environ.get("QIB_SDPA_CHUNK", "4096"))
 
 
 class ParallelAttention(nn.Module):
@@ -133,6 +155,24 @@ class ParallelAttention(nn.Module):
                 )
                 # best-effort: expand to [B, 1, L, L]
                 return out, attn_avg.unsqueeze(1)
+
+        # Guard the CUDA SDPA grid-dim limit (see module header). When the batch exceeds the limit we
+        # split over the batch dim and run each chunk through the normal backend; self-attention is
+        # independent per batch element so this is numerically identical to a single call and keeps
+        # the memory-efficient kernel (no MATH fallback -> no OOM). attn_mask is [B*H, L, L], so it is
+        # chunked in lockstep by the same batch factor.
+        if x.is_cuda and B > _SDPA_GRID_LIMIT:
+            H = self.n_heads
+            outs = []
+            for start in range(0, B, _SDPA_CHUNK):
+                end = min(start + _SDPA_CHUNK, B)
+                xc = x[start:end]
+                mc = None
+                if attn_mask is not None:
+                    mc = attn_mask[start * H:end * H]
+                oc, _ = self.mha(xc, xc, xc, attn_mask=mc, need_weights=False)
+                outs.append(oc)
+            return torch.cat(outs, dim=0)
 
         out, _ = self.mha(
             x, x, x,

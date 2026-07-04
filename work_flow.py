@@ -60,7 +60,15 @@ _configure_stdio()
 # 0. Qlib Init (与官方 yaml 对齐)
 # =============================================================================
 provider_uri = "~/.qlib/qlib_data/cn_data"
-qlib.init(provider_uri=provider_uri, region=REG_CN)
+# kernels=1 forces SERIAL data loading. On Windows the default multi-process kernels Pool
+# spawns workers via DuplicateHandle; during the backtest exchange build a worker respawn
+# (_repopulate_pool_static) intermittently fails with WinError 5 [PermissionError] and wedges
+# the whole run post-training (lost a completed seed-43 to this). Serial is GPU-irrelevant here
+# (training is GPU-bound, not data-expression-bound) and eliminates the crash class entirely.
+# Override with QIB_QLIB_KERNELS=<n> if a future host needs parallel expression eval.
+_qlib_kernels = int(os.environ.get("QIB_QLIB_KERNELS", "1") or "1")
+qlib.init(provider_uri=provider_uri, region=REG_CN, kernels=_qlib_kernels)
+print(f">>> [qlib.init] kernels={_qlib_kernels} (serial data loading; QIB_QLIB_KERNELS to override)")
 
 # =============================================================================
 # 1. Data Config (与官方 task.dataset 对齐，改为 TSDatasetH)
@@ -304,6 +312,24 @@ MODEL_CONFIG_KEYS_FULL = [
     "temporal_readout",
     "temporal_readout_init",
     "temporal_readout_gate_init",
+    "use_stock_expert",
+    "stock_expert_demean",
+    "stock_expert_xs_center",
+    "stock_expert_out_norm",
+    "use_readout_stock_attn",
+    "readout_stock_attn_qknorm",
+    "readout_stock_attn_gated",
+    "readout_stock_attn_heads",
+    "readout_stock_attn_temp_init",
+    "readout_stock_attn_ffn",
+    "readout_stock_attn_contrast",
+    # provenance fix (code-review wf_94c0eb30, 2026-06-27): tau-scale + L-6 IR-aux knobs were dropped
+    # from run_conf_resolved + the MLflow note, so paired arms were indistinguishable in the recorder.
+    "time_tau_mlp_out_scale",
+    "ir_aux_lambda",
+    "ir_aux_ramp_steps",
+    "ir_aux_var_eps",
+    "ir_aux_ema_decay",
 ]
 
 

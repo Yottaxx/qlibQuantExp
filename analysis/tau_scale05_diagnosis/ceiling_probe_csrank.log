@@ -1,0 +1,23 @@
+[5752:MainThread](2026-06-27 18:07:26,485) INFO - qlib.Initialization - [config.py:452] - default_conf: client.
+[5752:MainThread](2026-06-27 18:07:27,559) INFO - qlib.Initialization - [__init__.py:75] - qlib successfully initialized based on client settings.
+[5752:MainThread](2026-06-27 18:07:27,559) INFO - qlib.Initialization - [__init__.py:77] - data_path={'__DEFAULT_FREQ': WindowsPath('C:/Users/60585/.qlib/qlib_data/cn_data')}
+[18:07:27] building handler...
+[5752:MainThread](2026-06-27 18:09:24,268) INFO - qlib.timer - [log.py:127] - Time cost: 116.709s | Loading data Done
+[5752:MainThread](2026-06-27 18:09:28,878) INFO - qlib.timer - [log.py:127] - Time cost: 4.183s | RobustZScoreNorm Done
+[5752:MainThread](2026-06-27 18:09:29,667) INFO - qlib.timer - [log.py:127] - Time cost: 0.789s | Fillna Done
+[5752:MainThread](2026-06-27 18:09:30,188) INFO - qlib.timer - [log.py:127] - Time cost: 0.173s | DropnaLabel Done
+[5752:MainThread](2026-06-27 18:09:35,251) INFO - qlib.timer - [log.py:127] - Time cost: 5.063s | CSZScoreNorm Done
+[5752:MainThread](2026-06-27 18:09:35,283) INFO - qlib.timer - [log.py:127] - Time cost: 11.014s | fit & process data Done
+[5752:MainThread](2026-06-27 18:09:35,283) INFO - qlib.timer - [log.py:127] - Time cost: 127.723s | Init data Done
+[18:09:35] handler 129s
+[18:09:35] DK_I (1094405, 158) DK_L (1056888, 158)
+[18:09:35]   building CS-rank (groupby-datetime rank-pct) for (1094405, 158) ...
+[18:10:04]   building CS-rank (groupby-datetime rank-pct) for (1056888, 158) ...
+[18:10:32] CS-rank built 186s
+[18:10:34] BASE (global snapshot, F=158)
+[18:10:54]   [BASE] ridge alpha=1 test=0.04445
+[18:12:50]   [BASE] lgbm n=1000 mean=0.05345 seeds=[0.05331, 0.05258, 0.05446] CEILING=0.05345
+[18:12:51] CSRANK (global ++ CS-rank appended, F=316)
+[18:13:30]   [CSR] ridge alpha=1 test=0.04574
+[18:16:11]   [CSR] lgbm n=300 mean=0.06298 seeds=[0.06336, 0.06226, 0.06333] CEILING=0.06298
+[18:16:11] DONE 525s base=0.05345 csrank=0.06298 lift=+0.00953 -> IC_REOPENS_MODAL (CS-rank lifts the classic ceiling >=+0.005 -> L-4 worth a GPU n=6)

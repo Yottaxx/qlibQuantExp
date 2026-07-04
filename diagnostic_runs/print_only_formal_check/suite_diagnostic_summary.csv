@@ -1,0 +1,2 @@
+setting,returncode,diagnostic_matrix,performance/daily_rank_ic_mean,performance/rank_icir,performance/daily_ic_mean,performance/icir,portfolio/annualized_return_with_cost,portfolio/information_ratio_with_cost,portfolio/max_drawdown_with_cost,portfolio/turnover,optimization/post_peak_decay,regime/pc1_tail_2x2_rank_ic_spread,router/time_ratio_mean,time_embedding/tau_range_utilization,factor_film/film_pool_top10_overlap,attention_pooling/factor_entropy_norm_mean
+full_135,,,,,,,,,,,,,,,,

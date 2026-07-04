@@ -1,0 +1,152 @@
+[
+  {
+    "setting": "full_135",
+    "cmd": [
+      "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+      "-u",
+      "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+    ],
+    "model_overrides": {
+      "use_regime_time_embedding": true,
+      "use_regime_factor_gate": true,
+      "router_use_layer_summary": true,
+      "router_mode": "learned"
+    },
+    "trainer_overrides": {
+      "seed": 42,
+      "train_stop_threshold": 1.35,
+      "use_tqdm": false
+    },
+    "data_overrides": {},
+    "port_overrides": {},
+    "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\full_135\\stdout.log",
+    "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\full_135\\stderr.log",
+    "returncode": 0,
+    "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\325032212672679181\\0cea102512eb4ead9165d4bef08ff534\\diagnostic_matrix.csv"
+  },
+  {
+    "setting": "base",
+    "cmd": [
+      "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+      "-u",
+      "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+    ],
+    "model_overrides": {
+      "use_regime_time_embedding": false,
+      "use_regime_factor_gate": false,
+      "router_use_layer_summary": true,
+      "router_mode": "learned"
+    },
+    "trainer_overrides": {
+      "seed": 42,
+      "train_stop_threshold": 1.35,
+      "use_tqdm": false
+    },
+    "data_overrides": {},
+    "port_overrides": {},
+    "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\base\\stdout.log",
+    "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\base\\stderr.log",
+    "returncode": 0,
+    "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\662335838392804238\\d2e63b7839864c208de48b564eecd195\\diagnostic_matrix.csv"
+  },
+  {
+    "setting": "time_only",
+    "cmd": [
+      "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+      "-u",
+      "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+    ],
+    "model_overrides": {
+      "use_regime_time_embedding": true,
+      "use_regime_factor_gate": false,
+      "router_use_layer_summary": true,
+      "router_mode": "learned"
+    },
+    "trainer_overrides": {
+      "seed": 42,
+      "train_stop_threshold": 1.35,
+      "use_tqdm": false
+    },
+    "data_overrides": {},
+    "port_overrides": {},
+    "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\time_only\\stdout.log",
+    "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\time_only\\stderr.log",
+    "returncode": 0,
+    "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\857301447245886986\\5e458ead56d843b6bac14e3489a4ca5c\\diagnostic_matrix.csv"
+  },
+  {
+    "setting": "film_only",
+    "cmd": [
+      "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+      "-u",
+      "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+    ],
+    "model_overrides": {
+      "use_regime_time_embedding": false,
+      "use_regime_factor_gate": true,
+      "router_use_layer_summary": true,
+      "router_mode": "learned"
+    },
+    "trainer_overrides": {
+      "seed": 42,
+      "train_stop_threshold": 1.35,
+      "use_tqdm": false
+    },
+    "data_overrides": {},
+    "port_overrides": {},
+    "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\film_only\\stdout.log",
+    "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\film_only\\stderr.log",
+    "returncode": 0,
+    "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\205607788562772697\\c33a8a47f7f14319a7f55fa848c50cd1\\diagnostic_matrix.csv"
+  },
+  {
+    "setting": "no_layer_summary",
+    "cmd": [
+      "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+      "-u",
+      "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+    ],
+    "model_overrides": {
+      "use_regime_time_embedding": true,
+      "use_regime_factor_gate": true,
+      "router_use_layer_summary": false,
+      "router_mode": "learned"
+    },
+    "trainer_overrides": {
+      "seed": 42,
+      "train_stop_threshold": 1.35,
+      "use_tqdm": false
+    },
+    "data_overrides": {},
+    "port_overrides": {},
+    "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\no_layer_summary\\stdout.log",
+    "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\no_layer_summary\\stderr.log",
+    "returncode": 0,
+    "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\590194973191721631\\3049d3c013b54591a76de366e0366d83\\diagnostic_matrix.csv"
+  },
+  {
+    "setting": "fixed_router_05",
+    "cmd": [
+      "C:\\Users\\60585\\miniconda3\\envs\\quantEnv\\python.exe",
+      "-u",
+      "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\work_flow.py"
+    ],
+    "model_overrides": {
+      "use_regime_time_embedding": true,
+      "use_regime_factor_gate": true,
+      "router_use_layer_summary": true,
+      "router_mode": "fixed_05"
+    },
+    "trainer_overrides": {
+      "seed": 42,
+      "train_stop_threshold": 1.35,
+      "use_tqdm": false
+    },
+    "data_overrides": {},
+    "port_overrides": {},
+    "stdout": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\fixed_router_05\\stdout.log",
+    "stderr": "diagnostic_runs\\seed42_matrix_gradfix_20260430_2105\\fixed_router_05\\stderr.log",
+    "returncode": 0,
+    "diagnostic_matrix": "C:\\Users\\60585\\PycharmProjects\\qibMacV2\\mlruns\\868729932898585167\\df53e63552ad4502a5b42c92d00d6733\\diagnostic_matrix.csv"
+  }
+]

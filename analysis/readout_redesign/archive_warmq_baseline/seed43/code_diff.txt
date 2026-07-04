@@ -1,0 +1,1891 @@
+diff --git a/.agents/skills/qlibQuantExp-skills/shared/ledger.md b/.agents/skills/qlibQuantExp-skills/shared/ledger.md
+index 532e6da..4f5010b 100644
+--- a/.agents/skills/qlibQuantExp-skills/shared/ledger.md
++++ b/.agents/skills/qlibQuantExp-skills/shared/ledger.md
+@@ -186,3 +186,4 @@ The 5 entry kinds: `anchor` / `sweep_start` / `sweep_done` / `result` / `decisio
+ | 77 | `result`+`decision` | **init-ablation falsifies the basin-trap hypothesis; gate-frozen mechanism; temporal-readout axis CLOSED → card settled-CLOSED** | Paired A/B, byte-identical backbones (separate-RNG init): uniform_mean (1/T+0.02·randn, sum-preserving NOT Kaiming) CLEARLY worse on all 3 linears (d3cid −0.0137, d3cin −0.0131, d3mix −0.0088) and never travels back (last_frac 0.125→0.13–0.15, best_ep 16 not censored) ⇒ **one-hot-last does NOT trap — the uniform basin IS the trap; last-step is the attractor**. d1pma gate sweep: tr_gate FROZEN at init (0.12→0.124, 0.5→0.503, 0.88→0.874 — scalar sigmoid gate gets ~no gradient); rank_ic g0.12 0.08163 (≈control +0.0006) > g0.88 0.07848 > g0.5 0.07765 ⇒ pre-registered clause-b fired (+0.0040≥+0.003): the attentions' matrix deficit was the FORCED 50% mixture (init artifact); best case = parity, never a gain. **DECISION: readout axis closed in all 5 regimes (frozen n=6 / finetune n=3 / from-scratch ×6 / init A/B ×3 / gate ×3); no promotion candidate; route stays gen-gap + h-20260610 cards. Engineering rule: never init a scalar sigmoid gate at 0.5 expecting training to choose — it keeps its init.** Runner self-healed via GPU-precheck+retry (6/6 first-attempt after 2 prior kills). Impl `run_init_ablation_scale05.sh`+`compare_init_ablation.py`; report `init_ablation_RESULT.md`; settles `shared/falsifiers/time-readout-bonus-20260607.md`. |
+ | 78 | `result`+`decision` | **g0.12 d1pma fresh-seed n=3 = KILL (paired ΔRankIC +0.00099±0.00503, sign-flips) — attention readout closed; card → settled-CLOSED-KILLED, zero residuals** | Owner-requested kill-check of the only above-control point (seed42 +0.0006). Per-seed paired ΔRankIC: +0.0006(s42) / −0.0038(s43) / +0.0062(s44) — sign flips = sampling noise around parity, the exact τ-episode n=1 mirage pattern; ΔIR incoherent (−0.71/+0.32/−0.10). Gate frozen at init in ALL runs (0.124/0.125/0.124 from 0.119) — scalar-sigmoid-gate-keeps-its-init now n=3-confirmed. Pre-registered kill line (mean<+0.003) fired with no goalpost-moving. **Temporal-readout axis exhausted across 6 regimes; the kill-check discipline (memory: n=3 fresh-seed before believing any n=1 point) caught its 3rd mirage.** Report `analysis/readout_redesign/g012_n3_RESULT.md`. |
+ | 79 | `decision` | **BASELINE ANCHOR moved → τ=0.5 + d1pma g0.12 (owner designation, anchor-at-parity NOT promotion)** | Future experiments compare vs the 3 g012 runs (new CTRL: s42 `mlruns/716849652326531066/2e8e24fe...` 0.08163, s43 `mlruns/686003645691947084/500a105a...` 0.07500, s44 `mlruns/520724743245902018/79af86fa...` 0.07857; mean 0.07840 std 0.0033 vs old control 0.07741 std 0.0044). Rationale: dormant-attention platform value + suggestive variance reduction; kill verdict (row 78) STANDS — no edge claimed. Reversible: unset `temporal_readout` ⇒ old control byte-identical. Archive: `analysis/readout_redesign/archive_g012_baseline/BASELINE_ANCHOR.md` (settings, code flow, manifest, logs, resolved confs); reproducible env `scripts/baseline_g012_scale05.env.sh`. Old anchor mlruns kept. |
++| 80 | `decision` | h-20260610-002 design REVISED (owner): stock expert = symmetric peer, NOT identity-start | Owner rejected the identity-start-gate discipline as unscientific for experts: readout's control-nesting logic doesn't transfer (no converged control to nest); g0.12 proved scalar gates freeze at init, so a zero-start expert can never rise (init-artifact null). Corrected design: stock_expert = same ParallelAttention class+init as time/factor, router Linear(d/2,2->3) (post_init => initial gate ~1/3 symmetric), rearrange "(t n) b d" (strict axis symmetry; bias=None, permutation-equivariant), flag use_stock_expert default-off. 3 hardcoded 2-expert diag assumptions must be generalized (factor_ratio=1-time_ratio; entropy_norm/ln2; logit_margin |l0-l1|->top1-top2). Validity invariant: batch=single-day cross-section (samplers already guarantee). Cost ~1.3-1.6x train time, +33k params. Kill lines unchanged — stock-share<0.05 is now an HONEST learned-abandonment signal (starts at 1/3). Design doc `analysis/stock_expert/DESIGN_3EXPERT.md`. |
+diff --git a/experiments.md b/experiments.md
+index 924923d..1b3a513 100644
+--- a/experiments.md
++++ b/experiments.md
+@@ -137,3 +137,42 @@ python scripts/precompute_market_state.py \
+ ```
+ 
+ > Note: `--warmup_trading_days -1` automatically extends the precompute start backward, ensuring rolling/zscore/Δstate/TS features are defined at training start. For t+1/t+5 (T+k) prediction, **do not** add `--market_ts_past_only` and keep `market_state_shift=0`; only same-day prediction needs the shift. If early data fields are missing, use an explicit number or set `market_state_strict=False`.
++
++---
++
++# Hypothesis Cards (quant-hypothesis)
++
++## h-20260610-001: DropExtremeLabel（截面双侧 2.5%，仅 train/DK_L）提升 valid RankIC
++
++- **Mechanism**: A 股涨跌停/公告跳空产生的极端 label 对 ranking 目标是纯噪声（多为不可交易的 limit 移动）；截掉截面 top/bottom 各 2.5% 后，CSZScoreNorm 的 z 值不再被厚尾拉伸，MSE 主 loss 的梯度从拟合尾部转向排序主体（quant-firm 视角：label de-noising 是监督侧最高 ROI 的修缮；MASTER 同款做法）。
++- **History note**: `d6e82a9` 曾以 `qcut 0.05/0.95` 启用过本 processor，`8afb0d0` 整体移除但注释保留"2.5% 对齐 MASTER"意图。已验证（2026-06-10）安装版 qlib 的 `qlib.data.dataset.processor` **不存在** `DropExtremeLabel` 类 → 移除原因极可能是 crash 而非实验否决。ledger 60 天无重复（hash `2be4aa0cd0e0`）。
++- **Falsifier**: paired n=3（seeds 42/43/44, 25e, vs full_135 同窗）`Δdaily_rank_ic < +0.003` → reject；或 `valid_score_std_last` 较 control 降幅 >30%（分布截断引发 score 塌缩）。
++- **Config delta**: `learn_processors = [DropnaLabel, DropExtremeLabel(module_path=module.utils.processors, qcut 0.025/0.975), CSZScoreNorm(robust)]`；需新增 `module/utils/processors.py`（~30 行，按日截面分位截断，`is_for_infer()=False` 确保不进 DK_I）。
++- **Minimal test (proxy)**: csi300, 25 epochs, 3 seeds paired。
++- **Expected delta**: rank_ic 0.0786 → 0.080~0.082。
++- **Budget**: proxy ≈2 GPU-hr；n=6 confirm 再 +2 GPU-hr。
++- **Promotion criteria**: Δrank_ic ≥ +0.003 且 ≥2/3 seeds 为正 → n=6 四元组（RankIC / IR_cost / MaxDD_cost / post_peak_decay）无一降级。
++- **Risk / failure mode**: train 截尾 vs valid 全量评估的分布偏移 → 盯 `worst5_day_rank_ic_mean`；leakage 无新类（learn-only processor），`/quant-leakage-audit` 须确认 DK_I 管道不受影响。
++
++## h-20260610-002: 股票轴第三 expert（日截面 stock-stock attention）提升 RankIC
++
++- **Mechanism**: 现有两 expert 只在单股内部的 T 轴 / N 轴做 attention，个股间关系仅剩 `layer_summary` 的 mean/std 标量广播 —— 模型对"同业联动 / 相对定价"结构性失明。第三 expert 在日截面 batch 上做 cross-stock attention，注入**新信息通路**，与已证伪的重加权类 lever（pool/readout）不同类（那些是对既有表示再加权）。MASTER 的主增益来源同型（LeCun 视角：关系归纳偏置；quant 视角：截面相对价值是确证存在的 alpha 结构）。
++- **Falsifier**: paired n=3 `Δdaily_rank_ic < +0.003` → 直接停（pool 教训：n=3 即杀）；或三路 router 中 stock-expert gate 份额 < 0.05（学了没用上）；或 stock-attention 熵出现 six-nines 型退化。
++- **Config delta**: `model_config {"use_stock_expert": true, "stock_expert_gate_init": -2.0}`（flag-guarded、默认 off，house 模式同 `temporal_readout`）。
++- **Implementation sketch** (~120 行, `moe_block.py`): `s = mean_N(h[:,-1,:,:]) → [B,D]`；MHA over B（1-2 heads）；identity-start gated 残差广播回 `h`；router 2→3 logits。train/eval 均已按日成批（FixedDaily / DailyChunk），数据层零改动；薄日上采样的重复股票在 attention 中无害（自注意），diag 确认。
++- **Minimal test (proxy)**: csi300, 25e, 3 seeds paired vs full_135。
++- **Expected delta**: 0.0786 → 0.080~0.084（取决于同业结构 alpha 含量）。
++- **Budget**: 实现 ~1 天 + proxy 2 GPU-hr + n=6 confirm 2 GPU-hr。
++- **Promotion criteria**: house 规则 + stock-expert gate 份额 ∈ [0.1, 0.6]（确被路由使用）。
++- **Risk / failure mode**: gen-gap 扩大（新容量用于记忆）→ 盯 `rank_ic_gap_last`；同日截面信息合法无 leakage，但 audit 须确认 valid loader 严格按日分组不跨日 shuffle。
++
++## h-20260610-003 [DEFERRED]: 多 horizon 辅助头（t+1 / t+10）正则化共享表示，提升 t+5 RankIC
++
++- **Mechanism**: 每样本监督位数 ×3，共享 backbone 被迫编码 return 期限结构而非单 horizon 的噪声实现 —— 监督饥饿（gen-gap=0.12 的症状）的处方之一；quant-firm 惯例 alpha 模型多 horizon 联训。
++- **Falsifier**: t+5 主头 paired n=3 `Δdaily_rank_ic < +0.003` → reject。
++- **Config delta**: handler `label = [t+5, t+1, t+10]`（**t+5 保持第 0 列**，eval 管道不动）+ `model {"aux_horizons": [1, 10], "aux_horizon_loss_weight": 0.25}`。
++- **Implementation**: handler 多 label 列 + adapter 放开单 label 断言（现 raise on label_dim≠1）+ 两个辅助 head —— 改动面中等，故排在 001/002 之后；若 SSL/JEPA 立项，可并入其 Stage-2 微调臂。
++- **Minimal test / Budget**: 实现 ~1 天 + proxy 2 GPU-hr。
++- **Expected delta**: 0.0786 → 0.080±。
++- **Promotion criteria**: house 规则（t+5 主头四元组）。
++- **Risk / failure mode**: SignalRecord/SigAna 默认取 label 第 0 列 → 列序契约写进代码注释；3 列联合 DropnaLabel 使 train 末端 ~10 天样本被丢（t+10 NaN），可接受；`/quant-leakage-audit` 必查 t+10 与 `fit_end_time` 边界。
+diff --git a/module/architecture/moe_block.py b/module/architecture/moe_block.py
+index 2bff437..08163eb 100644
+--- a/module/architecture/moe_block.py
++++ b/module/architecture/moe_block.py
+@@ -24,6 +24,7 @@ class RegimeAdaptiveMoEBlock(nn.Module):
+         super().__init__()
+         self.config = config
+         self.use_layer_summary = bool(getattr(config, "router_use_layer_summary", False))
++        self.router_mode = str(getattr(config, "router_mode", "learned") or "learned").strip().lower()
+ 
+         d_model = int(config.d_model)
+         router_in = d_model * (2 if self.use_layer_summary else 1)
+@@ -34,14 +35,23 @@ class RegimeAdaptiveMoEBlock(nn.Module):
+         if self.use_layer_summary:
+             self.layer_summary_proj = nn.Linear(2 * d_model, d_model, bias=False)
+ 
++        # h-20260610-002: optional third stock-axis expert — a SYMMETRIC PEER of time/factor
++        # (same class, same post_init init; router widened 2->3 => initial gate ~1/3 each).
++        # NO identity-start/zero-gate: experts compete on equal footing from scratch (owner design
++        # decision; scalar gates freeze at init — a zero-start expert could never rise).
++        self.use_stock_expert = bool(getattr(config, "use_stock_expert", False))
++        self.n_experts = 3 if self.use_stock_expert else 2
++
+         self.router = nn.Sequential(
+             nn.Linear(router_in, d_model // 2),
+             nn.GELU(),
+-            nn.Linear(d_model // 2, 2),
++            nn.Linear(d_model // 2, self.n_experts),
+         )
+ 
+         self.time_expert = ParallelAttention(config)
+         self.factor_expert = ParallelAttention(config)
++        if self.use_stock_expert:
++            self.stock_expert = ParallelAttention(config)
+ 
+         self.norm1 = nn.LayerNorm(config.d_model)
+         self.norm2 = nn.LayerNorm(config.d_model)
+@@ -62,6 +72,7 @@ class RegimeAdaptiveMoEBlock(nn.Module):
+         *,
+         factor_film: tuple[torch.Tensor, torch.Tensor] | None = None,
+         feature_mask: torch.Tensor | None = None,
++        router_override: str | None = None,
+     ):
+         B, T, N, D = x.shape
+         residual = x
+@@ -83,27 +94,73 @@ class RegimeAdaptiveMoEBlock(nn.Module):
+             summary = self.layer_summary_proj(summary).unsqueeze(0).expand(B, -1)  # [B,D]
+             router_input = torch.cat([regime_embedding, summary], dim=-1)  # [B,2D]
+ 
+-        # Router exploration: optional logit noise + temperature scaling
+-        # - noise encourages exploration early in training
+-        # - temperature controls sharpness (lower => sharper)
+-        router_logits_raw = self.router(router_input)  # [B, 2]
+-        router_logits = router_logits_raw
+-        noise_std = float(getattr(self.config, "router_noise", 0.0) or 0.0)
+-        if self.training and noise_std > 0:
+-            router_logits = router_logits + torch.randn_like(router_logits) * noise_std
++        E = self.n_experts
++        if self.router_mode == "fixed_05":
++            router_logits_raw = torch.zeros((B, E), device=x.device, dtype=x.dtype)
++            gate_weights = torch.full((B, E), 1.0 / E, device=x.device, dtype=x.dtype)
++        else:
++            # Router exploration: optional logit noise + temperature scaling
++            # - noise encourages exploration early in training
++            # - temperature controls sharpness (lower => sharper)
++            router_logits_raw = self.router(router_input)  # [B, E]
++            router_logits = router_logits_raw
++            noise_std = float(getattr(self.config, "router_noise", 0.0) or 0.0)
++            if self.training and noise_std > 0:
++                router_logits = router_logits + torch.randn_like(router_logits) * noise_std
++
++            temperature = float(getattr(self.config, "router_temperature", 1.0) or 1.0)
++            temperature = max(temperature, 1e-3)
++            gate_weights = F.softmax(router_logits / temperature, dim=-1)  # [B, E]
+ 
+-        temperature = float(getattr(self.config, "router_temperature", 1.0) or 1.0)
+-        temperature = max(temperature, 1e-3)
+-        gate_weights = F.softmax(router_logits / temperature, dim=-1)  # [B, 2]
++        if router_override is not None:
++            mode = str(router_override).strip().lower()
++            if mode in {"", "none", "default", "learned"}:
++                mode = "none"
++            if mode == "time":
++                gate_weights = torch.zeros((B, E), device=x.device, dtype=x.dtype)
++                gate_weights[:, 0] = 1.0
++            elif mode == "factor":
++                gate_weights = torch.zeros((B, E), device=x.device, dtype=x.dtype)
++                gate_weights[:, 1] = 1.0
++            elif mode == "stock":
++                if E < 3:
++                    raise ValueError("router_override='stock' requires use_stock_expert=True")
++                gate_weights = torch.zeros((B, E), device=x.device, dtype=x.dtype)
++                gate_weights[:, 2] = 1.0
++            elif mode == "no_stock":
++                # leave-one-out probe: zero the stock gate, renormalize the LEARNED time/factor
++                # weights — measures the stock expert's marginal contribution at eval (no retrain).
++                if E < 3:
++                    raise ValueError("router_override='no_stock' requires use_stock_expert=True")
++                gw = gate_weights.clone()
++                gw[:, 2] = 0.0
++                gate_weights = gw / gw.sum(dim=-1, keepdim=True).clamp_min(1e-9)
++            elif mode in {"uniform", "fixed_05", "fixed", "0.5"}:
++                gate_weights = torch.full((B, E), 1.0 / E, device=x.device, dtype=x.dtype)
++            elif mode != "none":
++                raise ValueError(
++                    f"Unsupported router_override={router_override!r}; "
++                    "supported: None, time, factor, stock, no_stock, uniform"
++                )
+ 
+         # diagnostics
+         # z-loss is computed on raw (un-noised, un-tempered) logits for stability
+-        z_loss = (torch.logsumexp(router_logits_raw, dim=-1) ** 2).mean()
+-        entropy = -(gate_weights * torch.log(gate_weights + 1e-9)).sum(-1).mean()
++        if self.router_mode == "fixed_05":
++            z_loss = torch.zeros((), device=x.device, dtype=x.dtype)
++        else:
++            z_loss = (torch.logsumexp(router_logits_raw, dim=-1) ** 2).mean()
++        entropy_per_sample = -(gate_weights * torch.log(gate_weights + 1e-9)).sum(-1)
++        entropy = entropy_per_sample.mean()
+         time_ratio = gate_weights[:, 0].mean()
++        # MONITORING ONLY (routing itself stays soft/dense): router decisiveness = top1-top2 logit
++        # gap. For E=2 this is numerically identical to the old |l0-l1|; for E=3 |l0-l1| would
++        # ignore the stock logit and lose the metric's meaning.
++        _top2 = router_logits_raw.topk(2, dim=-1).values
++        logit_margin_per_sample = (_top2[:, 0] - _top2[:, 1]).abs()
+ 
+         w_time = gate_weights[:, 0].view(B, 1, 1, 1)
+         w_factor = gate_weights[:, 1].view(B, 1, 1, 1)
++        w_stock = gate_weights[:, 2].view(B, 1, 1, 1) if E >= 3 else None
+ 
+         # Apply factor-level conditioning after LayerNorm (FiLM/AdaLN style) so it is not canceled by Pre-LN.
+         if factor_film is not None:
+@@ -156,17 +213,97 @@ class RegimeAdaptiveMoEBlock(nn.Module):
+             attn_factor = None
+         out_factor = rearrange(out_factor, "(b t) n d -> b t n d", b=B, t=T)
+ 
++        # 3) Stock expert (h-20260610-002): cross-STOCK attention within the daily batch.
++        # VALIDITY INVARIANT: only meaningful when the batch is a single day's cross-section
++        # (guaranteed by the daily samplers in train and the per-day predict/eval loops).
++        # bias=None: stocks are unordered (permutation-equivariant — no positional bias).
++        out_stock = None
++        if self.use_stock_expert:
++            h_stock = rearrange(x, "b t n d -> (t n) b d")
++            if getattr(self.config, "stock_expert_xs_center", False):
++                # Cross-sectional centering BEFORE projection: subtract the per-(t,n) mean over
++                # the stock axis (dim=1 of [(t n), B, D]). Projection is linear, so this centers
++                # q, k AND v across stocks -> the attention operates on the stock-RELATIVE
++                # component, projecting out the large common-mode time/factor embedding that
++                # otherwise homogenizes cross-stock keys and pins softmax to uniform.
++                h_stock = h_stock - h_stock.mean(dim=1, keepdim=True)
++            out_stock = self.stock_expert(h_stock, None, return_attn=False)
++            out_stock = rearrange(out_stock, "(t n) b d -> b t n d", t=T, n=N)
++            # h-20260610-002 follow-up: de-mean across the daily cross-section (B axis) so the
++            # expert can ONLY contribute the rank-changing relative component. A uniform-attention
++            # output is a per-day constant => mean-subtracted to ~0 => no longer a loss-neutral
++            # parking spot; deviating from uniform becomes the only way to reduce loss.
++            if getattr(self.config, "stock_expert_demean", False):
++                out_stock = out_stock - out_stock.mean(dim=0, keepdim=True)
++
++        eps = 1e-12
++        time_flat = out_time.detach().float().reshape(B, -1)
++        factor_flat = out_factor.detach().float().reshape(B, -1)
++        time_norm_sample = time_flat.norm(dim=1)
++        factor_norm_sample = factor_flat.norm(dim=1)
++        time_contrib_sample = (w_time.detach().float() * out_time.detach().float()).reshape(B, -1).norm(dim=1)
++        factor_contrib_sample = (w_factor.detach().float() * out_factor.detach().float()).reshape(B, -1).norm(dim=1)
++        expert_cosine_sample = F.cosine_similarity(time_flat, factor_flat, dim=1, eps=eps)
++
+         fused = w_time * out_time + w_factor * out_factor
++        if out_stock is not None:
++            fused = fused + w_stock * out_stock
+         x = residual + fused
+         x = x + self.ffn(self.norm2(x))
+ 
+         diag = {
+             "z_loss": z_loss,
+             "entropy": entropy,
++            "entropy_per_sample": entropy_per_sample,
+             "time_ratio": time_ratio,
++            "logit_margin": logit_margin_per_sample.mean(),
++            "logit_margin_per_sample": logit_margin_per_sample,
+             "weights": gate_weights,
++            "time_expert_norm": time_norm_sample.mean(),
++            "factor_expert_norm": factor_norm_sample.mean(),
++            "time_contrib_norm": time_contrib_sample.mean(),
++            "factor_contrib_norm": factor_contrib_sample.mean(),
++            "contrib_norm_ratio": (time_contrib_sample / factor_contrib_sample.clamp_min(eps)).mean(),
++            "expert_cosine": expert_cosine_sample.mean(),
++            "time_winner_ratio": (time_contrib_sample > factor_contrib_sample).float().mean(),
+         }
+ 
++        if out_stock is not None:
++            # L2 mechanism-liveness diagnostics (norm/gate stats — cheap, every pass)
++            stock_flat = out_stock.detach().float().reshape(B, -1)
++            stock_norm_sample = stock_flat.norm(dim=1)
++            stock_contrib_sample = (w_stock.detach().float() * out_stock.detach().float()).reshape(B, -1).norm(dim=1)
++            diag["stock_ratio"] = gate_weights[:, 2].mean()
++            diag["stock_expert_norm"] = stock_norm_sample.mean()
++            diag["stock_contrib_norm"] = stock_contrib_sample.mean()
++            diag["stock_winner_ratio"] = (
++                (stock_contrib_sample > torch.maximum(time_contrib_sample, factor_contrib_sample)).float().mean()
++            )
++            # orthogonality triangle: is the stock direction REDUNDANT with time/factor? (finding #5:
++            # an expert's value is decorrelation — cos~1 means no new information even at high share)
++            diag["expert_cosine_ts"] = F.cosine_similarity(time_flat, stock_flat, dim=1, eps=eps).mean()
++            diag["expert_cosine_fs"] = F.cosine_similarity(factor_flat, stock_flat, dim=1, eps=eps).mean()
++
++            # L3 structure descriptors (eval-only, SUBSAMPLED: t=last x 8 strided factor slots =>
++            # attn [8,H,B,B] ~ 2.9M elems — never materialize the full 1264-group probs).
++            # Descriptors only — NEVER verdicts (pool lesson: weight stats are blind to usefulness).
++            if not self.training:
++                with torch.no_grad():
++                    n_sub = min(8, N)
++                    n_idx = torch.linspace(0, N - 1, n_sub, device=x.device).long()
++                    g_idx = (T - 1) * N + n_idx  # (t n) is t-major => last-step groups
++                    sub = rearrange(x, "b t n d -> (t n) b d")[g_idx]  # [n_sub, B, D]
++                    _, attn_s = self.stock_expert(sub, None, return_attn=True)  # [n_sub,H,B,B]
++                    a = attn_s.float().clamp_min(1e-9)
++                    ent = -(a * a.log()).sum(-1).mean()
++                    diag["stock_attn_entropy_norm"] = ent / torch.log(
++                        torch.tensor(float(B), device=x.device)
++                    )
++                    diag["stock_attn_self_frac"] = a.diagonal(dim1=-2, dim2=-1).mean()  # 1/B==uniform, ->1==self-collapse
++                    col_mass = a.mean(dim=(0, 1, 2))  # [B] incoming-attention mass per stock
++                    k = max(1, int(0.05 * B))
++                    diag["stock_attn_hub_top5_share"] = col_mass.topk(k).values.sum() / col_mass.sum().clamp_min(eps)
++
+         attn_dict = None
+         if return_attn and (attn_time is not None or attn_factor is not None):
+             attn_dict = {"time": attn_time, "factor": attn_factor}
+diff --git a/module/dataloader/sampler.py b/module/dataloader/sampler.py
+index 6cf5559..4ad8c63 100644
+--- a/module/dataloader/sampler.py
++++ b/module/dataloader/sampler.py
+@@ -1,7 +1,7 @@
+ import numpy as np
+ import pandas as pd
+ from torch.utils.data import Sampler
+-from typing import Optional
++from typing import Any, Dict, Optional
+ 
+ 
+ class FixedDailyBatchSampler(Sampler):
+@@ -16,9 +16,11 @@ class FixedDailyBatchSampler(Sampler):
+ 
+     def __init__(self, data_source, batch_size, shuffle=True, seed: Optional[int] = None):
+         self.data_source = data_source
+-        self.batch_size = batch_size
+-        self.shuffle = shuffle
+-        self.rng = np.random.default_rng(seed)
++        self.batch_size = int(batch_size)
++        self.shuffle = bool(shuffle)
++        self.seed = None if seed is None else int(seed)
++        self.epoch = 0
++        self.last_epoch_stats: Dict[str, Any] = {}
+ 
+         # Optimize: Access index directly without loading full data
+         try:
+@@ -36,29 +38,78 @@ class FixedDailyBatchSampler(Sampler):
+         # Grouping (This is fast enough for < 10M rows)
+         self.daily_groups = df_idx.groupby('datetime')['int_idx'].apply(np.array).tolist()
+         self.num_batches = len(self.daily_groups)
++        self.total_source_samples = int(sum(len(g) for g in self.daily_groups))
++
++    def set_epoch(self, epoch: int) -> None:
++        self.epoch = int(epoch)
++
++    def _rng_for_epoch(self) -> np.random.Generator:
++        if self.seed is None:
++            return np.random.default_rng()
++        return np.random.default_rng(int(self.seed) + int(self.epoch))
+ 
+     def __iter__(self):
++        rng = self._rng_for_epoch()
+         indices = np.arange(self.num_batches)
+         if self.shuffle:
+-            indices = self.rng.permutation(indices)
++            indices = rng.permutation(indices)
++
++        total_draws = 0
++        unique_selected = set()
++        duplicate_draws = 0
++        downsample_days = 0
++        upsample_days = 0
++        exact_days = 0
+ 
+         for day_i in indices:
+             daily_indices = self.daily_groups[day_i]
+             n_samples = len(daily_indices)
+ 
+-            if n_samples >= self.batch_size:
++            if n_samples > self.batch_size:
+                 # Downsample: Randomly pick subset
+-                batch_indices = self.rng.choice(daily_indices, self.batch_size, replace=False)
+-            else:
++                batch_indices = rng.choice(daily_indices, self.batch_size, replace=False)
++                downsample_days += 1
++            elif n_samples < self.batch_size:
+                 # Upsample: Randomly pick with replacement to fill batch
+-                batch_indices = self.rng.choice(daily_indices, self.batch_size, replace=True)
++                batch_indices = rng.choice(daily_indices, self.batch_size, replace=True)
++                upsample_days += 1
++            else:
++                batch_indices = np.asarray(daily_indices, dtype=int).copy()
++                exact_days += 1
+ 
+             # Shuffle in-batch order for better gradient diversity
+             if self.shuffle:
+-                batch_indices = self.rng.permutation(batch_indices)
++                batch_indices = rng.permutation(batch_indices)
++
++            arr = np.asarray(batch_indices, dtype=int)
++            total_draws += int(arr.size)
++            unique_in_batch = set(int(x) for x in np.unique(arr))
++            unique_selected.update(unique_in_batch)
++            duplicate_draws += int(arr.size - len(unique_in_batch))
+ 
+             yield batch_indices
+ 
++        num_days = max(1, int(self.num_batches))
++        total_source = max(1, int(self.total_source_samples))
++        self.last_epoch_stats = {
++            "epoch": int(self.epoch),
++            "num_days": int(self.num_batches),
++            "num_batches": int(self.num_batches),
++            "batch_size": int(self.batch_size),
++            "total_source_samples": int(self.total_source_samples),
++            "total_draws": int(total_draws),
++            "unique_samples": int(len(unique_selected)),
++            "coverage_ratio": float(len(unique_selected) / total_source),
++            "coverage_gap_vs_full": float(1.0 - (len(unique_selected) / total_source)),
++            "duplicate_draws": int(duplicate_draws),
++            "duplicate_rate": float(duplicate_draws / max(1, total_draws)),
++            "downsample_days": int(downsample_days),
++            "upsample_days": int(upsample_days),
++            "exact_days": int(exact_days),
++            "downsample_day_ratio": float(downsample_days / num_days),
++            "upsample_day_ratio": float(upsample_days / num_days),
++        }
++
+     def __len__(self):
+         return self.num_batches
+ 
+@@ -70,16 +121,29 @@ class DailyChunkBatchSampler(Sampler):
+     - Groups samples by their `datetime` index level.
+     - For each day, yields consecutive chunks of indices with size <= max_batch_size.
+     - Guarantees every sample appears exactly once per epoch.
++    - Preserves chronological/sample order by default; train callers may enable
++      epoch-aware deterministic shuffling of day order and in-day order.
+ 
+     This is suitable for inference/predict where we want "intra-day batches" while
+     preserving full coverage and the original sample order.
+     """
+ 
+-    def __init__(self, data_source, max_batch_size: int):
++    def __init__(
++        self,
++        data_source,
++        max_batch_size: int,
++        *,
++        shuffle: bool = False,
++        seed: Optional[int] = None,
++    ):
+         if max_batch_size is None or int(max_batch_size) <= 0:
+             raise ValueError(f"max_batch_size must be positive, got {max_batch_size}")
+         self.data_source = data_source
+         self.max_batch_size = int(max_batch_size)
++        self.shuffle = bool(shuffle)
++        self.seed = None if seed is None else int(seed)
++        self.epoch = 0
++        self.last_epoch_stats: Dict[str, Any] = {}
+ 
+         try:
+             index = data_source.get_index()
+@@ -106,11 +170,71 @@ class DailyChunkBatchSampler(Sampler):
+             sum(int(np.ceil(len(g) / self.max_batch_size)) for g in self.daily_groups)
+         )
+ 
++    def set_epoch(self, epoch: int) -> None:
++        self.epoch = int(epoch)
++
++    def _rng_for_epoch(self) -> np.random.Generator:
++        if self.seed is None:
++            return np.random.default_rng()
++        return np.random.default_rng(int(self.seed) + int(self.epoch))
++
+     def __iter__(self):
+-        for g in self.daily_groups:
++        rng = self._rng_for_epoch()
++        day_order = np.arange(len(self.daily_groups))
++        if self.shuffle:
++            day_order = rng.permutation(day_order)
++
++        total_draws = 0
++        unique_selected = set()
++        short_days = 0
++        exact_days = 0
++        split_days = 0
++
++        for day_i in day_order:
++            g = np.asarray(self.daily_groups[int(day_i)], dtype=int)
+             n = int(len(g))
++            if n < self.max_batch_size:
++                short_days += 1
++            elif n == self.max_batch_size:
++                exact_days += 1
++            else:
++                split_days += 1
++
++            if self.shuffle and n > 1:
++                g = rng.permutation(g)
++
+             for i in range(0, n, self.max_batch_size):
+-                yield g[i : i + self.max_batch_size]
++                batch = np.asarray(g[i : i + self.max_batch_size], dtype=int)
++                total_draws += int(batch.size)
++                unique_selected.update(int(x) for x in batch)
++                yield batch
++
++        num_days = max(1, int(len(self.daily_groups)))
++        total_source = int(sum(len(g) for g in self.daily_groups))
++        total_source_safe = max(1, total_source)
++        self.last_epoch_stats = {
++            "epoch": int(self.epoch),
++            "num_days": int(len(self.daily_groups)),
++            "num_batches": int(self._num_batches),
++            "batch_size": int(self.max_batch_size),
++            "total_source_samples": int(total_source),
++            "total_draws": int(total_draws),
++            "unique_samples": int(len(unique_selected)),
++            "coverage_ratio": float(len(unique_selected) / total_source_safe),
++            "coverage_gap_vs_full": float(1.0 - (len(unique_selected) / total_source_safe)),
++            "duplicate_draws": 0,
++            "duplicate_rate": 0.0,
++            "downsample_days": 0,
++            "upsample_days": 0,
++            "exact_days": int(exact_days),
++            "short_days": int(short_days),
++            "split_days": int(split_days),
++            "downsample_day_ratio": 0.0,
++            "upsample_day_ratio": 0.0,
++            "short_day_ratio": float(short_days / num_days),
++            "split_day_ratio": float(split_days / num_days),
++            "full_coverage_day_ratio": 1.0 if total_source > 0 else float("nan"),
++        }
+ 
+     def __len__(self):
+         return int(self._num_batches)
+diff --git a/module/model_adapter.py b/module/model_adapter.py
+index e529147..899b037 100644
+--- a/module/model_adapter.py
++++ b/module/model_adapter.py
+@@ -2,6 +2,7 @@
+ from __future__ import annotations
+ 
+ import copy
++import os
+ import random
+ from collections import defaultdict
+ import math
+@@ -72,6 +73,54 @@ class QlibQuantMoE(Model):
+         self.batch_size = int(self.trainer_config.get("batch_size", 1024))
+         self.num_workers = int(self.trainer_config.get("num_workers", 4))
+         self.random_seed = self.trainer_config.get("seed", 42)
++        self._warned_keys: set[str] = set()
++
++        # Runtime reproducibility / device policy. Defaults are diagnostic-first:
++        # keep training compatible, but make every source of randomness explicit.
++        self.device_request = str(self.trainer_config.get("device", "auto") or "auto").strip().lower()
++        self.deterministic_mode = str(self.trainer_config.get("deterministic_mode", "warn") or "warn").strip().lower()
++        det_alias = {
++            "true": "warn",
++            "1": "warn",
++            "yes": "warn",
++            "false": "off",
++            "0": "off",
++            "no": "off",
++            "warn_only": "warn",
++            "warning": "warn",
++            "strict": "strict",
++            "error": "strict",
++            "off": "off",
++            "none": "off",
++        }
++        self.deterministic_mode = det_alias.get(self.deterministic_mode, self.deterministic_mode)
++        if self.deterministic_mode not in {"off", "warn", "strict"}:
++            raise ValueError(
++                "deterministic_mode must be one of off/warn/strict, "
++                f"got {self.deterministic_mode!r}"
++            )
++        self.seed_workers = bool(self.trainer_config.get("seed_workers", True))
++        self.train_sampler_mode = str(
++            self.trainer_config.get("train_sampler_mode", "sampled_daily") or "sampled_daily"
++        ).strip().lower()
++        sampler_alias = {
++            "sampled": "sampled_daily",
++            "fixed": "sampled_daily",
++            "fixed_daily": "sampled_daily",
++            "daily": "sampled_daily",
++            "full": "full_daily",
++            "full_day": "full_daily",
++            "full_daily": "full_daily",
++        }
++        self.train_sampler_mode = sampler_alias.get(self.train_sampler_mode, self.train_sampler_mode)
++        if self.train_sampler_mode not in {"sampled_daily", "full_daily"}:
++            raise ValueError(
++                "train_sampler_mode must be sampled_daily or full_daily, "
++                f"got {self.train_sampler_mode!r}"
++            )
++        self.sampler_diag = bool(self.trainer_config.get("sampler_diag", True))
++        self._runtime_flags: Dict[str, Any] = {}
++        self._last_train_sampler_stats: Dict[str, Any] = {}
+ 
+         self.early_stop = int(self.trainer_config.get("early_stop", 0) or 0)
+         self.min_delta = float(self.trainer_config.get("min_delta", 1e-6))
+@@ -86,6 +135,11 @@ class QlibQuantMoE(Model):
+             self.train_stop_threshold = float(_thr)
+         self.min_epochs = max(1, int(self.trainer_config.get("min_epochs", 1) or 1))
+         self.consecutive_k = max(1, int(self.trainer_config.get("consecutive_k", 1) or 1))
++        self.checkpoint_metric = str(self.trainer_config.get("checkpoint_metric", "") or "").strip()
++        self.checkpoint_mode = str(self.trainer_config.get("checkpoint_mode", "max") or "max").strip().lower()
++        if self.checkpoint_mode not in {"max", "min"}:
++            raise ValueError(f"checkpoint_mode must be 'max' or 'min', got {self.checkpoint_mode!r}")
++        self.checkpoint_min_delta = float(self.trainer_config.get("checkpoint_min_delta", self.min_delta))
+         # Gradient accumulation (micro-batch = one date cross-section; accumulate across K dates)
+         self.grad_accum_steps = max(1, int(self.trainer_config.get("grad_accum_steps", 5)))
+         # Validation data_key policy
+@@ -116,7 +170,8 @@ class QlibQuantMoE(Model):
+         self.tqdm_update_every = int(self.trainer_config.get("tqdm_update_every", 10))
+         self.tqdm_mininterval = float(self.trainer_config.get("tqdm_mininterval", 0.3))
+ 
+-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++        self.device = self._resolve_device(self.device_request)
++        self._configure_reproducible_runtime()
+         self.net: Optional[QuantMoEModel] = None
+ 
+         # Mixed precision / AMP
+@@ -190,7 +245,87 @@ class QlibQuantMoE(Model):
+         # Thresholds for "almost constant" detection
+         self.debug_std_eps = float(self.trainer_config.get("debug_std_eps", 1e-8))
+         self.debug_grad_eps = float(self.trainer_config.get("debug_grad_eps", 1e-12))
+-        self._warned_keys: set[str] = set()
++
++    def _seed_int(self) -> Optional[int]:
++        if self.random_seed is None:
++            return None
++        try:
++            return int(self.random_seed)
++        except Exception:
++            return None
++
++    def _resolve_device(self, requested: str) -> torch.device:
++        req = str(requested or "auto").strip().lower()
++        if req == "auto":
++            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
++        if req.startswith("cuda"):
++            if not torch.cuda.is_available():
++                print(f">>> [Runtime] Requested device={requested!r} but CUDA is unavailable; falling back to CPU.")
++                return torch.device("cpu")
++            dev = torch.device(req)
++            if dev.index is not None:
++                try:
++                    n_cuda = int(torch.cuda.device_count())
++                except Exception:
++                    n_cuda = 0
++                if int(dev.index) >= n_cuda:
++                    print(
++                        f">>> [Runtime] Requested device={requested!r} but only {n_cuda} CUDA device(s) exist; "
++                        "falling back to cuda:0."
++                    )
++                    return torch.device("cuda:0")
++            return dev
++        return torch.device(req)
++
++    def _configure_reproducible_runtime(self) -> None:
++        seed = self._seed_int()
++        if seed is not None:
++            self._set_global_seed(seed)
++
++        deterministic_enabled = self.deterministic_mode != "off"
++        warn_only = self.deterministic_mode == "warn"
++        cublas_workspace = os.environ.get("CUBLAS_WORKSPACE_CONFIG", "")
++
++        if deterministic_enabled:
++            if not cublas_workspace:
++                os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
++                cublas_workspace = ":4096:8"
++            try:
++                torch.backends.cudnn.deterministic = True
++                torch.backends.cudnn.benchmark = False
++            except Exception:
++                pass
++            try:
++                torch.backends.cuda.matmul.allow_tf32 = False
++            except Exception:
++                pass
++            try:
++                torch.backends.cudnn.allow_tf32 = False
++            except Exception:
++                pass
++            try:
++                torch.use_deterministic_algorithms(True, warn_only=warn_only)
++            except TypeError:
++                torch.use_deterministic_algorithms(True)
++            except Exception as e:
++                print(f">>> [Runtime] torch deterministic algorithms setup failed: {e}")
++
++        self._runtime_flags = {
++            "device_requested": self.device_request,
++            "device_resolved": str(self.device),
++            "cuda_available": bool(torch.cuda.is_available()),
++            "cuda_device_count": int(torch.cuda.device_count()) if torch.cuda.is_available() else 0,
++            "seed": seed,
++            "deterministic_mode": self.deterministic_mode,
++            "deterministic_algorithms": bool(deterministic_enabled),
++            "deterministic_warn_only": bool(warn_only),
++            "cudnn_deterministic": bool(getattr(torch.backends.cudnn, "deterministic", False)),
++            "cudnn_benchmark": bool(getattr(torch.backends.cudnn, "benchmark", False)),
++            "cublas_workspace_config": cublas_workspace,
++            "seed_workers": bool(self.seed_workers),
++            "train_sampler_mode": self.train_sampler_mode,
++            "sampler_diag": bool(self.sampler_diag),
++        }
+ 
+     def _autocast_ctx(self):
+         if not self.amp_enabled or self.amp_dtype is None:
+@@ -223,6 +358,29 @@ class QlibQuantMoE(Model):
+         if torch.cuda.is_available():
+             torch.cuda.manual_seed_all(seed)
+ 
++    def _loader_generator(self, offset: int = 0) -> Optional[torch.Generator]:
++        seed = self._seed_int()
++        if seed is None:
++            return None
++        g = torch.Generator()
++        g.manual_seed(int(seed) + int(offset))
++        return g
++
++    def _worker_init_fn(self):
++        if not self.seed_workers:
++            return None
++        seed = self._seed_int()
++        if seed is None:
++            return None
++
++        def _init(worker_id: int) -> None:
++            worker_seed = int(seed) + int(worker_id)
++            random.seed(worker_seed)
++            np.random.seed(worker_seed % (2**32))
++            torch.manual_seed(worker_seed)
++
++        return _init
++
+     def log_config_summary(
+         self,
+         *,
+@@ -291,6 +449,7 @@ class QlibQuantMoE(Model):
+             f"val_emb={emb_type}",
+             f"time_emb={on_off(cfg_get('use_regime_time_embedding', False))}",
+             f"factor_gate={on_off(cfg_get('use_regime_factor_gate', False))}",
++            f"router={cfg_get('router_mode', 'learned')}",
+             f"feat_sel={on_off(cfg_get('use_feature_selection', False))}",
+             f"alibi={on_off(cfg_get('use_alibi', False))}",
+             f"macro={macro_desc}",
+@@ -315,6 +474,8 @@ class QlibQuantMoE(Model):
+             f"precision={self.precision}",
+             f"seed={self.random_seed}",
+         ]
++        if self.checkpoint_metric:
++            trainer_parts.append(f"checkpoint={self.checkpoint_metric}:{self.checkpoint_mode}")
+         if not (self.early_stop and self.early_stop > 0):
+             thr_desc = "off" if self.train_stop_threshold is None else f"{self.train_stop_key}<={self.train_stop_threshold:g}"
+             trainer_parts.append(f"train_stop={thr_desc}")
+@@ -374,6 +535,7 @@ class QlibQuantMoE(Model):
+                 ("factor_gate_shift_scale", "Gate shift scale (beta)"),
+             ],
+             "MoE Router": [
++                ("router_mode", "Router mode"),
+                 ("router_noise", "Logit noise std"),
+                 ("router_temperature", "Softmax temperature"),
+                 ("router_z_loss_coef", "Z-loss coefficient"),
+@@ -1092,13 +1254,23 @@ class QlibQuantMoE(Model):
+         """
+         if self._market_state is not None:
+             tsds = self._wrap_with_datetime(tsds)
+-        sampler = FixedDailyBatchSampler(tsds, self.batch_size, shuffle=shuffle, seed=self.random_seed)
++        if train and self.train_sampler_mode == "full_daily":
++            sampler = DailyChunkBatchSampler(
++                tsds,
++                max_batch_size=self.batch_size,
++                shuffle=shuffle,
++                seed=self.random_seed,
++            )
++        else:
++            sampler = FixedDailyBatchSampler(tsds, self.batch_size, shuffle=shuffle, seed=self.random_seed)
+         return DataLoader(
+             dataset=tsds,
+             batch_sampler=sampler,
+             num_workers=self.num_workers,
+             pin_memory=(self.device.type == "cuda"),
+             collate_fn=self._collate_train,
++            worker_init_fn=self._worker_init_fn(),
++            generator=self._loader_generator(offset=17 if train else 23),
+         )
+ 
+     def _make_daily_chunk_loader(self, tsds, *, with_label: bool) -> DataLoader:
+@@ -1115,8 +1287,54 @@ class QlibQuantMoE(Model):
+             num_workers=self.num_workers,
+             pin_memory=(self.device.type == "cuda"),
+             collate_fn=self._collate_eval_daily if with_label else self._collate_feat,
++            worker_init_fn=self._worker_init_fn(),
++            generator=self._loader_generator(offset=31),
+         )
+ 
++    def _train_sampler_epoch_metrics(self, loader: DataLoader) -> Dict[str, float]:
++        if not self.sampler_diag:
++            return {}
++        sampler = getattr(loader, "batch_sampler", None)
++        stats = getattr(sampler, "last_epoch_stats", None)
++        if not isinstance(stats, dict) or not stats:
++            if isinstance(sampler, DailyChunkBatchSampler):
++                groups = getattr(sampler, "daily_groups", []) or []
++                total = int(sum(len(g) for g in groups))
++                stats = {
++                    "epoch": 0,
++                    "num_days": int(len(groups)),
++                    "num_batches": int(len(sampler)),
++                    "batch_size": int(getattr(sampler, "max_batch_size", self.batch_size)),
++                    "total_source_samples": total,
++                    "total_draws": total,
++                    "unique_samples": total,
++                    "coverage_ratio": 1.0 if total > 0 else float("nan"),
++                    "coverage_gap_vs_full": 0.0 if total > 0 else float("nan"),
++                    "duplicate_draws": 0,
++                    "duplicate_rate": 0.0,
++                    "downsample_days": 0,
++                    "upsample_days": 0,
++                    "exact_days": int(len(groups)),
++                    "downsample_day_ratio": 0.0,
++                    "upsample_day_ratio": 0.0,
++                }
++            else:
++                return {}
++
++        self._last_train_sampler_stats = dict(stats)
++        out: Dict[str, float] = {}
++        for k, v in stats.items():
++            if isinstance(v, bool):
++                out[f"sampler_{k}"] = float(v)
++            elif isinstance(v, (int, float, np.integer, np.floating)):
++                try:
++                    fv = float(v)
++                except Exception:
++                    continue
++                if np.isfinite(fv):
++                    out[f"sampler_{k}"] = fv
++        return out
++
+     # ---------- net init & metrics ----------
+     def _init_net(self, bx: torch.Tensor) -> None:
+         # bx: [B,T,F]
+@@ -1151,10 +1369,64 @@ class QlibQuantMoE(Model):
+             # loss_ic = -IC, so monitored IC should be -loss_ic within [-1, 1]
+             m.setdefault("ic", -float(m["loss_ic"]))
+ 
+-        try:
+-            R.log_metrics(step=step, **{f"{prefix}/{k}": float(v) for k, v in m.items()})
+-        except Exception:
+-            pass
++        # Required diagnostic matrix prefixes. These mirrors are intentionally
++        # omitted when the source metric is absent, so disabled modules do not
++        # create NaN placeholders (e.g. no time/tau_* when time embedding is off).
++        primary: Dict[str, float] = {}
++        grouped: Dict[str, float] = {}
++        for k, v in m.items():
++            try:
++                fv = float(v)
++            except Exception:
++                continue
++            if not np.isfinite(fv):
++                continue
++
++            primary[f"{prefix}/{k}"] = fv
++
++            if k.startswith("router_layer_"):
++                grouped[f"router/{prefix}_{k}"] = fv
++            elif k.startswith("time_tau") or k == "time_half_life":
++                grouped[f"time/{prefix}_{k}"] = fv
++            elif k.startswith("factor_gate") or k.startswith("film_"):
++                grouped[f"film/{prefix}_{k}"] = fv
++            elif k.startswith("expert_"):
++                grouped[f"expert/{prefix}_{k}"] = fv
++            elif k.startswith("sampler_"):
++                grouped[f"sampler/{prefix}_{k}"] = fv
++            elif k.startswith("time_embedding_") or k.startswith("temporal_"):
++                grouped[f"temporal/{prefix}_{k}"] = fv
++            elif k in {
++                "loss_gap",
++                "rank_ic_gap",
++                "post_peak_decay",
++                "score_std",
++                "label_std",
++                "score_label_std_ratio",
++                "grad_norm",
++                "optimizer_steps",
++                "grad_attempt_steps",
++                "grad_skipped_steps",
++                "grad_nonfinite_steps",
++                "grad_skipped_rate",
++                "grad_nonfinite_rate",
++                "grad_nonfinite_tensors",
++                "grad_nonfinite_values",
++                "lr",
++            } or k.startswith("grad_norm_"):
++                grouped[f"opt/{prefix}_{k}"] = fv
++
++        if primary:
++            try:
++                R.log_metrics(step=step, **primary)
++            except Exception:
++                pass
++
++        if grouped:
++            try:
++                R.log_metrics(step=step, **grouped)
++            except Exception:
++                pass
+ 
+     def _monitor(self, valid_metrics: Dict[str, float]) -> float:
+         """用于 early stopping 的单一 score（越大越好）."""
+@@ -1167,6 +1439,208 @@ class QlibQuantMoE(Model):
+             return -float(valid_metrics["loss_ic"])
+         return -float(valid_metrics.get("loss_total", 0.0))
+ 
++    def _checkpoint_metric_value(
++        self,
++        train_metrics: Dict[str, float],
++        valid_metrics: Optional[Dict[str, float]],
++    ) -> Optional[float]:
++        metric = str(self.checkpoint_metric or "").strip().lower()
++        if not metric:
++            return None
++        metric = metric.replace("/", "_").replace(".", "_").replace("-", "_")
++
++        source = valid_metrics if valid_metrics is not None else train_metrics
++        if metric in {"valid_rank_ic", "valid_rankic", "valid_daily_rank_ic", "daily_rank_ic"}:
++            source = valid_metrics
++            keys = ["rank_ic_daily", "rank_ic"]
++        elif metric in {"valid_ic", "valid_daily_ic", "daily_ic"}:
++            source = valid_metrics
++            keys = ["ic_pearson_daily", "ic_raw", "loss_ic"]
++        elif metric.startswith("valid_"):
++            source = valid_metrics
++            keys = [metric[len("valid_"):]]
++        elif metric.startswith("train_"):
++            source = train_metrics
++            keys = [metric[len("train_"):]]
++        elif metric in {"rank_ic", "rankic"}:
++            keys = ["rank_ic_daily", "rank_ic"]
++        elif metric in {"ic", "ic_raw"}:
++            keys = ["ic_pearson_daily", "ic_raw", "loss_ic"]
++        else:
++            keys = [metric]
++
++        if source is None:
++            return None
++        for key in keys:
++            if key not in source:
++                continue
++            try:
++                val = float(source[key])
++            except Exception:
++                continue
++            if key == "loss_ic" and metric in {"valid_ic", "valid_daily_ic", "daily_ic", "ic", "ic_raw"}:
++                val = -val
++            if np.isfinite(val):
++                return val
++        return None
++
++    def _checkpoint_improved(self, value: float, best: float) -> bool:
++        if self.checkpoint_mode == "min":
++            return value < best - self.checkpoint_min_delta
++        return value > best + self.checkpoint_min_delta
++
++    def _grad_group_name(self, name: str) -> str:
++        if name.startswith("regime_encoder."):
++            return "grad_norm_regime_encoder"
++        if name.startswith("time_embedding."):
++            return "grad_norm_time_embedding"
++        if name.startswith("factor_gate."):
++            return "grad_norm_factor_film"
++        if ".router." in name or ".layer_summary_proj." in name:
++            return "grad_norm_router"
++        if ".time_expert." in name:
++            return "grad_norm_time_expert"
++        if ".factor_expert." in name:
++            return "grad_norm_factor_expert"
++        if name.startswith("factor_pooling.") or name.startswith("head."):
++            return "grad_norm_pooling_head"
++        return "grad_norm_other"
++
++    def _grad_norm_stats(self) -> Tuple[float, Dict[str, float], int, int]:
++        """Return pre-clipping grad norms and non-finite counts for diagnostics.
++
++        Norms are accumulated with FP64 reductions. This avoids monitor-only
++        overflow in the L2 sum for large-but-finite FP32/AMP gradients.
++        Non-finite tensors are reported separately and are not folded into the
++        finite norm average.
++        """
++        assert self.net is not None
++        group_sq: Dict[str, float] = defaultdict(float)
++        total_sq = 0.0
++        nonfinite_tensors = 0
++        nonfinite_values = 0
++
++        for name, p in self.net.named_parameters():
++            if p.grad is None:
++                continue
++            try:
++                g = p.grad.detach()
++                finite = torch.isfinite(g)
++                if not bool(finite.all().item()):
++                    nonfinite_tensors += 1
++                    try:
++                        nonfinite_values += int((~finite).sum().item())
++                    except Exception:
++                        pass
++                    continue
++
++                # `dtype=torch.float64` computes the norm in double precision
++                # without changing the gradient tensor itself.
++                n = torch.linalg.vector_norm(g, ord=2, dtype=torch.float64)
++                nsq = float((n * n).item())
++                if not math.isfinite(nsq):
++                    nonfinite_tensors += 1
++                    continue
++                total_sq += nsq
++                group_sq[self._grad_group_name(name)] += nsq
++            except Exception:
++                continue
++
++        total_norm = float(math.sqrt(max(total_sq, 0.0)))
++        group_norms = {k: float(math.sqrt(max(v, 0.0))) for k, v in group_sq.items()}
++        return total_norm, group_norms, nonfinite_tensors, nonfinite_values
++
++    def _clip_grads_by_total_norm(self, total_norm: float, max_norm: float = 1.0) -> None:
++        """Clip gradients using a precomputed finite total norm."""
++        if not math.isfinite(total_norm) or total_norm <= 0:
++            return
++        clip_coef = float(max_norm) / (total_norm + 1e-6)
++        if clip_coef >= 1.0:
++            return
++        assert self.net is not None
++        for p in self.net.parameters():
++            if p.grad is not None:
++                p.grad.detach().mul_(clip_coef)
++
++    def _finish_optimizer_step(
++        self,
++        optimizer: torch.optim.Optimizer,
++        scheduler: Optional[Any],
++        opt_meters: Dict[str, float],
++        opt_counts: Dict[str, int],
++    ) -> bool:
++        """Unscale/clip/step and record optimization diagnostics.
++
++        Returns True only when an optimizer step was actually applied.
++        AMP overflow steps are intentionally excluded from grad_norm averages;
++        they are exposed through grad_nonfinite_* metrics instead.
++        """
++        if self.scaler is not None:
++            self.scaler.unscale_(optimizer)
++
++        grad_norm, module_grad_norms, nonfinite_tensors, nonfinite_values = self._grad_norm_stats()
++        grad_finite = (
++            nonfinite_tensors == 0
++            and math.isfinite(grad_norm)
++        )
++
++        opt_meters["grad_attempt_steps"] += 1.0
++        opt_counts["grad_attempt_steps"] += 1
++
++        if grad_finite:
++            self._clip_grads_by_total_norm(grad_norm, max_norm=1.0)
++            opt_meters["grad_norm"] += float(grad_norm)
++            opt_counts["grad_norm"] += 1
++            for gk, gv in module_grad_norms.items():
++                opt_meters[gk] += float(gv)
++                opt_counts[gk] += 1
++        else:
++            opt_meters["grad_nonfinite_steps"] += 1.0
++            opt_counts["grad_nonfinite_steps"] += 1
++            opt_meters["grad_nonfinite_tensors"] += float(nonfinite_tensors)
++            opt_counts["grad_nonfinite_tensors"] += 1
++            opt_meters["grad_nonfinite_values"] += float(nonfinite_values)
++            opt_counts["grad_nonfinite_values"] += 1
++
++        step_skipped = False
++        if self.scaler is not None:
++            prev_scale = float(self.scaler.get_scale())
++            self.scaler.step(optimizer)
++            self.scaler.update()
++            new_scale = float(self.scaler.get_scale())
++            step_skipped = (new_scale < prev_scale) or (not grad_finite)
++            if step_skipped:
++                opt_meters["grad_skipped_steps"] += 1.0
++                opt_counts["grad_skipped_steps"] += 1
++        else:
++            if grad_finite:
++                optimizer.step()
++            else:
++                step_skipped = True
++                opt_meters["grad_skipped_steps"] += 1.0
++                opt_counts["grad_skipped_steps"] += 1
++
++        if step_skipped:
++            if not grad_finite:
++                self._warn_once(
++                    "nonfinite_grad_norm",
++                    f">>> [Warn] non-finite gradients detected "
++                    f"(tensors={nonfinite_tensors}, values={nonfinite_values}); "
++                    "optimizer step skipped and excluded from grad_norm metrics.",
++                )
++            return False
++
++        if grad_norm <= self.debug_grad_eps:
++            self._warn_once(
++                "zero_grad_norm",
++                f">>> [Warn] grad_norm approx 0 ({grad_norm:.3e}); parameters may not be updating.",
++            )
++
++        if scheduler is not None:
++            scheduler.step()
++        self.global_step += 1
++        return True
++
+     # ---------- epoch loop ----------
+     def _run_epoch(
+         self,
+@@ -1194,6 +1668,8 @@ class QlibQuantMoE(Model):
+         skip_nan_loss = 0
+         skip_no_loss = 0
+         opt_steps = 0
++        opt_meters = defaultdict(float)
++        opt_counts = defaultdict(int)
+         daily_buffer = defaultdict(lambda: {"p": [], "y": []}) if not train else None
+         accum_steps = self.grad_accum_steps if (train and optimizer is not None) else 1
+         accum_count = 0
+@@ -1264,31 +1740,16 @@ class QlibQuantMoE(Model):
+                                     continue
+                                 p.grad.mul_(scale)
+ 
+-                        if self.scaler is not None:
+-                            self.scaler.unscale_(optimizer)
+-                        grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
+-                        step_skipped = False
+-                        if self.scaler is not None:
+-                            prev_scale = float(self.scaler.get_scale())
+-                            self.scaler.step(optimizer)
+-                            self.scaler.update()
+-                            new_scale = float(self.scaler.get_scale())
+-                            step_skipped = new_scale < prev_scale
+-                        else:
+-                            optimizer.step()
+-
+-                        if not step_skipped:
++                        step_taken = self._finish_optimizer_step(
++                            optimizer,
++                            scheduler,
++                            opt_meters,
++                            opt_counts,
++                        )
++                        if step_taken:
+                             opt_steps += 1
+-                            if scheduler is not None:
+-                                scheduler.step()
+-                            self.global_step += 1
+                         optimizer.zero_grad(set_to_none=True)
+                         accum_count = 0
+-                        if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
+-                            self._warn_once(
+-                                "zero_grad_norm",
+-                                f">>> [Warn] grad_norm approx 0 ({grad_norm:.3e}); parameters may not be updating.",
+-                            )
+                 elif train and optimizer is not None and loss is None:
+                     skip_no_loss += 1
+ 
+@@ -1332,6 +1793,18 @@ class QlibQuantMoE(Model):
+                 stock_scores = out.scores
+                 p_vec = stock_scores.view(-1).detach().cpu().numpy()
+                 y_vec = by_t.view(-1).detach().cpu().numpy()
++                if p_vec.size >= 2:
++                    p_std = float(np.std(p_vec))
++                    meters["score_std"] += p_std
++                else:
++                    p_std = np.nan
++                if y_vec.size >= 2:
++                    y_std = float(np.std(y_vec))
++                    meters["label_std"] += y_std
++                else:
++                    y_std = np.nan
++                if np.isfinite(p_std) and np.isfinite(y_std) and y_std > 0:
++                    meters["score_label_std_ratio"] += float(p_std / y_std)
+ 
+                 # For eval loaders that split a day into chunks, aggregate (p,y) by date first,
+                 # then compute IC / RankIC on the full daily cross-section.
+@@ -1398,33 +1871,45 @@ class QlibQuantMoE(Model):
+                     if p.grad is None:
+                         continue
+                     p.grad.mul_(scale)
+-            if self.scaler is not None:
+-                self.scaler.unscale_(optimizer)
+-            grad_norm = float(torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0))
+-            step_skipped = False
+-            if self.scaler is not None:
+-                prev_scale = float(self.scaler.get_scale())
+-                self.scaler.step(optimizer)
+-                self.scaler.update()
+-                new_scale = float(self.scaler.get_scale())
+-                step_skipped = new_scale < prev_scale
+-            else:
+-                optimizer.step()
+-
+-            if not step_skipped:
++            step_taken = self._finish_optimizer_step(
++                optimizer,
++                scheduler,
++                opt_meters,
++                opt_counts,
++            )
++            if step_taken:
+                 opt_steps += 1
+-                if scheduler is not None:
+-                    scheduler.step()
+-                self.global_step += 1
+             optimizer.zero_grad(set_to_none=True)
+             accum_count = 0
+-            if not np.isfinite(grad_norm) or grad_norm <= self.debug_grad_eps:
+-                self._warn_once(
+-                    "zero_grad_norm",
+-                    f">>> [Warn] grad_norm approx 0 ({grad_norm:.3e}); parameters may not be updating.",
+-                )
+ 
+         avg = self._avg(meters, n_batches)
++        step_count_keys = {
++            "grad_attempt_steps",
++            "grad_skipped_steps",
++            "grad_nonfinite_steps",
++        }
++        for k, v in opt_meters.items():
++            if k in step_count_keys:
++                continue
++            c = int(opt_counts.get(k, 0))
++            if c > 0:
++                avg[k] = float(v / c)
++        if train and optimizer is not None:
++            grad_attempt_steps = int(opt_meters.get("grad_attempt_steps", 0.0))
++            grad_skipped_steps = int(opt_meters.get("grad_skipped_steps", 0.0))
++            grad_nonfinite_steps = int(opt_meters.get("grad_nonfinite_steps", 0.0))
++            avg["optimizer_steps"] = float(opt_steps)
++            avg["grad_attempt_steps"] = float(grad_attempt_steps)
++            avg["grad_skipped_steps"] = float(grad_skipped_steps)
++            avg["grad_nonfinite_steps"] = float(grad_nonfinite_steps)
++            if grad_attempt_steps > 0:
++                avg["grad_skipped_rate"] = float(grad_skipped_steps / grad_attempt_steps)
++                avg["grad_nonfinite_rate"] = float(grad_nonfinite_steps / grad_attempt_steps)
++        if train and optimizer is not None:
++            try:
++                avg["lr"] = float(optimizer.param_groups[0]["lr"])
++            except Exception:
++                pass
+         if train and optimizer is not None and opt_steps == 0:
+             self._warn_once(
+                 "no_optimizer_steps",
+@@ -1529,7 +2014,35 @@ class QlibQuantMoE(Model):
+             self._init_net(bx0)
+ 
+         assert self.net is not None
+-        optimizer = optim.AdamW(self.net.parameters(), lr=self.lr)
++        # h-20260610-002 follow-up: optionally exclude the stock expert's projections from weight
++        # decay so its query (Wq) can WARM (grow) under the de-mean gradient instead of being
++        # pinned to ~0 by wd (the cold-query cause of the uniform-attention collapse; KEY-SVD
++        # showed keys are structured/peakable, so the blocker is operator-state, not input).
++        # tau and ||Wq|| are redundant, so freeing Wq from wd IS "set a suitable temperature",
++        # done the only way that survives training. Default off => optimizer byte-identical.
++        _adamw_wd = 0.01  # torch AdamW default, preserved for the decayed group
++        _no_wd_scope = str(self.trainer_config.get("expert_no_wd_scope", "") or "").strip().lower()
++        if bool(self.trainer_config.get("stock_expert_no_wd", False)) and not _no_wd_scope:
++            _no_wd_scope = "stock_expert"
++        if _no_wd_scope:
++            _match = ["stock_expert", "factor_expert", "time_expert"] if _no_wd_scope in {"all", "all_experts"} \
++                else [_no_wd_scope]
++            no_wd, decayed = [], []
++            for _name, _p in self.net.named_parameters():
++                if not _p.requires_grad:
++                    continue
++                (no_wd if any(m in _name for m in _match) else decayed).append(_p)
++            optimizer = optim.AdamW(
++                [
++                    {"params": decayed, "weight_decay": _adamw_wd},
++                    {"params": no_wd, "weight_decay": 0.0},
++                ],
++                lr=self.lr,
++            )
++            print(f">>> [wd-exclusion] scope={_match} -> {len(no_wd)} param tensors excluded from weight_decay "
++                  f"(decayed={len(decayed)})")
++        else:
++            optimizer = optim.AdamW(self.net.parameters(), lr=self.lr)
+         f_ids = torch.arange(int(self.model_config["num_alphas"]), device=self.device)
+ 
+         if self.debug_sanity_check:
+@@ -1578,11 +2091,20 @@ class QlibQuantMoE(Model):
+         best_state = None
+         best_score = float("-inf")  # used in valid early stop mode (maximize)
+         best_train = float("inf")  # used in train threshold mode (minimize)
++        checkpoint_enabled = bool(self.checkpoint_metric)
++        checkpoint_state = None
++        checkpoint_best = float("inf") if self.checkpoint_mode == "min" else float("-inf")
++        checkpoint_epoch: Optional[int] = None
+         bad = 0
+         good = 0
+ 
+         # 训练曲线缓存，用于报告里的“训练过程诊断”
+         rec = R.get_recorder()
++        if rec is not None:
++            try:
++                rec.save_objects(runtime_flags=dict(self._runtime_flags))
++            except Exception as e:
++                print(f">>> [Runtime] save runtime_flags failed: {e}")
+         train_curve = None
+         main_loss = str(self.model_config.get("main_loss", "mse")).lower()
+         if main_loss == "mle":
+@@ -1594,11 +2116,23 @@ class QlibQuantMoE(Model):
+                 "train_listmle": [],
+                 "train_mse": [],
+                 "train_ic": [],
++                "train_rank_ic": [],
++                "train_score_std": [],
++                "train_label_std": [],
++                "train_grad_norm": [],
++                "train_grad_nonfinite_steps": [],
++                "train_grad_nonfinite_rate": [],
++                "train_grad_skipped_steps": [],
++                "train_grad_skipped_rate": [],
++                "train_optimizer_steps": [],
++                "train_lr": [],
+                 "valid_main": [],
+                 "valid_listmle": [],
+                 "valid_mse": [],
+                 "valid_rank_ic": [],
+                 "valid_ic": [],
++                "valid_score_std": [],
++                "valid_label_std": [],
+             }
+ 
+         if use_valid_early_stop:
+@@ -1612,6 +2146,12 @@ class QlibQuantMoE(Model):
+             epoch_iter = trange(self.epochs, desc="Epochs", dynamic_ncols=True)
+ 
+         for epoch in epoch_iter:
++            train_sampler = getattr(train_loader, "batch_sampler", None)
++            if hasattr(train_sampler, "set_epoch"):
++                try:
++                    train_sampler.set_epoch(epoch)
++                except Exception:
++                    pass
+             tr = self._run_epoch(
+                 train_loader,
+                 f_ids,
+@@ -1620,6 +2160,7 @@ class QlibQuantMoE(Model):
+                 train=True,
+                 desc=f"Train e{epoch + 1:02d}",
+             )
++            tr.update(self._train_sampler_epoch_metrics(train_loader))
+             self._log_metrics(epoch, "train", tr)
+             print(f"| Train {epoch + 1:02d} | " + " | ".join(f"{k}:{v:.6f}" for k, v in tr.items()))
+ 
+@@ -1648,8 +2189,18 @@ class QlibQuantMoE(Model):
+                 train_curve["train_listmle"].append(float(tr.get("loss_listmle", np.nan)))
+                 train_curve["train_mse"].append(float(tr.get("loss_mse", np.nan)))
+                 train_curve["train_ic"].append(
+-                    float(-tr["loss_ic"]) if "loss_ic" in tr else float("nan")
++                    float(tr.get("ic_raw", -tr["loss_ic"] if "loss_ic" in tr else np.nan))
+                 )
++                train_curve["train_rank_ic"].append(float(tr.get("rank_ic", np.nan)))
++                train_curve["train_score_std"].append(float(tr.get("score_std", np.nan)))
++                train_curve["train_label_std"].append(float(tr.get("label_std", np.nan)))
++                train_curve["train_grad_norm"].append(float(tr.get("grad_norm", np.nan)))
++                train_curve["train_grad_nonfinite_steps"].append(float(tr.get("grad_nonfinite_steps", np.nan)))
++                train_curve["train_grad_nonfinite_rate"].append(float(tr.get("grad_nonfinite_rate", np.nan)))
++                train_curve["train_grad_skipped_steps"].append(float(tr.get("grad_skipped_steps", np.nan)))
++                train_curve["train_grad_skipped_rate"].append(float(tr.get("grad_skipped_rate", np.nan)))
++                train_curve["train_optimizer_steps"].append(float(tr.get("optimizer_steps", np.nan)))
++                train_curve["train_lr"].append(float(tr.get("lr", np.nan)))
+                 # valid
+                 if va is not None:
+                     train_curve["valid_main"].append(
+@@ -1661,14 +2212,50 @@ class QlibQuantMoE(Model):
+                         float(va.get("rank_ic", np.nan)) if "rank_ic" in va else float("nan")
+                     )
+                     train_curve["valid_ic"].append(
+-                        float(-va["loss_ic"]) if "loss_ic" in va else float("nan")
++                        float(va.get("ic_pearson_daily", va.get("ic_raw", -va["loss_ic"] if "loss_ic" in va else np.nan)))
+                     )
++                    train_curve["valid_score_std"].append(float(va.get("score_std", np.nan)))
++                    train_curve["valid_label_std"].append(float(va.get("label_std", np.nan)))
+                 else:
+                     train_curve["valid_main"].append(float("nan"))
+                     train_curve["valid_listmle"].append(float("nan"))
+                     train_curve["valid_mse"].append(float("nan"))
+                     train_curve["valid_rank_ic"].append(float("nan"))
+                     train_curve["valid_ic"].append(float("nan"))
++                    train_curve["valid_score_std"].append(float("nan"))
++                    train_curve["valid_label_std"].append(float("nan"))
++
++                # Dynamic per-layer router diagnostics for the matrix/report.
++                # Keep vectors rectangular even if a future config omits a key.
++                cur_len = len(train_curve["epoch"])
++                dyn_vals: Dict[str, float] = {}
++                for k, v in tr.items():
++                    if str(k).startswith(("router_layer_", "expert_layer_", "sampler_")):
++                        dyn_vals[f"train_{k}"] = float(v)
++                if va is not None:
++                    for k, v in va.items():
++                        if str(k).startswith(("router_layer_", "expert_layer_")):
++                            dyn_vals[f"valid_{k}"] = float(v)
++                dyn_keys = {
++                    k
++                    for k in train_curve.keys()
++                    if k.startswith("train_router_layer_")
++                    or k.startswith("valid_router_layer_")
++                    or k.startswith("train_expert_layer_")
++                    or k.startswith("valid_expert_layer_")
++                    or k.startswith("train_sampler_")
++                } | set(dyn_vals.keys())
++                for k in sorted(dyn_keys):
++                    if k not in train_curve:
++                        train_curve[k] = [float("nan")] * (cur_len - 1)
++                    train_curve[k].append(float(dyn_vals.get(k, np.nan)))
++
++            if checkpoint_enabled:
++                ckpt_value = self._checkpoint_metric_value(tr, va)
++                if ckpt_value is not None and self._checkpoint_improved(ckpt_value, checkpoint_best):
++                    checkpoint_best = float(ckpt_value)
++                    checkpoint_epoch = int(epoch + 1)
++                    checkpoint_state = copy.deepcopy(self.net.state_dict())
+ 
+             # Stopping & best checkpoint selection:
+             # - If early_stop>0: use valid metrics (legacy behavior)
+@@ -1715,7 +2302,15 @@ class QlibQuantMoE(Model):
+                                 )
+                                 break
+ 
+-        if best_state is not None:
++        restored_checkpoint = False
++        if checkpoint_enabled and checkpoint_state is not None:
++            self.net.load_state_dict(checkpoint_state)
++            restored_checkpoint = True
++            print(
++                f">>> [Train] restored best checkpoint "
++                f"({self.checkpoint_metric}={checkpoint_best:.6f}, epoch={checkpoint_epoch})"
++            )
++        elif best_state is not None:
+             self.net.load_state_dict(best_state)
+             if use_valid_early_stop:
+                 print(f">>> [Train] restored best (score={best_score:.6f})")
+@@ -1723,9 +2318,26 @@ class QlibQuantMoE(Model):
+                 print(f">>> [Train] restored best ({self.train_stop_key}={best_train:.6f})")
+ 
+         # 保存训练曲线
++        best_checkpoint_info = {
++            "enabled": bool(checkpoint_enabled),
++            "metric": self.checkpoint_metric,
++            "mode": self.checkpoint_mode,
++            "score": (
++                float(checkpoint_best)
++                if checkpoint_enabled and checkpoint_epoch is not None and np.isfinite(checkpoint_best)
++                else None
++            ),
++            "epoch": checkpoint_epoch,
++            "restored": bool(restored_checkpoint),
++        }
++
+         if train_curve is not None:
+             try:
+-                rec.save_objects(train_curve=train_curve)
++                rec.save_objects(
++                    train_curve=train_curve,
++                    best_checkpoint_info=best_checkpoint_info,
++                    sampler_epoch_stats=dict(self._last_train_sampler_stats),
++                )
+             except Exception as e:
+                 print(f">>> [Train] save train_curve failed: {e}")
+ 
+@@ -1749,6 +2361,8 @@ class QlibQuantMoE(Model):
+             num_workers=self.num_workers,
+             pin_memory=(self.device.type == "cuda"),
+             collate_fn=self._collate_feat_with_pos,
++            worker_init_fn=self._worker_init_fn(),
++            generator=self._loader_generator(offset=43),
+         )
+ 
+         num_alphas = self._get_num_alphas()
+@@ -1822,14 +2436,36 @@ class QlibQuantMoE(Model):
+         by_day = df_idx.groupby("datetime", sort=True)["int_idx"].apply(lambda x: x.to_numpy(dtype=int))
+ 
+         metric_keys = (
++            "time_embedding_norm",
++            "time_embedding_to_value_norm_ratio",
+             "time_tau",
+             "time_half_life",
++            "time_tau_std",
++            "time_tau_p10",
++            "time_tau_p90",
++            "time_tau_range_util",
++            "film_gamma_strength",
++            "film_beta_strength",
+             "factor_gate_mean",
+             "factor_gate_std",
+             "factor_gate_entropy",
+             "factor_gate_topk_mass_5",
+             "factor_gate_topk_mass_10",
+         )
++        n_layers = len(getattr(self.net, "layers", [])) if self.net is not None else 0
++        expert_metric_keys: List[str] = []
++        for layer_idx in range(int(n_layers)):
++            for suffix in (
++                "time_expert_norm",
++                "factor_expert_norm",
++                "time_contrib_norm",
++                "factor_contrib_norm",
++                "contrib_norm_ratio",
++                "expert_cosine",
++                "time_winner_ratio",
++            ):
++                expert_metric_keys.append(f"expert_layer_{layer_idx}_{suffix}")
++        metric_keys = tuple(list(metric_keys) + expert_metric_keys)
+ 
+         sum_by_day: Dict[pd.Timestamp, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+         cnt_by_day: Dict[pd.Timestamp, int] = defaultdict(int)
+@@ -1867,9 +2503,12 @@ class QlibQuantMoE(Model):
+                 # Router diagnostics (time_ratio / gate_entropy)
+                 if getattr(out, "gate_weights", None):
+                     try:
+-                        gw = torch.stack(out.gate_weights, dim=0)  # [L,B,2]
++                        gw = torch.stack(out.gate_weights, dim=0)  # [L,B,E] (E=2 or 3)
+                         tr = gw[:, :, 0].mean(dim=0).detach().cpu().numpy()  # [B]
+                         sum_by_day[pd.Timestamp(dt)]["time_ratio"] += float(np.sum(tr))
++                        if gw.shape[-1] >= 3:
++                            sr = gw[:, :, 2].mean(dim=0).detach().cpu().numpy()
++                            sum_by_day[pd.Timestamp(dt)]["stock_ratio"] += float(np.sum(sr))
+                     except Exception:
+                         pass
+                 elif getattr(out, "avg_time_ratio", None) is not None:
+@@ -1904,6 +2543,259 @@ class QlibQuantMoE(Model):
+         series_map = self._collect_daily_diag_series(dataset, segment=segment)
+         return series_map.get("time_ratio", pd.Series(dtype=float))
+ 
++    def collect_router_oracle_diagnostics(self, dataset: DatasetH, segment: str = "test") -> Dict[str, float]:
++        """
++        Diagnostic-only forced-router evaluation.
++
++        Replays the segment with default routing, forced time expert, forced
++        factor expert, and uniform routing. This is not used during training.
++        """
++        assert self.net is not None
++        self._ensure_market_state()
++
++        try:
++            tsds = dataset.prepare(segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
++            raw_x, raw_y = self._extract_sample(tsds[0])
++            x_np = self._as_numpy(raw_x)
++            y_np = None if raw_y is None else self._as_numpy(raw_y)
++            _, y_np = self._split_packed_label(x_np, y_np)
++            if self.label_dim > 0 and y_np is None:
++                return {}
++        except Exception as e:
++            self._warn_once(
++                f"router_oracle_prepare_{segment}",
++                f">>> [RouterOracle] skipped for segment={segment}: {e}",
++            )
++            return {}
++
++        loader = self._make_daily_chunk_loader(tsds, with_label=True)
++        num_alphas = self._get_num_alphas()
++        f_ids = torch.arange(num_alphas, device=self.device)
++        modes = {"default": None, "time": "time", "factor": "factor", "uniform": "uniform"}
++        if bool(getattr(getattr(self.net, "config", None), "use_stock_expert", False)):
++            # h-20260610-002 probes: solo-stock + leave-one-out (the marginal-contribution reading)
++            modes["stock"] = "stock"
++            modes["no_stock"] = "no_stock"
++        buffers: Dict[str, Dict[pd.Timestamp, Dict[str, List[np.ndarray]]]] = {
++            name: defaultdict(lambda: {"p": [], "y": []}) for name in modes
++        }
++
++        was_training = bool(self.net.training)
++        self.net.eval()
++        try:
++            with torch.no_grad():
++                for batch in loader:
++                    if not (isinstance(batch, (tuple, list)) and len(batch) == 4):
++                        continue
++                    bx, by, bmacro, day_key = batch
++                    bx = self._coerce_bx_feature_dim(bx, expected_dim=num_alphas, context="router_oracle")
++                    bx_t = torch.nan_to_num(bx, 0.0).to(self.device)
++                    by_t = None if by is None else by.to(self.device).float()
++                    if by_t is None:
++                        continue
++                    valid = torch.isfinite(by_t)
++                    if valid.sum().item() < 2:
++                        continue
++                    bx_t = bx_t[valid]
++                    by_t = by_t[valid]
++                    macro_t = None if bmacro is None else torch.nan_to_num(bmacro, 0.0).to(self.device).float()
++                    if macro_t is not None:
++                        macro_t = macro_t[valid]
++                    y_vec = by_t.view(-1).detach().cpu().numpy()
++                    dt_key = pd.to_datetime(day_key).normalize()
++                    for mode_name, override in modes.items():
++                        with self._autocast_ctx():
++                            out = self.net(
++                                bx_t,
++                                f_ids,
++                                labels=None,
++                                macro_features=macro_t,
++                                router_override=override,
++                            )
++                        p_vec = out.scores.view(-1).detach().cpu().numpy()
++                        buffers[mode_name][dt_key]["p"].append(p_vec)
++                        buffers[mode_name][dt_key]["y"].append(y_vec)
++        finally:
++            self.net.train(was_training)
++
++        def _daily_corr(mode_name: str) -> Tuple[pd.Series, pd.Series]:
++            ic_vals: Dict[pd.Timestamp, float] = {}
++            ric_vals: Dict[pd.Timestamp, float] = {}
++            for dt, parts in buffers[mode_name].items():
++                p = np.concatenate(parts["p"], axis=0) if parts["p"] else None
++                y = np.concatenate(parts["y"], axis=0) if parts["y"] else None
++                if p is None or y is None or p.size < 2 or y.size < 2:
++                    continue
++                if np.std(p) > 0 and np.std(y) > 0:
++                    ic_vals[dt] = float(np.corrcoef(p, y)[0, 1])
++                rp = pd.Series(p).rank().to_numpy()
++                ry = pd.Series(y).rank().to_numpy()
++                if np.std(rp) > 0 and np.std(ry) > 0:
++                    ric_vals[dt] = float(np.corrcoef(rp, ry)[0, 1])
++            return pd.Series(ic_vals, dtype=float).sort_index(), pd.Series(ric_vals, dtype=float).sort_index()
++
++        ic_by_mode: Dict[str, pd.Series] = {}
++        ric_by_mode: Dict[str, pd.Series] = {}
++        out_metrics: Dict[str, float] = {}
++        for mode_name in modes:
++            ic_s, ric_s = _daily_corr(mode_name)
++            ic_by_mode[mode_name] = ic_s
++            ric_by_mode[mode_name] = ric_s
++            if not ic_s.empty:
++                out_metrics[f"{mode_name}_ic_mean"] = float(ic_s.mean())
++            if not ric_s.empty:
++                out_metrics[f"{mode_name}_rank_ic_mean"] = float(ric_s.mean())
++
++        joined = pd.concat(
++            [
++                ric_by_mode.get("default", pd.Series(dtype=float)).rename("default"),
++                ric_by_mode.get("time", pd.Series(dtype=float)).rename("time"),
++                ric_by_mode.get("factor", pd.Series(dtype=float)).rename("factor"),
++                ric_by_mode.get("uniform", pd.Series(dtype=float)).rename("uniform"),
++            ],
++            axis=1,
++            join="inner",
++        ).dropna()
++        if not joined.empty:
++            oracle_expert = joined[["time", "factor"]].max(axis=1)
++            out_metrics["oracle_expert_rank_ic_mean"] = float(oracle_expert.mean())
++            out_metrics["router_oracle_gap"] = float((oracle_expert - joined["default"]).mean())
++            out_metrics["router_time_advantage"] = float((joined["time"] - joined["default"]).mean())
++            out_metrics["router_factor_advantage"] = float((joined["factor"] - joined["default"]).mean())
++            out_metrics["router_uniform_advantage"] = float((joined["uniform"] - joined["default"]).mean())
++            out_metrics["time_beats_factor_day_ratio"] = float((joined["time"] > joined["factor"]).mean())
++            out_metrics["default_beats_oracle_expert_day_ratio"] = float((joined["default"] > oracle_expert).mean())
++            out_metrics["n_days"] = float(len(joined))
++        # h-20260610-002: stock solo + leave-one-out marginal contribution (aligned on common days)
++        if "stock" in ric_by_mode or "no_stock" in ric_by_mode:
++            j2 = pd.concat(
++                [
++                    ric_by_mode.get("default", pd.Series(dtype=float)).rename("default"),
++                    ric_by_mode.get("stock", pd.Series(dtype=float)).rename("stock"),
++                    ric_by_mode.get("no_stock", pd.Series(dtype=float)).rename("no_stock"),
++                ],
++                axis=1,
++                join="inner",
++            ).dropna()
++            if not j2.empty:
++                out_metrics["router_stock_advantage"] = float((j2["stock"] - j2["default"]).mean())
++                # THE mechanism reading: how much rank_ic the model LOSES when the stock gate is
++                # zeroed (time/factor renormalized). ~0 with high stock share = used-but-useless.
++                out_metrics["router_no_stock_delta"] = float((j2["default"] - j2["no_stock"]).mean())
++
++        return out_metrics
++
++    def _collect_daily_factor_profiles(
++        self,
++        dataset: DatasetH,
++        segment: str = "test",
++        *,
++        topk: int = 10,
++    ) -> Dict[str, Any]:
++        """
++        Collect daily factor-gate and pooling distributions for focused diagnostics.
++
++        Returns only what exists: FiLM-related entries are absent when factor gate
++        is disabled, which keeps the MLflow/report validity checks clean.
++        """
++        assert self.net is not None
++        self._ensure_market_state()
++
++        tsds = dataset.prepare(segment, col_set=["feature"], data_key=DataHandlerLP.DK_I)
++        idx = tsds.get_index()
++        if not isinstance(idx, pd.MultiIndex) or "datetime" not in (idx.names or []):
++            return {}
++
++        dates = pd.to_datetime(idx.get_level_values("datetime")).normalize()
++        num_alphas = self._get_num_alphas()
++        f_ids = torch.arange(num_alphas, device=self.device)
++
++        df_idx = pd.DataFrame({"datetime": dates})
++        df_idx["int_idx"] = np.arange(len(df_idx), dtype=int)
++        by_day = df_idx.groupby("datetime", sort=True)["int_idx"].apply(lambda x: x.to_numpy(dtype=int))
++
++        gate_sum: Dict[pd.Timestamp, np.ndarray] = {}
++        pool_sum: Dict[pd.Timestamp, np.ndarray] = {}
++        gate_cnt: Dict[pd.Timestamp, int] = defaultdict(int)
++        pool_cnt: Dict[pd.Timestamp, int] = defaultdict(int)
++
++        for dt, row_idx in by_day.items():
++            row_idx = np.asarray(row_idx, dtype=int)
++            for start in range(0, int(row_idx.size), self.batch_size):
++                chunk = row_idx[start : start + self.batch_size]
++                bx_t = self._stack_feature_batch_from_row_indices(
++                    tsds,
++                    chunk,
++                    max_samples=None,
++                    num_alphas=num_alphas,
++                    context="_collect_daily_factor_profiles",
++                )
++                if bx_t is None:
++                    continue
++                bsz = int(bx_t.shape[0])
++                if bsz <= 0:
++                    continue
++
++                macro_t = self._macro_tensor_for_day(pd.Timestamp(dt), bsz)
++                with torch.no_grad():
++                    with self._autocast_ctx():
++                        out = self.net(bx_t, f_ids, macro_features=macro_t)
++
++                dt_key = pd.Timestamp(dt)
++                gate_imp = getattr(out, "factor_gate_importance", None)
++                if isinstance(gate_imp, torch.Tensor) and gate_imp.ndim == 2:
++                    arr = gate_imp.detach().float().cpu().numpy()
++                    gate_sum.setdefault(dt_key, np.zeros((arr.shape[1],), dtype=float))
++                    gate_sum[dt_key] += np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0).sum(axis=0)
++                    gate_cnt[dt_key] += int(arr.shape[0])
++
++                pool_w = getattr(out, "factor_pool_weights", None)
++                if isinstance(pool_w, torch.Tensor) and pool_w.ndim == 2:
++                    arr = pool_w.detach().float().cpu().numpy()
++                    pool_sum.setdefault(dt_key, np.zeros((arr.shape[1],), dtype=float))
++                    pool_sum[dt_key] += np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0).sum(axis=0)
++                    pool_cnt[dt_key] += int(arr.shape[0])
++
++        def _profile(sum_map: Dict[pd.Timestamp, np.ndarray], cnt_map: Dict[pd.Timestamp, int]) -> Dict[str, Dict[str, Any]]:
++            out: Dict[str, Dict[str, Any]] = {}
++            for dt in sorted(sum_map.keys()):
++                cnt = max(1, int(cnt_map.get(dt, 0)))
++                w = np.asarray(sum_map[dt], dtype=float) / float(cnt)
++                w = np.clip(np.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0), 0.0, None)
++                s = float(w.sum())
++                if s > 0:
++                    w = w / s
++                k = min(max(1, int(topk)), int(w.shape[0]))
++                ids = np.argsort(w)[::-1][:k]
++                out[pd.Timestamp(dt).strftime("%Y-%m-%d")] = {
++                    "weights": [float(x) for x in w],
++                    "top_ids": [int(i) for i in ids],
++                    "top_weights": [float(w[i]) for i in ids],
++                }
++            return out
++
++        gate_profile = _profile(gate_sum, gate_cnt)
++        pool_profile = _profile(pool_sum, pool_cnt)
++
++        overlap_data: Dict[pd.Timestamp, float] = {}
++        for dt_str, g in gate_profile.items():
++            p = pool_profile.get(dt_str, None)
++            if not p:
++                continue
++            a = set(g.get("top_ids", [])[:topk])
++            b = set(p.get("top_ids", [])[:topk])
++            if a or b:
++                overlap_data[pd.Timestamp(dt_str)] = float(len(a & b) / max(1, len(a | b)))
++
++        result: Dict[str, Any] = {}
++        if gate_profile:
++            result["factor_gate"] = gate_profile
++        if pool_profile:
++            result["pooling"] = pool_profile
++        if overlap_data:
++            result["film_pool_topk_overlap"] = pd.Series(overlap_data, dtype=float).sort_index()
++        return result
++
+     def _collect_attention_maps(
+         self,
+         dataset: DatasetH,
+@@ -2228,6 +3120,11 @@ class QlibQuantMoE(Model):
+             attn_layer=attn_layer,
+             factor_use_last_time=factor_use_last_time,
+         )
++        factor_profiles = self._collect_daily_factor_profiles(
++            dataset,
++            segment=segment,
++            topk=factor_topk or 10,
++        )
+ 
+         factor_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
+         factor_pool_topk_map: Dict[str, Dict[str, List[int] | List[float]]] = {}
+@@ -2296,6 +3193,15 @@ class QlibQuantMoE(Model):
+                 extra_series_objs[f"{prefix}_factor_topk"] = factor_topk_map
+             if factor_pool_topk_map:
+                 extra_series_objs[f"{prefix}_factor_pool_topk"] = factor_pool_topk_map
++            if factor_profiles:
++                if "factor_gate" in factor_profiles:
++                    extra_series_objs[f"{prefix}_factor_gate_profiles"] = factor_profiles["factor_gate"]
++                if "pooling" in factor_profiles:
++                    extra_series_objs[f"{prefix}_pool_profiles"] = factor_profiles["pooling"]
++                if "film_pool_topk_overlap" in factor_profiles:
++                    extra_series_objs[f"{prefix}_film_pool_topk_overlap_series"] = factor_profiles[
++                        "film_pool_topk_overlap"
++                    ]
+             recorder.save_objects(
+                 **{
+                     f"{prefix}_gate_series": gate_series,
+diff --git a/module/quant_moe_model.py b/module/quant_moe_model.py
+index 0fac0a3..c4a7556 100644
+--- a/module/quant_moe_model.py
++++ b/module/quant_moe_model.py
+@@ -436,17 +436,22 @@ class QuantMoEModel(PreTrainedModel):
+                 router_entropy_values.append(diag["entropy_per_sample"].detach())
+ 
+             gw = diag["weights"].detach()
++            n_exp = int(gw.shape[1])
+             tr_layer = gw[:, 0]
+             ent_layer = diag.get("entropy_per_sample", None)
+             margin_layer = diag.get("logit_margin_per_sample", None)
+             diag_metrics[f"router_layer_{idx}_time_ratio"] = float(tr_layer.mean().item())
+-            diag_metrics[f"router_layer_{idx}_factor_ratio"] = float((1.0 - tr_layer).mean().item())
++            # read columns directly (1-time_ratio only holds for 2 experts); E=2 values unchanged.
++            diag_metrics[f"router_layer_{idx}_factor_ratio"] = float(gw[:, 1].mean().item())
++            if n_exp >= 3:
++                diag_metrics[f"router_layer_{idx}_stock_ratio"] = float(gw[:, 2].mean().item())
++            # collapse = any expert dominating; for E=2 max>0.9 <=> (tr<0.1)|(tr>0.9) — equivalent.
+             diag_metrics[f"router_layer_{idx}_collapse_ratio"] = float(
+-                ((tr_layer < 0.1) | (tr_layer > 0.9)).float().mean().item()
++                (gw.max(dim=1).values > 0.9).float().mean().item()
+             )
+             if ent_layer is not None:
+                 diag_metrics[f"router_layer_{idx}_entropy_norm"] = float(
+-                    (ent_layer.detach().float().mean() / math.log(2.0)).item()
++                    (ent_layer.detach().float().mean() / math.log(float(n_exp))).item()
+                 )
+             if margin_layer is not None:
+                 diag_metrics[f"router_layer_{idx}_logit_margin"] = float(
+@@ -461,6 +466,16 @@ class QuantMoEModel(PreTrainedModel):
+                 "contrib_norm_ratio",
+                 "expert_cosine",
+                 "time_winner_ratio",
++                # h-20260610-002 stock-expert L2/L3 diagnostics (present only when enabled)
++                "stock_ratio",
++                "stock_expert_norm",
++                "stock_contrib_norm",
++                "stock_winner_ratio",
++                "expert_cosine_ts",
++                "expert_cosine_fs",
++                "stock_attn_entropy_norm",
++                "stock_attn_self_frac",
++                "stock_attn_hub_top5_share",
+             ):
+                 if metric_name in diag:
+                     diag_metrics[f"expert_layer_{idx}_{metric_name}"] = float(
+diff --git a/module/utils/model_configuration.py b/module/utils/model_configuration.py
+index 0d1aac0..e72415f 100644
+--- a/module/utils/model_configuration.py
++++ b/module/utils/model_configuration.py
+@@ -76,6 +76,17 @@ class QuantMoEConfig(PretrainedConfig):
+             temporal_readout_init: str = "onehot_last",
+             # d1pma/duals tr_gate initial value (0.0=>g=0.5 current; -2=>g~0.12; +2=>g~0.88). Gate-init sweep.
+             temporal_readout_gate_init: float = 0.0,
++            # h-20260610-002: third stock-axis expert (cross-sectional MHA over the daily batch),
++            # symmetric peer of time/factor experts, router 2->3. Default off => baseline unchanged.
++            use_stock_expert: bool = False,
++            # h-20260610-002 follow-up: subtract the per-day cross-sectional mean from the stock
++            # expert output, so it can only contribute the rank-changing relative component (kills
++            # the loss-neutral uniform-attention attractor). Default off => baseline unchanged.
++            stock_expert_demean: bool = False,
++            # h-20260610-002 follow-up #2: center the stock expert INPUT across the daily cross-
++            # section before projection (centers q/k/v) so attention keys carry only the stock-
++            # relative signal, not the common-mode time/factor embedding. Default off.
++            stock_expert_xs_center: bool = False,
+             **kwargs
+     ):
+ 
+@@ -204,6 +215,9 @@ class QuantMoEConfig(PretrainedConfig):
+             )
+         self.temporal_readout_init = temporal_readout_init
+         self.temporal_readout_gate_init = float(temporal_readout_gate_init)
++        self.use_stock_expert = bool(use_stock_expert)
++        self.stock_expert_demean = bool(stock_expert_demean)
++        self.stock_expert_xs_center = bool(stock_expert_xs_center)
+ 
+ 
+ # ==========================================
+diff --git a/work_flow.py b/work_flow.py
+index a607125..7c19e28 100644
+--- a/work_flow.py
++++ b/work_flow.py
+@@ -304,6 +304,9 @@ MODEL_CONFIG_KEYS_FULL = [
+     "temporal_readout",
+     "temporal_readout_init",
+     "temporal_readout_gate_init",
++    "use_stock_expert",
++    "stock_expert_demean",
++    "stock_expert_xs_center",
+ ]
+ 
+ 
